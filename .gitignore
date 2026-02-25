@@ -38,3 +38,9 @@ configs/config.toml
 
 # Lease database
 *.db
+
+# Claude
+*.claude
+
+# Windsurf
+*.windsurf

@@ -13,6 +13,7 @@ import (
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/ha"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
@@ -30,6 +31,7 @@ type Server struct {
 	bus           *events.Bus
 	fsm           *ha.FSM
 	peer          *ha.Peer
+	dns           *dnsproxy.Server
 	logger        *slog.Logger
 	httpServer    *http.Server
 	auth          *AuthMiddleware
@@ -83,6 +85,11 @@ func WithFSM(fsm *ha.FSM) ServerOption {
 // WithPeer sets the HA peer connection.
 func WithPeer(peer *ha.Peer) ServerOption {
 	return func(s *Server) { s.peer = peer }
+}
+
+// WithDNSProxy sets the built-in DNS proxy server.
+func WithDNSProxy(dns *dnsproxy.Server) ServerOption {
+	return func(s *Server) { s.dns = dns }
 }
 
 // Start begins serving the HTTP API.
@@ -169,6 +176,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// HA
 	mux.HandleFunc("GET /api/v1/ha/status", s.auth.RequireAuth(s.handleHAStatus))
 	mux.HandleFunc("POST /api/v1/ha/failover", s.auth.RequireAdmin(s.handleHAFailover))
+
+	// DNS proxy
+	mux.HandleFunc("GET /api/v1/dns/stats", s.auth.RequireAuth(s.handleDNSStats))
+	mux.HandleFunc("POST /api/v1/dns/cache/flush", s.auth.RequireAdmin(s.handleDNSFlushCache))
+	mux.HandleFunc("GET /api/v1/dns/records", s.auth.RequireAuth(s.handleDNSListRecords))
 
 	// Stats
 	mux.HandleFunc("GET /api/v1/stats", s.auth.RequireAuth(s.handleGetStats))

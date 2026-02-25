@@ -16,6 +16,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dhcp"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/logging"
@@ -105,9 +106,34 @@ func main() {
 		}
 	}
 
+	// Initialize DNS proxy
+	var dnsServer *dnsproxy.Server
+	if cfg.DNS.Enabled {
+		dnsServer = dnsproxy.NewServer(&cfg.DNS, logger)
+		if err := dnsServer.Start(ctx); err != nil {
+			logger.Error("failed to start DNS proxy", "error", err)
+			// Non-fatal — DHCP still works
+		} else {
+			// Subscribe to lease events for DNS registration
+			dnsEventCh := bus.Subscribe(1000)
+			dnsServer.SubscribeToEvents(ctx, dnsEventCh)
+
+			// Register existing leases
+			if cfg.DNS.RegisterLeases {
+				for _, l := range store.All() {
+					if l.State == "active" && l.Hostname != "" {
+						dnsServer.RegisterLease(l.Hostname, l.IP)
+					}
+				}
+				logger.Info("DNS proxy loaded existing leases", "zone_records", dnsServer.Zone().Count())
+			}
+		}
+	}
+
 	logger.Info("athena-dhcpd ready",
 		"subnets", len(cfg.Subnets),
-		"conflict_detection", cfg.ConflictDetection.Enabled)
+		"conflict_detection", cfg.ConflictDetection.Enabled,
+		"dns_proxy", cfg.DNS.Enabled)
 
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
@@ -132,6 +158,8 @@ func main() {
 				continue
 			}
 			handler.UpdatePools(newPools)
+			// Note: DNS proxy config changes require restart for listener changes,
+			// but static records and forwarders could be refreshed here in the future.
 			logger.Info("configuration reloaded successfully")
 
 		case syscall.SIGINT, syscall.SIGTERM:
@@ -143,6 +171,11 @@ func main() {
 
 			// Cancel the main context to stop all background goroutines
 			cancel()
+
+			// Stop DNS proxy
+			if dnsServer != nil {
+				dnsServer.Stop()
+			}
 
 			// Stop DHCP server (stops accepting new packets)
 			server.Stop()

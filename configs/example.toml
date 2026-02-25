@@ -160,7 +160,7 @@ ntp_servers = ["192.168.1.1"]
 # ─── API & Web UI ───────────────────────────────────────────────────
 [api]
 enabled = true
-listen = "127.0.0.1:8080"
+listen = "127.0.0.1:8067"
 web_ui = true
 
   [api.auth]

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/api"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dhcp"
@@ -130,10 +131,41 @@ func main() {
 		}
 	}
 
+	// Initialize API server
+	var apiServer *api.Server
+	if cfg.API.Enabled {
+		// Flatten pool map for API
+		var allPools []*pool.Pool
+		for _, subPools := range pools {
+			allPools = append(allPools, subPools...)
+		}
+
+		// Get conflict table if available
+		var conflictTable *conflict.Table
+		if detector != nil {
+			conflictTable = detector.Table()
+		}
+
+		apiOpts := []api.ServerOption{
+			api.WithConfigPath(*configPath),
+		}
+		if dnsServer != nil {
+			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
+		}
+
+		apiServer = api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
+		go func() {
+			if err := apiServer.Start(); err != nil {
+				logger.Error("API server failed", "error", err)
+			}
+		}()
+	}
+
 	logger.Info("athena-dhcpd ready",
 		"subnets", len(cfg.Subnets),
 		"conflict_detection", cfg.ConflictDetection.Enabled,
-		"dns_proxy", cfg.DNS.Enabled)
+		"dns_proxy", cfg.DNS.Enabled,
+		"api", cfg.API.Enabled)
 
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
@@ -171,6 +203,11 @@ func main() {
 
 			// Cancel the main context to stop all background goroutines
 			cancel()
+
+			// Stop API server
+			if apiServer != nil {
+				apiServer.Stop(shutdownCtx)
+			}
 
 			// Stop DNS proxy
 			if dnsServer != nil {

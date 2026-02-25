@@ -276,6 +276,100 @@ use_dhcid = true
 
 ---
 
+## [dns]
+
+Built-in DNS proxy. see [dns-proxy.md](dns-proxy.md) for the full deep-dive including filter lists, DoH, zone overrides, and lease registration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the DNS proxy |
+| `listen_udp` | string | `"0.0.0.0:53"` | UDP listen address. TCP automatically listens on same port |
+| `listen_doh` | string | | DNS-over-HTTPS listen address. empty = disabled |
+| `domain` | string | | Local domain for DHCP lease registrations |
+| `ttl` | int | `60` | TTL in seconds for local zone records |
+| `register_leases` | bool | `false` | Auto-create A records from DHCP leases |
+| `register_leases_ptr` | bool | `false` | Also create PTR records for reverse lookups |
+| `forwarders` | string[] | | Upstream DNS servers |
+| `use_root_servers` | bool | `false` | Use root servers instead of forwarders |
+| `cache_size` | int | `10000` | Max cached responses |
+| `cache_ttl` | duration | `"5m"` | How long to cache upstream responses |
+
+### [dns.doh_tls]
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cert_file` | string | TLS certificate for DoH |
+| `key_file` | string | TLS private key for DoH |
+
+### [[dns.record]]
+
+Static DNS records
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Record name e.g. `"nas.home.lan"` |
+| `type` | string | `A`, `AAAA`, `CNAME`, `PTR`, `TXT`, `MX`, `SRV` |
+| `value` | string | Record value |
+| `ttl` | int | Optional TTL override |
+
+### [[dns.zone_override]]
+
+Route queries for specific domains to specific nameservers
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `zone` | string | Domain to match |
+| `nameserver` | string | DNS server address |
+| `doh` | bool | Use DoH to reach this nameserver |
+| `doh_url` | string | DoH URL |
+
+### [[dns.list]]
+
+Dynamic filter lists (blocklists/allowlists) for domain blocking
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | List name |
+| `url` | string | required | Download URL |
+| `type` | string | `"block"` | `"block"` or `"allow"` |
+| `format` | string | `"hosts"` | `"hosts"`, `"domains"`, or `"adblock"` |
+| `action` | string | `"nxdomain"` | `"nxdomain"`, `"zero"`, or `"refuse"` |
+| `enabled` | bool | `true` | Enable/disable without removing |
+| `refresh_interval` | duration | `"24h"` | Re-download interval (min 1m) |
+
+```toml
+[dns]
+enabled = true
+listen_udp = "0.0.0.0:53"
+domain = "home.lan"
+ttl = 60
+register_leases = true
+register_leases_ptr = true
+forwarders = ["1.1.1.1", "8.8.8.8"]
+cache_size = 10000
+cache_ttl = "5m"
+
+  [[dns.record]]
+  name = "nas.home.lan"
+  type = "A"
+  value = "10.0.0.50"
+
+  [[dns.zone_override]]
+  zone = "corp.internal"
+  nameserver = "10.0.0.2"
+
+  [[dns.list]]
+  name = "steven-black"
+  url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+  type = "block"
+  format = "hosts"
+  action = "nxdomain"
+  enabled = true
+  refresh_interval = "24h"
+```
+
+---
+
 ## [defaults]
 
 Global default options applied to all subnets unless overridden

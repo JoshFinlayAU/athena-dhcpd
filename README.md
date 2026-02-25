@@ -79,6 +79,25 @@ Things happen, you probably want to know about them
 - Lease data passed to scripts via ATHENA_* environment variables AND JSON on stdin
 - Hook failures never affect DHCP processing. your slack is down? not our problem
 
+### built-in DNS proxy
+why run a separate DNS server when your DHCP server already knows every hostname on the network
+
+- full DNS proxy with local zone, caching, and upstream forwarding
+- auto-registers A and PTR records from DHCP leases. clients can resolve each other by hostname immediately
+- DNS-over-HTTPS support (RFC 8484) as both server and client
+- zone overrides for split-horizon DNS — route `corp.internal` to one nameserver, everything else upstream
+- static records for stuff that isnt a DHCP client
+- response caching with configurable size and TTL
+- UDP, TCP, and DoH all go through the same query pipeline
+- domain filter lists — basically a built-in pihole
+  - blocklists and allowlists with automatic refresh
+  - supports hosts file, plain domain, and adblock filter formats
+  - block actions: NXDOMAIN, 0.0.0.0, or REFUSED
+  - allowlists always win over blocklists
+  - subdomain matching (block `ads.example.com` also blocks `sub.ads.example.com`)
+  - test any domain against your lists via API or web UI
+- if you dont need it just dont enable it. zero overhead when disabled
+
 ### web UI
 React + TypeScript + Tailwind. dark mode because we have taste
 
@@ -114,6 +133,12 @@ PUT    /api/v1/config
 POST   /api/v1/config/validate
 GET    /api/v1/ha/status
 POST   /api/v1/ha/failover
+GET    /api/v1/dns/stats
+GET    /api/v1/dns/records
+POST   /api/v1/dns/cache/flush
+GET    /api/v1/dns/lists
+POST   /api/v1/dns/lists/refresh
+POST   /api/v1/dns/lists/test
 GET    /api/v1/events/stream          (WebSocket)
 GET    /metrics                        (Prometheus)
 ```
@@ -205,6 +230,7 @@ internal/
   config/               TOML parsing + validation  
   conflict/             ARP/ICMP probing + conflict table
   ddns/                 dynamic DNS (RFC 2136, PowerDNS, Technitium)
+  dnsproxy/             built-in DNS proxy + filter lists
   dhcp/                 packet handling, options, server loop
   events/               event bus, script hooks, webhooks
   ha/                   peer sync, heartbeat, failover FSM

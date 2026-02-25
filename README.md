@@ -150,40 +150,101 @@ theres more endpoints than that but you get the idea
 - WebSocket event streaming for live dashboards
 - structured JSON logging via slog
 
+## build dependencies
+
+you need Go 1.22+ and Node.js 20+ (only for building the frontend, not at runtime)
+
+on debian 12 or 13 theres a script that handles everything:
+```bash
+sudo ./scripts/install-build-deps.sh
+```
+
+it installs Go from golang.org (debian 12's packaged Go is too old), Node.js from NodeSource (debian 12's Node 18 is too old for Vite), and the usual build tools (`build-essential`, `git`, `dpkg-dev`, etc). on debian 13 the distro packages are fine so it just uses those
+
+on other distros, you need:
+- **Go 1.22+** — https://go.dev/dl/
+- **Node.js 20.19+** — https://nodejs.org/ (only for building, not at runtime)
+- **make**, **git**
+- **dpkg-dev**, **apt-utils** (only if building .deb packages)
+- **libcap2-bin** (for `setcap` to set capabilities on the binary)
+
 ## building
 
 ```bash
+# everything including the web UI
+make build
+
 # just the Go binary (no web UI)
 go build -o athena-dhcpd ./cmd/athena-dhcpd
 
-# everything including the web UI
-make build
+# build a .deb package
+make build-deb
 
 # development mode (web UI with hot reload)
 cd web && npm run dev    # frontend on :5173
 make dev                 # Go backend
 ```
 
-requires Go 1.22+ and Node.js (only for building the frontend, not at runtime)
+## installing
 
-## running
+### from source (make install)
+
+builds everything and installs it to the system. run as root
 
 ```bash
-# basic
-./athena-dhcpd -config /etc/athena-dhcpd/config.toml
-
-# needs CAP_NET_RAW for ARP conflict detection
-sudo setcap cap_net_raw,cap_net_bind_service+ep ./athena-dhcpd
-
-# or just run as root, I'm not your dad
-sudo ./athena-dhcpd -config config.toml
+sudo make install
 ```
 
-### systemd
+this does:
+- builds the binary with the web UI embedded
+- installs to `/usr/local/bin/athena-dhcpd`
+- copies example config to `/etc/athena-dhcpd/config.toml` (wont overwrite existing)
+- creates `/var/lib/athena-dhcpd` for lease data
+- installs the systemd service file
+- **sets `CAP_NET_RAW` and `CAP_NET_BIND_SERVICE`** on the binary so it can do ARP probing and bind port 53/67 without running as root
 
-theres a service file in `deploy/athena-dhcpd.service` that sets up all the capabilities and security hardening. copy it to `/etc/systemd/system/` and go
+then just:
+```bash
+# edit your config
+sudo vim /etc/athena-dhcpd/config.toml
+
+# start it
+sudo systemctl enable --now athena-dhcpd
+```
+
+### from .deb package
 
 ```bash
+make build-deb
+sudo dpkg -i build/athena-dhcpd_*.deb
+```
+
+the deb package does the same stuff as `make install` plus:
+- creates a dedicated `athena-dhcpd` system user/group
+- sets file permissions (config is 0640, data dir is 0750)
+- **sets `CAP_NET_RAW` and `CAP_NET_BIND_SERVICE`** via postinst
+- enables the systemd service (but doesnt start it on first install so you can edit the config first)
+
+### manual
+
+if you want to do it yourself:
+```bash
+# build
+make build
+
+# copy binary
+sudo install -m 0755 build/athena-dhcpd /usr/local/bin/
+
+# set capabilities (required for ARP conflict detection + binding port 53/67)
+sudo setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/local/bin/athena-dhcpd
+
+# copy config
+sudo mkdir -p /etc/athena-dhcpd
+sudo cp configs/example.toml /etc/athena-dhcpd/config.toml
+
+# copy systemd service
+sudo cp deploy/athena-dhcpd.service /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl enable --now athena-dhcpd
 ```
 
@@ -199,6 +260,25 @@ docker run --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE \
 ```
 
 you need `--network=host` because DHCP uses broadcast. thats just how DHCP works, don't @ me
+
+`--cap-add=NET_RAW` is needed for ARP conflict detection. `--cap-add=NET_BIND_SERVICE` for binding port 53 (DNS) and 67 (DHCP). without `NET_RAW` it still works but conflict detection is disabled and you get a loud warning in the logs
+
+## capabilities
+
+athena-dhcpd needs two Linux capabilities to do its thing properly:
+
+| Capability | Why |
+|------------|-----|
+| `CAP_NET_RAW` | ARP probing for IP conflict detection. without this, conflict detection is disabled (server still works, just less safe) |
+| `CAP_NET_BIND_SERVICE` | Binding to privileged ports: UDP/TCP 67 (DHCP) and 53 (DNS proxy) |
+
+these are set automatically by:
+- `make install` (via `setcap`)
+- the .deb package (via `postinst`)
+- the systemd service file (via `AmbientCapabilities`)
+- docker (via `--cap-add`)
+
+if you're running as root you dont need any of this but running a network service as root in 2025 is a choice
 
 ## configuration
 

@@ -15,6 +15,6 @@ Description: RFC-compliant DHCPv4 server with conflict detection and HA
  handling, IP conflict detection via ARP/ICMP probing before every
  offer, dynamic DNS integration (BIND, Knot, PowerDNS, Technitium,
  Windows DNS, CoreDNS), lease event hooks, and Prometheus metrics.
-Depends: adduser, libc6
+Depends: adduser, libc6, libcap2-bin
 Recommends: systemd
 Suggests: prometheus

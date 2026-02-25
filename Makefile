@@ -62,9 +62,36 @@ clean:
 	@rm -f apt/pool/main/*.deb apt/dists/stable/Release* apt/dists/stable/InRelease
 	@rm -f apt/dists/stable/main/binary-*/Packages*
 
-# Install binary to GOPATH/bin
-install:
-	go install $(LDFLAGS) ./cmd/athena-dhcpd
+# Install everything to the system (run as root or with sudo)
+install: build
+	@echo "==> Installing athena-dhcpd..."
+	install -d /usr/local/bin
+	install -m 0755 $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	@# Config
+	install -d -m 0755 /etc/athena-dhcpd
+	@if [ ! -f /etc/athena-dhcpd/config.toml ]; then \
+		install -m 0640 configs/example.toml /etc/athena-dhcpd/config.toml; \
+		echo "    Installed example config to /etc/athena-dhcpd/config.toml"; \
+	else \
+		echo "    Config already exists, not overwriting"; \
+	fi
+	@# Data directory
+	install -d -m 0750 /var/lib/athena-dhcpd
+	@# Systemd service
+	@if [ -d /etc/systemd/system ]; then \
+		install -m 0644 deploy/athena-dhcpd.service /etc/systemd/system/athena-dhcpd.service; \
+		systemctl daemon-reload; \
+		echo "    Installed systemd service"; \
+	fi
+	@# Capabilities for raw sockets and binding port 53/67
+	@if command -v setcap >/dev/null 2>&1; then \
+		setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/local/bin/$(BINARY_NAME); \
+		echo "    Set CAP_NET_RAW and CAP_NET_BIND_SERVICE on binary"; \
+	else \
+		echo "    WARNING: setcap not found, install libcap2-bin or run as root"; \
+	fi
+	@echo "==> Done. Edit /etc/athena-dhcpd/config.toml then run:"
+	@echo "    systemctl enable --now athena-dhcpd"
 
 # Run the server (requires root/CAP_NET_RAW for ARP probing)
 run: build

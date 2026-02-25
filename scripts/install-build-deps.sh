@@ -96,14 +96,19 @@ else
     fi
 fi
 
-# node.js — need a reasonably modern version for vite/react build
-# debian 12 ships node 18, debian 13 ships node 20. both are fine
+# node.js — vite 7 requires node 20.19+ or 22.12+
+# debian 12 ships node 18 which is too old, so we use nodesource
+# debian 13 ships node 20+ from repos which is fine
 echo "==> Installing Node.js and npm..."
 if [ "$VERSION_ID" = "12" ]; then
-    # bookworm has node 18 in repos, thats fine for vite
-    apt-get install -y --no-install-recommends nodejs npm
+    echo "    Debian 12 ships Node 18 which is too old for Vite, installing Node 20 from NodeSource..."
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+    apt-get update
+    apt-get install -y --no-install-recommends nodejs
 else
-    # trixie (13) has node 20+
+    # trixie (13) has node 20+ in repos
     apt-get install -y --no-install-recommends nodejs npm
 fi
 

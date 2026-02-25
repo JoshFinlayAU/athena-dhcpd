@@ -1,0 +1,20 @@
+Package: athena-dhcpd
+Version: {{VERSION}}
+Section: net
+Priority: optional
+Architecture: {{ARCH}}
+Maintainer: athena-dhcpd maintainers <github@athena-dhcpd.dev>
+Homepage: https://github.com/JoshFinlayAU/athena-dhcpd
+Description: RFC-compliant DHCPv4 server with conflict detection and HA
+ athena-dhcpd is a high-performance DHCPv4 server written in Go with
+ built-in ARP/ICMP conflict detection, active-standby high availability,
+ dynamic DNS integration, event hooks (scripts + webhooks), and an
+ embedded React web management UI.
+ .
+ Features include full DHCP option support, relay agent (option 82)
+ handling, IP conflict detection via ARP/ICMP probing before every
+ offer, dynamic DNS integration (BIND, Knot, PowerDNS, Technitium,
+ Windows DNS, CoreDNS), lease event hooks, and Prometheus metrics.
+Depends: adduser, libc6
+Recommends: systemd
+Suggests: prometheus

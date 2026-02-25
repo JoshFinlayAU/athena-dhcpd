@@ -1,4 +1,4 @@
-.PHONY: build build-web dev test lint clean install run
+.PHONY: build build-web build-deb dev test lint clean install run
 
 BINARY_NAME := athena-dhcpd
 BUILD_DIR := build
@@ -20,6 +20,11 @@ build-web:
 	@if [ -d "$(WEB_DIR)" ] && [ -f "$(WEB_DIR)/package.json" ]; then \
 		cd $(WEB_DIR) && npm ci && npm run build; \
 	fi
+
+# Build .deb package (requires dpkg-deb, linux only)
+build-deb: build
+	@chmod +x scripts/build-deb.sh
+	scripts/build-deb.sh $(VERSION)
 
 # Run in development mode
 dev:

@@ -1,0 +1,55 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create system user/group if they don't exist
+        if ! getent group athena-dhcpd >/dev/null 2>&1; then
+            addgroup --system athena-dhcpd
+        fi
+        if ! getent passwd athena-dhcpd >/dev/null 2>&1; then
+            adduser --system --home /var/lib/athena-dhcpd --no-create-home \
+                --ingroup athena-dhcpd --shell /usr/sbin/nologin athena-dhcpd
+        fi
+
+        # Create data directory
+        mkdir -p /var/lib/athena-dhcpd
+        chown athena-dhcpd:athena-dhcpd /var/lib/athena-dhcpd
+        chmod 750 /var/lib/athena-dhcpd
+
+        # Set config file permissions (contains secrets)
+        if [ -f /etc/athena-dhcpd/config.toml ]; then
+            chown root:athena-dhcpd /etc/athena-dhcpd/config.toml
+            chmod 640 /etc/athena-dhcpd/config.toml
+        fi
+
+        # Set capabilities on the binary for raw sockets and privileged port binding
+        if command -v setcap >/dev/null 2>&1; then
+            setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/bin/athena-dhcpd || true
+        fi
+
+        # Enable and start systemd service if systemd is running
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            systemctl enable athena-dhcpd.service || true
+            # Don't auto-start on first install — user needs to edit config first
+            if [ -z "$2" ]; then
+                echo "athena-dhcpd installed. Edit /etc/athena-dhcpd/config.toml then run:"
+                echo "  systemctl start athena-dhcpd"
+            else
+                # On upgrade, restart if it was running
+                systemctl try-restart athena-dhcpd.service || true
+            fi
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

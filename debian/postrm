@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove)
+        # Disable the service
+        if [ -d /run/systemd/system ]; then
+            systemctl disable athena-dhcpd.service || true
+            systemctl daemon-reload
+        fi
+        ;;
+
+    purge)
+        # Remove config, data, and system user on purge
+        if [ -d /run/systemd/system ]; then
+            systemctl disable athena-dhcpd.service || true
+            systemctl daemon-reload
+        fi
+
+        rm -rf /var/lib/athena-dhcpd
+        rm -rf /etc/athena-dhcpd
+
+        if getent passwd athena-dhcpd >/dev/null 2>&1; then
+            deluser --system athena-dhcpd || true
+        fi
+        if getent group athena-dhcpd >/dev/null 2>&1; then
+            delgroup --system athena-dhcpd || true
+        fi
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

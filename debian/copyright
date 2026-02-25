@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: athena-dhcpd
+Upstream-Contact: https://github.com/JoshFinlayAU/athena-dhcpd
+Source: https://github.com/JoshFinlayAU/athena-dhcpd
+
+Files: *
+Copyright: 2026 Athena Networks
+License: MIT

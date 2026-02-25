@@ -53,6 +53,13 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// Flush implements http.Flusher so SSE streaming works through the metrics middleware.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // normalizePath reduces cardinality by collapsing dynamic path segments.
 func normalizePath(path string) string {
 	switch {

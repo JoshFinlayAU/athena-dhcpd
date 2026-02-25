@@ -1,0 +1,40 @@
+# Build artifacts
+build/
+coverage.out
+coverage.html
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Web frontend
+web/node_modules/
+web/dist/
+
+# Embedded web assets (rebuilt from web/dist during make build)
+internal/webui/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (may contain secrets)
+configs/config.toml
+
+# PID file
+*.pid
+
+# Lease database
+*.db

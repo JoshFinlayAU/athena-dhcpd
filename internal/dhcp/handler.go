@@ -11,6 +11,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
@@ -129,6 +130,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 	// Find matching pool
 	criteria := pool.MatchCriteria{
 		VendorClass: pkt.VendorClassID(),
+		UserClass:   pkt.UserClassID(),
 	}
 	relayInfo := GetRelayInfo(pkt)
 	if relayInfo != nil {
@@ -154,6 +156,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 	if h.detector != nil && h.cfg.ConflictDetection.Enabled {
 		candidates := selectedPool.AllocateN(h.cfg.ConflictDetection.MaxProbesPerDiscover)
 		if len(candidates) == 0 {
+			metrics.PoolExhausted.WithLabelValues(subnetCfg.Network).Inc()
 			h.logger.Warn("pool exhausted",
 				"subnet", subnetCfg.Network,
 				"pool", selectedPool.String())
@@ -177,6 +180,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 	// No conflict detection — just allocate
 	ip := selectedPool.Allocate()
 	if ip == nil {
+		metrics.PoolExhausted.WithLabelValues(subnetCfg.Network).Inc()
 		h.logger.Warn("pool exhausted",
 			"subnet", subnetCfg.Network,
 			"pool", selectedPool.String())

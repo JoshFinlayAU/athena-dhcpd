@@ -6,26 +6,28 @@ import (
 	"net"
 	"sync"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
 
 // Pool represents an IP address pool with bitmap allocation.
 type Pool struct {
-	Name       string
-	Start      net.IP
-	End        net.IP
-	Network    *net.IPNet
-	startU     uint32
-	endU       uint32
-	size       uint32
-	bitmap     []uint64 // 1 bit per IP: 1=allocated, 0=free
-	allocated  uint32
-	mu         sync.Mutex
+	Name      string
+	Start     net.IP
+	End       net.IP
+	Network   *net.IPNet
+	startU    uint32
+	endU      uint32
+	size      uint32
+	bitmap    []uint64 // 1 bit per IP: 1=allocated, 0=free
+	allocated uint32
+	mu        sync.Mutex
 
 	// Pool matching criteria
 	MatchCircuitID   string
 	MatchRemoteID    string
 	MatchVendorClass string
+	MatchUserClass   string
 	LeaseTime        string
 }
 
@@ -154,6 +156,7 @@ func (p *Pool) Allocate() net.IP {
 					return nil // Past end of pool
 				}
 				p.set(offset)
+				p.updateMetrics()
 				return p.offsetToIP(offset)
 			}
 		}
@@ -175,6 +178,7 @@ func (p *Pool) AllocateSpecific(ip net.IP) bool {
 		return false
 	}
 	p.set(offset)
+	p.updateMetrics()
 	return true
 }
 
@@ -191,6 +195,7 @@ func (p *Pool) Release(ip net.IP) bool {
 		return false
 	}
 	p.clear(offset)
+	p.updateMetrics()
 	return true
 }
 
@@ -250,4 +255,34 @@ func (p *Pool) String() string {
 // RangeString returns the pool range as "start-end".
 func (p *Pool) RangeString() string {
 	return fmt.Sprintf("%s-%s", p.Start, p.End)
+}
+
+// Subnet returns the network CIDR string for metric labels.
+func (p *Pool) Subnet() string {
+	if p.Network != nil {
+		return p.Network.String()
+	}
+	return ""
+}
+
+// InitMetrics sets the initial pool size gauge. Call once after pool creation.
+func (p *Pool) InitMetrics() {
+	subnet := p.Subnet()
+	metrics.PoolSize.WithLabelValues(subnet, p.Name).Set(float64(p.size))
+	p.mu.Lock()
+	alloc := p.allocated
+	p.mu.Unlock()
+	metrics.PoolAllocated.WithLabelValues(subnet, p.Name).Set(float64(alloc))
+	if p.size > 0 {
+		metrics.PoolUtilization.WithLabelValues(subnet, p.Name).Set(float64(alloc) / float64(p.size) * 100)
+	}
+}
+
+// updateMetrics updates the allocated and utilization gauges. Must be called under lock.
+func (p *Pool) updateMetrics() {
+	subnet := p.Subnet()
+	metrics.PoolAllocated.WithLabelValues(subnet, p.Name).Set(float64(p.allocated))
+	if p.size > 0 {
+		metrics.PoolUtilization.WithLabelValues(subnet, p.Name).Set(float64(p.allocated) / float64(p.size) * 100)
+	}
 }

@@ -215,6 +215,7 @@ func initPools(cfg *config.Config, store *lease.Store) (map[string][]*pool.Pool,
 			p.MatchCircuitID = pcfg.MatchCircuitID
 			p.MatchRemoteID = pcfg.MatchRemoteID
 			p.MatchVendorClass = pcfg.MatchVendorClass
+			p.MatchUserClass = pcfg.MatchUserClass
 			p.LeaseTime = pcfg.LeaseTime
 
 			subPools = append(subPools, p)
@@ -236,6 +237,13 @@ func initPools(cfg *config.Config, store *lease.Store) (map[string][]*pool.Pool,
 					break
 				}
 			}
+		}
+	}
+
+	// Initialize pool metrics after reconciliation
+	for _, subPools := range pools {
+		for _, p := range subPools {
+			p.InitMetrics()
 		}
 	}
 

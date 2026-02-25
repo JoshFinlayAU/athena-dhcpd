@@ -10,6 +10,7 @@ type MatchCriteria struct {
 	CircuitID   string
 	RemoteID    string
 	VendorClass string
+	UserClass   string
 }
 
 // Matches returns true if the pool's match criteria are satisfied by the given client attributes.
@@ -31,12 +32,17 @@ func (p *Pool) Matches(criteria MatchCriteria) bool {
 			return false
 		}
 	}
+	if p.MatchUserClass != "" {
+		if !matchGlob(p.MatchUserClass, criteria.UserClass) {
+			return false
+		}
+	}
 	return true
 }
 
 // HasMatchCriteria returns true if the pool has any match constraints.
 func (p *Pool) HasMatchCriteria() bool {
-	return p.MatchCircuitID != "" || p.MatchRemoteID != "" || p.MatchVendorClass != ""
+	return p.MatchCircuitID != "" || p.MatchRemoteID != "" || p.MatchVendorClass != "" || p.MatchUserClass != ""
 }
 
 // matchGlob performs glob-style matching. Falls back to prefix match if glob fails.

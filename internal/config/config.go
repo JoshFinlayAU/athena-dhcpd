@@ -35,9 +35,9 @@ type ServerConfig struct {
 
 // RateLimitConfig holds anti-starvation settings (RFC 5765).
 type RateLimitConfig struct {
-	Enabled                bool `toml:"enabled"`
-	MaxDiscoversPerSecond  int  `toml:"max_discovers_per_second"`
-	MaxPerMACPerSecond     int  `toml:"max_per_mac_per_second"`
+	Enabled               bool `toml:"enabled"`
+	MaxDiscoversPerSecond int  `toml:"max_discovers_per_second"`
+	MaxPerMACPerSecond    int  `toml:"max_per_mac_per_second"`
 }
 
 // ConflictDetectionConfig holds IP conflict detection settings.
@@ -77,11 +77,11 @@ type HATLSConfig struct {
 
 // HooksConfig holds event hook settings.
 type HooksConfig struct {
-	EventBufferSize   int             `toml:"event_buffer_size"`
-	ScriptConcurrency int             `toml:"script_concurrency"`
-	ScriptTimeout     string          `toml:"script_timeout"`
-	Scripts           []ScriptHook    `toml:"script"`
-	Webhooks          []WebhookHook   `toml:"webhook"`
+	EventBufferSize   int           `toml:"event_buffer_size"`
+	ScriptConcurrency int           `toml:"script_concurrency"`
+	ScriptTimeout     string        `toml:"script_timeout"`
+	Scripts           []ScriptHook  `toml:"script"`
+	Webhooks          []WebhookHook `toml:"webhook"`
 }
 
 // ScriptHook defines a script hook.
@@ -109,16 +109,16 @@ type WebhookHook struct {
 
 // DDNSConfig holds dynamic DNS settings.
 type DDNSConfig struct {
-	Enabled          bool               `toml:"enabled"`
-	AllowClientFQDN  bool               `toml:"allow_client_fqdn"`
-	FallbackToMAC    bool               `toml:"fallback_to_mac"`
-	TTL              int                `toml:"ttl"`
-	UpdateOnRenew    bool               `toml:"update_on_renew"`
-	ConflictPolicy   string             `toml:"conflict_policy"`
-	UseDHCID         bool               `toml:"use_dhcid"`
-	Forward          DDNSZoneConfig     `toml:"forward"`
-	Reverse          DDNSZoneConfig     `toml:"reverse"`
-	ZoneOverrides    []DDNSZoneOverride `toml:"zone_override"`
+	Enabled         bool               `toml:"enabled"`
+	AllowClientFQDN bool               `toml:"allow_client_fqdn"`
+	FallbackToMAC   bool               `toml:"fallback_to_mac"`
+	TTL             int                `toml:"ttl"`
+	UpdateOnRenew   bool               `toml:"update_on_renew"`
+	ConflictPolicy  string             `toml:"conflict_policy"`
+	UseDHCID        bool               `toml:"use_dhcid"`
+	Forward         DDNSZoneConfig     `toml:"forward"`
+	Reverse         DDNSZoneConfig     `toml:"reverse"`
+	ZoneOverrides   []DDNSZoneOverride `toml:"zone_override"`
 }
 
 // DDNSZoneConfig holds DNS zone configuration.
@@ -134,30 +134,30 @@ type DDNSZoneConfig struct {
 
 // DDNSZoneOverride holds per-subnet DDNS zone overrides.
 type DDNSZoneOverride struct {
-	Subnet      string `toml:"subnet"`
-	ForwardZone string `toml:"forward_zone"`
-	ReverseZone string `toml:"reverse_zone"`
-	Method      string `toml:"method"`
-	Server      string `toml:"server"`
-	APIKey      string `toml:"api_key"`
-	TSIGName    string `toml:"tsig_name"`
+	Subnet        string `toml:"subnet"`
+	ForwardZone   string `toml:"forward_zone"`
+	ReverseZone   string `toml:"reverse_zone"`
+	Method        string `toml:"method"`
+	Server        string `toml:"server"`
+	APIKey        string `toml:"api_key"`
+	TSIGName      string `toml:"tsig_name"`
 	TSIGAlgorithm string `toml:"tsig_algorithm"`
-	TSIGSecret  string `toml:"tsig_secret"`
+	TSIGSecret    string `toml:"tsig_secret"`
 }
 
 // SubnetConfig holds per-subnet configuration.
 type SubnetConfig struct {
-	Network     string              `toml:"network"`
-	Routers     []string            `toml:"routers"`
-	DNSServers  []string            `toml:"dns_servers"`
-	DomainName  string              `toml:"domain_name"`
-	LeaseTime   string              `toml:"lease_time"`
-	RenewalTime string              `toml:"renewal_time"`
-	RebindTime  string              `toml:"rebind_time"`
-	NTPServers  []string            `toml:"ntp_servers"`
-	Pools       []PoolConfig        `toml:"pool"`
+	Network      string              `toml:"network"`
+	Routers      []string            `toml:"routers"`
+	DNSServers   []string            `toml:"dns_servers"`
+	DomainName   string              `toml:"domain_name"`
+	LeaseTime    string              `toml:"lease_time"`
+	RenewalTime  string              `toml:"renewal_time"`
+	RebindTime   string              `toml:"rebind_time"`
+	NTPServers   []string            `toml:"ntp_servers"`
+	Pools        []PoolConfig        `toml:"pool"`
 	Reservations []ReservationConfig `toml:"reservation"`
-	Options     []OptionConfig      `toml:"option"`
+	Options      []OptionConfig      `toml:"option"`
 }
 
 // PoolConfig holds IP pool configuration.
@@ -168,6 +168,7 @@ type PoolConfig struct {
 	MatchCircuitID   string `toml:"match_circuit_id"`
 	MatchRemoteID    string `toml:"match_remote_id"`
 	MatchVendorClass string `toml:"match_vendor_class"`
+	MatchUserClass   string `toml:"match_user_class"`
 }
 
 // ReservationConfig holds static lease (reservation) configuration.
@@ -198,17 +199,17 @@ type DefaultsConfig struct {
 
 // APIConfig holds HTTP API and web UI settings.
 type APIConfig struct {
-	Enabled bool           `toml:"enabled"`
-	Listen  string         `toml:"listen"`
-	WebUI   bool           `toml:"web_ui"`
-	Auth    APIAuthConfig  `toml:"auth"`
-	TLS     APITLSConfig   `toml:"tls"`
-	Session SessionConfig  `toml:"session"`
+	Enabled bool          `toml:"enabled"`
+	Listen  string        `toml:"listen"`
+	WebUI   bool          `toml:"web_ui"`
+	Auth    APIAuthConfig `toml:"auth"`
+	TLS     APITLSConfig  `toml:"tls"`
+	Session SessionConfig `toml:"session"`
 }
 
 // APIAuthConfig holds auth settings.
 type APIAuthConfig struct {
-	AuthToken string     `toml:"auth_token"`
+	AuthToken string       `toml:"auth_token"`
 	Users     []UserConfig `toml:"users"`
 }
 

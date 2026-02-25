@@ -260,6 +260,14 @@ func (p *Packet) VendorClassID() string {
 	return ""
 }
 
+// UserClassID returns the user class identifier from option 77 (RFC 3004).
+func (p *Packet) UserClassID() string {
+	if data, ok := p.Options[dhcpv4.OptionUserClass]; ok {
+		return string(data)
+	}
+	return ""
+}
+
 // MaxMessageSize returns the maximum DHCP message size from option 57.
 func (p *Packet) MaxMessageSize() uint16 {
 	if data, ok := p.Options[dhcpv4.OptionMaxDHCPMessageSize]; ok && len(data) == 2 {

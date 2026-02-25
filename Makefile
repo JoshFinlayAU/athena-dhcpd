@@ -4,12 +4,15 @@ BINARY_NAME := athena-dhcpd
 BUILD_DIR := build
 WEB_DIR := web
 WEB_DIST := $(WEB_DIR)/dist
+EMBED_DIR := internal/webui/dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
 # Build the Go binary (depends on frontend if web dir exists)
 build: $(if $(wildcard $(WEB_DIR)/package.json),build-web)
 	@mkdir -p $(BUILD_DIR)
+	@rm -rf $(EMBED_DIR) && mkdir -p $(EMBED_DIR)
+	@if [ -d "$(WEB_DIST)" ]; then cp -r $(WEB_DIST)/* $(EMBED_DIR)/; fi
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/athena-dhcpd
 
 # Build the frontend (React + Vite)
@@ -41,6 +44,7 @@ lint:
 clean:
 	rm -rf $(BUILD_DIR) coverage.out coverage.html
 	@if [ -d "$(WEB_DIST)" ]; then rm -rf $(WEB_DIST); fi
+	@rm -rf $(EMBED_DIR)
 
 # Install binary to GOPATH/bin
 install:

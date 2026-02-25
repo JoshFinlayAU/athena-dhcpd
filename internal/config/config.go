@@ -18,6 +18,7 @@ type Config struct {
 	HA                HAConfig                `toml:"ha"`
 	Hooks             HooksConfig             `toml:"hooks"`
 	DDNS              DDNSConfig              `toml:"ddns"`
+	DNS               DNSProxyConfig          `toml:"dns"`
 	Subnets           []SubnetConfig          `toml:"subnet"`
 	Defaults          DefaultsConfig          `toml:"defaults"`
 	API               APIConfig               `toml:"api"`
@@ -144,6 +145,58 @@ type DDNSZoneOverride struct {
 	TSIGName      string `toml:"tsig_name"`
 	TSIGAlgorithm string `toml:"tsig_algorithm"`
 	TSIGSecret    string `toml:"tsig_secret"`
+}
+
+// DNSProxyConfig holds built-in DNS proxy settings.
+type DNSProxyConfig struct {
+	Enabled          bool              `toml:"enabled"`
+	ListenUDP        string            `toml:"listen_udp"`
+	ListenDoH        string            `toml:"listen_doh"`
+	DoHTLS           DoHTLSConfig      `toml:"doh_tls"`
+	Domain           string            `toml:"domain"`
+	TTL              int               `toml:"ttl"`
+	RegisterLeases   bool              `toml:"register_leases"`
+	ForwardLeasesPTR bool              `toml:"register_leases_ptr"`
+	Forwarders       []string          `toml:"forwarders"`
+	UseRootServers   bool              `toml:"use_root_servers"`
+	CacheSize        int               `toml:"cache_size"`
+	CacheTTL         string            `toml:"cache_ttl"`
+	ZoneOverrides    []DNSZoneOverride `toml:"zone_override"`
+	StaticRecords    []DNSStaticRecord `toml:"record"`
+	Lists            []DNSListConfig   `toml:"list"`
+}
+
+// DoHTLSConfig holds TLS settings for DNS-over-HTTPS.
+type DoHTLSConfig struct {
+	CertFile string `toml:"cert_file"`
+	KeyFile  string `toml:"key_file"`
+}
+
+// DNSListConfig holds a dynamic DNS filter list (blocklist or allowlist).
+type DNSListConfig struct {
+	Name            string `toml:"name"`
+	URL             string `toml:"url"`
+	Type            string `toml:"type"`   // "block" or "allow"
+	Format          string `toml:"format"` // "hosts", "domains", "adblock"
+	Action          string `toml:"action"` // "nxdomain", "zero", "refuse"
+	Enabled         bool   `toml:"enabled"`
+	RefreshInterval string `toml:"refresh_interval"` // e.g. "24h", "6h"
+}
+
+// DNSZoneOverride routes queries for a specific domain to a specific nameserver.
+type DNSZoneOverride struct {
+	Zone       string `toml:"zone"`
+	Nameserver string `toml:"nameserver"`
+	DoH        bool   `toml:"doh"`
+	DoHURL     string `toml:"doh_url"`
+}
+
+// DNSStaticRecord defines a static DNS record.
+type DNSStaticRecord struct {
+	Name  string `toml:"name"`
+	Type  string `toml:"type"`
+	Value string `toml:"value"`
+	TTL   int    `toml:"ttl"`
 }
 
 // SubnetConfig holds per-subnet configuration.
@@ -345,6 +398,20 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.API.Session.Expiry == "" {
 		cfg.API.Session.Expiry = DefaultSessionExpiry.String()
+	}
+
+	// DNS proxy defaults
+	if cfg.DNS.ListenUDP == "" {
+		cfg.DNS.ListenUDP = DefaultDNSListenUDP
+	}
+	if cfg.DNS.TTL == 0 {
+		cfg.DNS.TTL = DefaultDNSTTL
+	}
+	if cfg.DNS.CacheSize == 0 {
+		cfg.DNS.CacheSize = DefaultDNSCacheSize
+	}
+	if cfg.DNS.CacheTTL == "" {
+		cfg.DNS.CacheTTL = DefaultDNSCacheTTL.String()
 	}
 
 	// DDNS defaults

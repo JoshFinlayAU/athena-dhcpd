@@ -181,6 +181,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dns/stats", s.auth.RequireAuth(s.handleDNSStats))
 	mux.HandleFunc("POST /api/v1/dns/cache/flush", s.auth.RequireAdmin(s.handleDNSFlushCache))
 	mux.HandleFunc("GET /api/v1/dns/records", s.auth.RequireAuth(s.handleDNSListRecords))
+	mux.HandleFunc("GET /api/v1/dns/lists", s.auth.RequireAuth(s.handleDNSListStatus))
+	mux.HandleFunc("POST /api/v1/dns/lists/refresh", s.auth.RequireAdmin(s.handleDNSListRefresh))
+	mux.HandleFunc("POST /api/v1/dns/lists/test", s.auth.RequireAuth(s.handleDNSListTest))
 
 	// Stats
 	mux.HandleFunc("GET /api/v1/stats", s.auth.RequireAuth(s.handleGetStats))

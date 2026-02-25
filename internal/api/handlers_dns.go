@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -64,6 +65,84 @@ func (s *Server) handleDNSListRecords(w http.ResponseWriter, r *http.Request) {
 		"records": result,
 		"count":   len(result),
 	})
+}
+
+// handleDNSListStatus returns the status of all DNS filter lists.
+func (s *Server) handleDNSListStatus(w http.ResponseWriter, r *http.Request) {
+	if s.dns == nil {
+		JSONError(w, http.StatusServiceUnavailable, "dns_disabled", "DNS proxy is not enabled")
+		return
+	}
+
+	lists := s.dns.Lists()
+	if lists == nil {
+		JSONResponse(w, http.StatusOK, map[string]interface{}{"lists": []interface{}{}})
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"lists":         lists.Statuses(),
+		"total_domains": lists.TotalDomains(),
+	})
+}
+
+// handleDNSListRefresh triggers a manual refresh of DNS filter lists.
+func (s *Server) handleDNSListRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.dns == nil {
+		JSONError(w, http.StatusServiceUnavailable, "dns_disabled", "DNS proxy is not enabled")
+		return
+	}
+
+	lists := s.dns.Lists()
+	if lists == nil {
+		JSONError(w, http.StatusNotFound, "no_lists", "No DNS filter lists configured")
+		return
+	}
+
+	// Check if a specific list name is provided
+	var body struct {
+		Name string `json:"name"`
+	}
+	if r.Body != nil {
+		json.NewDecoder(r.Body).Decode(&body)
+	}
+
+	if body.Name != "" {
+		if err := lists.RefreshByName(body.Name); err != nil {
+			JSONError(w, http.StatusNotFound, "list_not_found", err.Error())
+			return
+		}
+		JSONResponse(w, http.StatusOK, map[string]string{"status": "refreshed", "list": body.Name})
+		return
+	}
+
+	lists.RefreshAll()
+	JSONResponse(w, http.StatusOK, map[string]string{"status": "all_refreshed"})
+}
+
+// handleDNSListTest tests a domain against all active DNS filter lists.
+func (s *Server) handleDNSListTest(w http.ResponseWriter, r *http.Request) {
+	if s.dns == nil {
+		JSONError(w, http.StatusServiceUnavailable, "dns_disabled", "DNS proxy is not enabled")
+		return
+	}
+
+	lists := s.dns.Lists()
+	if lists == nil {
+		JSONError(w, http.StatusNotFound, "no_lists", "No DNS filter lists configured")
+		return
+	}
+
+	var body struct {
+		Domain string `json:"domain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Domain == "" {
+		JSONError(w, http.StatusBadRequest, "bad_request", "Provide {\"domain\": \"example.com\"}")
+		return
+	}
+
+	result := lists.TestDomain(body.Domain)
+	JSONResponse(w, http.StatusOK, result)
 }
 
 // dnsTypeString converts a DNS type uint16 to a human-readable string.

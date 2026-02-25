@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useWS } from '@/lib/websocket'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, Wifi, WifiOff,
+  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/conflicts', icon: AlertTriangle, label: 'Conflicts' },
   { to: '/events', icon: Activity, label: 'Events' },
   { to: '/ha', icon: Shield, label: 'HA Status' },
+  { to: '/dns', icon: ShieldCheck, label: 'DNS Filtering' },
   { to: '/config', icon: Settings, label: 'Config' },
 ]
 

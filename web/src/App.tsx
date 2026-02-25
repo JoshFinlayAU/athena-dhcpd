@@ -8,6 +8,7 @@ import Conflicts from '@/pages/Conflicts'
 import Events from '@/pages/Events'
 import HAStatus from '@/pages/HAStatus'
 import Config from '@/pages/Config'
+import DNSFiltering from '@/pages/DNSFiltering'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/conflicts" element={<Conflicts />} />
             <Route path="/events" element={<Events />} />
             <Route path="/ha" element={<HAStatus />} />
+            <Route path="/dns" element={<DNSFiltering />} />
             <Route path="/config" element={<Config />} />
           </Route>
         </Routes>

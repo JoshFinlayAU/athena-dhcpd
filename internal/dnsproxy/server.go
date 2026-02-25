@@ -24,6 +24,7 @@ type Server struct {
 	cfg    *config.DNSProxyConfig
 	zone   *Zone
 	cache  *Cache
+	lists  *ListManager
 	logger *slog.Logger
 
 	udpServer *dns.Server
@@ -49,6 +50,7 @@ func NewServer(cfg *config.DNSProxyConfig, logger *slog.Logger) *Server {
 		cfg:           cfg,
 		zone:          NewZone(cfg.Domain, uint32(cfg.TTL)),
 		cache:         NewCache(cfg.CacheSize),
+		lists:         NewListManager(cfg.Lists, logger),
 		logger:        logger,
 		forwarders:    cfg.Forwarders,
 		zoneOverrides: make(map[string]config.DNSZoneOverride),
@@ -145,6 +147,11 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}
 
+	// Start list manager (downloads lists, begins refresh loops)
+	if len(s.cfg.Lists) > 0 {
+		s.lists.Start(ctx)
+	}
+
 	s.started = true
 	s.logger.Info("DNS proxy started",
 		"udp", s.cfg.ListenUDP,
@@ -153,6 +160,7 @@ func (s *Server) Start(ctx context.Context) error {
 		"forwarders", len(s.forwarders),
 		"zone_overrides", len(s.zoneOverrides),
 		"static_records", s.zone.Count(),
+		"filter_lists", len(s.cfg.Lists),
 		"cache_size", s.cfg.CacheSize)
 
 	return nil
@@ -167,6 +175,9 @@ func (s *Server) Stop() {
 		return
 	}
 
+	if s.lists != nil {
+		s.lists.Stop()
+	}
 	if s.udpServer != nil {
 		s.udpServer.Shutdown()
 	}
@@ -198,7 +209,18 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		"type", dns.TypeToString[q.Qtype],
 		"source", w.RemoteAddr())
 
-	// 1. Check local zone
+	// 1. Check filter lists (blocklists/allowlists)
+	if s.lists != nil {
+		if blocked, action, listName := s.lists.Check(qname); blocked {
+			resp := BlockResponse(r, action)
+			w.WriteMsg(resp)
+			s.logger.Debug("DNS query blocked by list",
+				"name", qname, "list", listName, "action", action)
+			return
+		}
+	}
+
+	// 2. Check local zone
 	if rrs := s.zone.Lookup(qname, q.Qtype); len(rrs) > 0 {
 		resp := new(dns.Msg)
 		resp.SetReply(r)
@@ -210,7 +232,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	// 2. Check cache
+	// 3. Check cache
 	if cached := s.cache.Get(qname, q.Qtype, q.Qclass); cached != nil {
 		cached.SetReply(r)
 		w.WriteMsg(cached)
@@ -218,7 +240,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	// 3. Forward upstream
+	// 4. Forward upstream
 	resp, err := s.forward(r)
 	if err != nil {
 		s.logger.Debug("DNS forward failed", "name", qname, "error", err)
@@ -538,13 +560,24 @@ func (s *Server) FlushCache() {
 	s.logger.Info("DNS proxy cache flushed")
 }
 
+// Lists returns the list manager for API access.
+func (s *Server) Lists() *ListManager {
+	return s.lists
+}
+
 // Stats returns basic DNS proxy statistics.
 func (s *Server) Stats() map[string]interface{} {
-	return map[string]interface{}{
-		"zone_records":  s.zone.Count(),
-		"cache_entries": s.cache.Size(),
-		"forwarders":    len(s.forwarders),
-		"overrides":     len(s.zoneOverrides),
-		"domain":        s.cfg.Domain,
+	stats := map[string]interface{}{
+		"zone_records":    s.zone.Count(),
+		"cache_entries":   s.cache.Size(),
+		"forwarders":      len(s.forwarders),
+		"overrides":       len(s.zoneOverrides),
+		"domain":          s.cfg.Domain,
+		"filter_lists":    len(s.cfg.Lists),
+		"blocked_domains": 0,
 	}
+	if s.lists != nil {
+		stats["blocked_domains"] = s.lists.TotalDomains()
+	}
+	return stats
 }

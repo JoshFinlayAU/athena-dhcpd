@@ -127,7 +127,15 @@ export const getConflictStats = () => request<ConflictStats>('/conflicts/stats')
 export const getConflictHistory = () => request<ConflictEntry[]>('/conflicts/history')
 
 // Config
-export const getConfigRaw = () => request<{ config: string }>('/config/raw')
+export const getConfigRaw = async (): Promise<{ config: string }> => {
+  const res = await fetch(`${BASE}/config/raw`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(body.error || res.statusText)
+  }
+  const config = await res.text()
+  return { config }
+}
 export const validateConfig = (config: string) =>
   request<{ valid: boolean; errors?: string[] }>('/config/validate', {
     method: 'POST', body: JSON.stringify({ config }),
@@ -142,3 +150,56 @@ export const triggerFailover = () =>
 
 // Events
 export const getEvents = () => request<DhcpEvent[]>('/events')
+
+// DNS Proxy
+export interface DNSStats {
+  zone_records: number
+  cache_entries: number
+  forwarders: number
+  overrides: number
+  domain: string
+  filter_lists: number
+  blocked_domains: number
+}
+
+export interface DNSListStatus {
+  name: string
+  url: string
+  type: string
+  format: string
+  action: string
+  enabled: boolean
+  domain_count: number
+  last_refresh: string
+  last_error: string
+  refresh_interval: string
+  next_refresh: string
+}
+
+export interface DNSListsResponse {
+  lists: DNSListStatus[]
+  total_domains: number
+}
+
+export interface DNSTestResult {
+  domain: string
+  blocked: boolean
+  action?: string
+  list?: string
+  matches?: { list: string; type: string }[]
+}
+
+export const getDNSStats = () => request<DNSStats>('/dns/stats')
+export const getDNSLists = () => request<DNSListsResponse>('/dns/lists')
+export const refreshDNSLists = (name?: string) =>
+  request<{ status: string }>('/dns/lists/refresh', {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  })
+export const testDNSDomain = (domain: string) =>
+  request<DNSTestResult>('/dns/lists/test', {
+    method: 'POST',
+    body: JSON.stringify({ domain }),
+  })
+export const flushDNSCache = () =>
+  request<{ status: string }>('/dns/cache/flush', { method: 'POST' })

@@ -1,0 +1,184 @@
+# athena-dhcpd — Example Configuration
+# Full reference: https://github.com/athena-dhcpd/athena-dhcpd
+
+[server]
+interface = "eth0"
+bind_address = "0.0.0.0:67"
+server_id = "192.168.1.1"
+log_level = "info"               # debug, info, warn, error
+lease_db = "/var/lib/athena-dhcpd/leases.db"
+pid_file = "/var/run/athena-dhcpd.pid"
+
+  [server.rate_limit]
+  enabled = true
+  max_discovers_per_second = 100
+  max_per_mac_per_second = 10
+
+# ─── Conflict Detection ─────────────────────────────────────────────
+[conflict_detection]
+enabled = true
+probe_strategy = "sequential"    # "sequential" or "parallel"
+probe_timeout = "500ms"
+max_probes_per_discover = 3
+parallel_probe_count = 4
+conflict_hold_time = "1h"
+max_conflict_count = 3           # IPs exceeding this are permanently flagged
+probe_cache_ttl = "10s"
+send_gratuitous_arp = true
+icmp_fallback = true
+probe_log_level = "debug"
+
+# ─── High Availability ──────────────────────────────────────────────
+[ha]
+enabled = false
+role = "primary"                 # "primary" or "secondary"
+peer_address = "192.168.1.2:8067"
+listen_address = "0.0.0.0:8067"
+heartbeat_interval = "1s"
+failover_timeout = "10s"
+sync_batch_size = 100
+
+  [ha.tls]
+  enabled = false
+  cert_file = "/etc/athena-dhcpd/tls/server.crt"
+  key_file = "/etc/athena-dhcpd/tls/server.key"
+  ca_file = "/etc/athena-dhcpd/tls/ca.crt"
+
+# ─── Event Hooks ────────────────────────────────────────────────────
+[hooks]
+event_buffer_size = 1024
+script_concurrency = 4
+script_timeout = "30s"
+
+  # Example script hook
+  # [[hooks.script]]
+  # name = "on-lease"
+  # events = ["lease.ack", "lease.release", "lease.expire"]
+  # command = "/usr/local/bin/athena-hook.sh"
+  # timeout = "10s"
+
+  # Example webhook hook
+  # [[hooks.webhook]]
+  # name = "slack-alerts"
+  # events = ["conflict.detected", "conflict.permanent", "ha.failover"]
+  # url = "https://hooks.slack.com/services/T00/B00/XXXXX"
+  # method = "POST"
+  # timeout = "5s"
+  # retries = 3
+  # retry_backoff = "1s"
+  # template = "slack"
+  # secret = "hmac-secret-here"
+
+# ─── Dynamic DNS ────────────────────────────────────────────────────
+[ddns]
+enabled = false
+allow_client_fqdn = true
+fallback_to_mac = false
+ttl = 300
+update_on_renew = false
+conflict_policy = "client_wins"  # "client_wins" or "server_wins"
+use_dhcid = true
+
+  [ddns.forward]
+  zone = "example.com."
+  method = "rfc2136"             # "rfc2136", "powerdns_api", "technitium_api"
+  server = "ns1.example.com:53"
+  tsig_name = "dhcp-update."
+  tsig_algorithm = "hmac-sha256"
+  tsig_secret = "base64-encoded-secret-here"
+
+  [ddns.reverse]
+  zone = "1.168.192.in-addr.arpa."
+  method = "rfc2136"
+  server = "ns1.example.com:53"
+  tsig_name = "dhcp-update."
+  tsig_algorithm = "hmac-sha256"
+  tsig_secret = "base64-encoded-secret-here"
+
+  # Per-subnet DNS zone override
+  # [[ddns.zone_override]]
+  # subnet = "10.0.0.0/24"
+  # forward_zone = "lab.example.com."
+  # reverse_zone = "0.0.10.in-addr.arpa."
+  # method = "rfc2136"
+  # server = "ns2.example.com:53"
+
+# ─── Default Options ────────────────────────────────────────────────
+[defaults]
+lease_time = "8h"
+renewal_time = "4h"
+rebind_time = "7h"
+dns_servers = ["8.8.8.8", "8.8.4.4"]
+domain_name = "example.com"
+
+# ─── Subnets ────────────────────────────────────────────────────────
+[[subnet]]
+network = "192.168.1.0/24"
+routers = ["192.168.1.1"]
+dns_servers = ["192.168.1.1", "8.8.8.8"]
+domain_name = "office.example.com"
+lease_time = "12h"
+renewal_time = "6h"
+rebind_time = "10h30m"
+ntp_servers = ["192.168.1.1"]
+
+  # Dynamic pool
+  [[subnet.pool]]
+  range_start = "192.168.1.100"
+  range_end = "192.168.1.200"
+
+  # Optionally: pool with relay agent matching
+  # [[subnet.pool]]
+  # range_start = "192.168.1.201"
+  # range_end = "192.168.1.250"
+  # match_circuit_id = "eth0/1/*"
+  # lease_time = "4h"
+
+  # Static reservations
+  [[subnet.reservation]]
+  mac = "00:11:22:33:44:55"
+  ip = "192.168.1.10"
+  hostname = "printer"
+  ddns_hostname = "printer.office.example.com"
+
+  [[subnet.reservation]]
+  mac = "aa:bb:cc:dd:ee:ff"
+  ip = "192.168.1.11"
+  hostname = "server1"
+
+# Second subnet (example for relayed traffic)
+# [[subnet]]
+# network = "10.0.0.0/24"
+# routers = ["10.0.0.1"]
+# dns_servers = ["10.0.0.1"]
+# lease_time = "24h"
+#
+#   [[subnet.pool]]
+#   range_start = "10.0.0.50"
+#   range_end = "10.0.0.200"
+
+# ─── API & Web UI ───────────────────────────────────────────────────
+[api]
+enabled = true
+listen = "127.0.0.1:8080"
+web_ui = true
+
+  [api.auth]
+  auth_token = ""                # Bearer token for API access (set in production!)
+
+    # Web UI users (passwords must be bcrypt hashes)
+    # Generate with: htpasswd -nbBC 10 "" 'yourpassword' | cut -d: -f2
+    [[api.auth.users]]
+    username = "admin"
+    password_hash = "$2y$10$example-bcrypt-hash-here"
+    role = "admin"               # "admin" or "viewer"
+
+  [api.tls]
+  enabled = false
+  cert_file = "/etc/athena-dhcpd/tls/api.crt"
+  key_file = "/etc/athena-dhcpd/tls/api.key"
+
+  [api.session]
+  cookie_name = "athena_session"
+  expiry = "24h"
+  secure = false                 # Set true when using TLS

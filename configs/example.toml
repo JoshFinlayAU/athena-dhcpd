@@ -7,7 +7,7 @@ bind_address = "0.0.0.0:67"
 server_id = "192.168.1.1"
 log_level = "info"               # debug, info, warn, error
 lease_db = "/var/lib/athena-dhcpd/leases.db"
-pid_file = "/var/run/athena-dhcpd.pid"
+pid_file = "/run/athena-dhcpd/athena-dhcpd.pid"
 
   [server.rate_limit]
   enabled = true

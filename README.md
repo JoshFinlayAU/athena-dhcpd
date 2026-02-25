@@ -286,7 +286,7 @@ TOML. because its readable by humans and also by computers. see `configs/example
 
 hot-reload via SIGHUP:
 ```bash
-kill -HUP $(cat /var/run/athena-dhcpd.pid)
+kill -HUP $(cat /run/athena-dhcpd/athena-dhcpd.pid)
 ```
 
 reloads config, pools, and rate limiter settings without dropping any leases or connections. if the new config is broken it just keeps the old one and logs an error like a reasonable program

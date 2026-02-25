@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useWS } from '@/lib/websocket'
+import { useAuth } from '@/lib/auth'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff,
+  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +20,7 @@ const navItems = [
 
 export default function Layout() {
   const { connected } = useWS()
+  const { user, logout } = useAuth()
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -57,8 +59,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Connection Status */}
-        <div className="px-4 py-3 border-t border-border">
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-border space-y-2">
           <div className="flex items-center gap-2 text-xs">
             {connected ? (
               <>
@@ -72,6 +74,18 @@ export default function Layout() {
               </>
             )}
           </div>
+          {user?.auth_required && user?.authenticated && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text-muted truncate">{user.username} ({user.role})</span>
+              <button
+                onClick={logout}
+                className="p-1 rounded hover:bg-surface-overlay text-text-muted hover:text-text-primary transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

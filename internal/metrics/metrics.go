@@ -250,11 +250,11 @@ var (
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"method", "path"})
 
-	// WebSocketConnections is a gauge of active WebSocket connections.
-	WebSocketConnections = promauto.NewGauge(prometheus.GaugeOpts{
+	// SSEConnections is a gauge of active SSE (Server-Sent Events) connections.
+	SSEConnections = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
-		Name:      "websocket_connections_active",
-		Help:      "Number of active WebSocket connections.",
+		Name:      "sse_connections_active",
+		Help:      "Number of active SSE connections.",
 	})
 )
 

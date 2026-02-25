@@ -1,4 +1,4 @@
-// Package api provides the HTTP API server, router, auth, and WebSocket support.
+// Package api provides the HTTP API server, router, auth, and SSE event streaming.
 package api
 
 import (
@@ -35,7 +35,7 @@ type Server struct {
 	logger        *slog.Logger
 	httpServer    *http.Server
 	auth          *AuthMiddleware
-	wsHub         *WSHub
+	sseHub        *SSEHub
 }
 
 // NewServer creates a new API server.
@@ -63,8 +63,8 @@ func NewServer(
 		opt(s)
 	}
 
-	s.auth = NewAuthMiddleware(cfg.API.Auth.AuthToken, cfg.API.Auth.Users, logger)
-	s.wsHub = NewWSHub(bus, logger)
+	s.auth = NewAuthMiddleware(cfg.API, logger)
+	s.sseHub = NewSSEHub(bus, logger)
 
 	return s
 }
@@ -101,15 +101,15 @@ func (s *Server) Start() error {
 	handler := newMetricsMiddleware(mux)
 
 	s.httpServer = &http.Server{
-		Addr:         s.cfg.API.Listen,
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:        s.cfg.API.Listen,
+		Handler:     handler,
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
+		// No WriteTimeout — SSE streams need to stay open
 	}
 
-	// Start WebSocket hub
-	go s.wsHub.Run()
+	// Start SSE hub
+	go s.sseHub.Run()
 
 	s.logger.Info("API server starting", "listen", s.cfg.API.Listen)
 
@@ -121,7 +121,7 @@ func (s *Server) Start() error {
 
 // Stop gracefully shuts down the API server.
 func (s *Server) Stop(ctx context.Context) error {
-	s.wsHub.Stop()
+	s.sseHub.Stop()
 	return s.httpServer.Shutdown(ctx)
 }
 
@@ -132,6 +132,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Health check (no auth)
 	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
+
+	// Auth (no auth required — these handle their own auth)
+	mux.HandleFunc("POST /api/v1/auth/login", s.auth.handleLogin)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.auth.handleLogout)
+	mux.HandleFunc("GET /api/v1/auth/me", s.auth.handleMe)
 
 	// Leases
 	mux.HandleFunc("GET /api/v1/leases", s.auth.RequireAuth(s.handleListLeases))
@@ -169,7 +174,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Events & Hooks
 	mux.HandleFunc("GET /api/v1/events", s.auth.RequireAuth(s.handleListEvents))
-	mux.HandleFunc("GET /api/v1/events/stream", s.auth.RequireAuth(s.handleWebSocket))
+	mux.HandleFunc("GET /api/v1/events/stream", s.auth.RequireAuth(s.handleSSE))
 	mux.HandleFunc("GET /api/v1/hooks", s.auth.RequireAuth(s.handleListHooks))
 	mux.HandleFunc("POST /api/v1/hooks/test", s.auth.RequireAdmin(s.handleTestHook))
 

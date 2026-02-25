@@ -3,6 +3,7 @@ const BASE = '/api/v1'
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...opts,
   })
   if (!res.ok) {
@@ -97,6 +98,23 @@ export interface DhcpEvent {
   reason?: string
 }
 
+// Auth
+export interface AuthUser {
+  authenticated: boolean
+  username?: string
+  role?: string
+  auth_required: boolean
+}
+
+export const getMe = () => request<AuthUser>('/auth/me')
+export const login = (username: string, password: string) =>
+  request<{ username: string; role: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+export const logout = () =>
+  request<{ status: string }>('/auth/logout', { method: 'POST' })
+
 // Health
 export const getHealth = () => request<HealthResponse>('/health')
 
@@ -128,7 +146,7 @@ export const getConflictHistory = () => request<ConflictEntry[]>('/conflicts/his
 
 // Config
 export const getConfigRaw = async (): Promise<{ config: string }> => {
-  const res = await fetch(`${BASE}/config/raw`)
+  const res = await fetch(`${BASE}/config/raw`, { credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(body.error || res.statusText)

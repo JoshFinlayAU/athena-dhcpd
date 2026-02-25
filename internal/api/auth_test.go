@@ -14,7 +14,7 @@ import (
 
 func TestAuthNoAuthConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	auth := NewAuthMiddleware("", nil, logger)
+	auth := NewAuthMiddleware(config.APIConfig{Session: config.SessionConfig{CookieName: "test", Expiry: "1h"}}, logger)
 
 	handler := auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -31,7 +31,7 @@ func TestAuthNoAuthConfigured(t *testing.T) {
 
 func TestAuthBearerToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	auth := NewAuthMiddleware("test-token", nil, logger)
+	auth := NewAuthMiddleware(config.APIConfig{Auth: config.APIAuthConfig{AuthToken: "test-token"}, Session: config.SessionConfig{CookieName: "test", Expiry: "1h"}}, logger)
 
 	handler := auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -69,7 +69,7 @@ func TestAuthBearerToken(t *testing.T) {
 
 func TestAuthQueryToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	auth := NewAuthMiddleware("test-token", nil, logger)
+	auth := NewAuthMiddleware(config.APIConfig{Auth: config.APIAuthConfig{AuthToken: "test-token"}, Session: config.SessionConfig{CookieName: "test", Expiry: "1h"}}, logger)
 
 	handler := auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -93,7 +93,7 @@ func TestAuthBasicAuth(t *testing.T) {
 		{Username: "viewer", PasswordHash: string(hash), Role: "viewer"},
 	}
 
-	auth := NewAuthMiddleware("", users, logger)
+	auth := NewAuthMiddleware(config.APIConfig{Auth: config.APIAuthConfig{Users: users}, Session: config.SessionConfig{CookieName: "test", Expiry: "1h"}}, logger)
 
 	// Test admin access
 	adminHandler := auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {

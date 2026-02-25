@@ -22,21 +22,19 @@ export function WSProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<DhcpEvent[]>([])
   const [lastEvent, setLastEvent] = useState<DhcpEvent | null>(null)
   const handlersRef = useRef<Set<(evt: DhcpEvent) => void>>(new Set())
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const esRef = useRef<EventSource | null>(null)
 
   const connect = useCallback(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/events/stream`)
-    wsRef.current = ws
+    // SSE via native EventSource — works over plain HTTP, auto-reconnects
+    const es = new EventSource(`/api/v1/events/stream`)
+    esRef.current = es
 
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => {
+    es.onopen = () => setConnected(true)
+    es.onerror = () => {
       setConnected(false)
-      reconnectRef.current = setTimeout(connect, 3000)
+      // EventSource auto-reconnects, no manual retry needed
     }
-    ws.onerror = () => ws.close()
-    ws.onmessage = (msg) => {
+    es.onmessage = (msg) => {
       try {
         const evt: DhcpEvent = JSON.parse(msg.data)
         setLastEvent(evt)
@@ -49,8 +47,7 @@ export function WSProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     connect()
     return () => {
-      if (reconnectRef.current) clearTimeout(reconnectRef.current)
-      wsRef.current?.close()
+      esRef.current?.close()
     }
   }, [connect])
 

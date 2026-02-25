@@ -30,7 +30,7 @@ func TestMetricsRegistered(t *testing.T) {
 	HASyncOperations.WithLabelValues("lease_update").Inc()
 	HASyncErrors.Inc()
 	APIRequests.WithLabelValues("GET", "/api/v1/leases", "200").Inc()
-	WebSocketConnections.Set(5)
+	SSEConnections.Set(5)
 	DDNSUpdates.WithLabelValues("add_a", "success").Inc()
 	PoolSize.WithLabelValues("192.168.1.0/24", "pool1").Set(254)
 	PoolAllocated.WithLabelValues("192.168.1.0/24", "pool1").Set(100)
@@ -43,8 +43,8 @@ func TestMetricsRegistered(t *testing.T) {
 	if got := testutil.ToFloat64(LeasesActive); got != 42 {
 		t.Errorf("LeasesActive = %v, want 42", got)
 	}
-	if got := testutil.ToFloat64(WebSocketConnections); got != 5 {
-		t.Errorf("WebSocketConnections = %v, want 5", got)
+	if got := testutil.ToFloat64(SSEConnections); got != 5 {
+		t.Errorf("SSEConnections = %v, want 5", got)
 	}
 	if got := testutil.ToFloat64(EventBufferDrops); got != 1 {
 		t.Errorf("EventBufferDrops = %v, want 1", got)

@@ -25,6 +25,7 @@ type Handler struct {
 	bus      *events.Bus
 	logger   *slog.Logger
 	serverIP net.IP
+	ifaceIP  net.IP // auto-discovered from listening interface
 }
 
 // NewHandler creates a new DHCP message handler.
@@ -36,7 +37,7 @@ func NewHandler(
 	bus *events.Bus,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{
+	h := &Handler{
 		cfg:      cfg,
 		leases:   leases,
 		pools:    pools,
@@ -45,6 +46,30 @@ func NewHandler(
 		logger:   logger,
 		serverIP: cfg.ServerIP(),
 	}
+
+	// Auto-discover interface IP for subnet matching fallback
+	if iface, err := net.InterfaceByName(cfg.Server.Interface); err == nil {
+		if addrs, err := iface.Addrs(); err == nil {
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip != nil && ip.To4() != nil {
+					h.ifaceIP = ip.To4()
+					break
+				}
+			}
+		}
+	}
+	if h.ifaceIP != nil {
+		logger.Info("interface IP discovered for subnet matching", "interface", cfg.Server.Interface, "ip", h.ifaceIP.String())
+	}
+
+	return h
 }
 
 // HandlePacket dispatches a DHCP packet to the appropriate handler based on message type.
@@ -450,7 +475,7 @@ func (h *Handler) buildNAK(pkt *Packet, reason string) *Packet {
 }
 
 // findSubnet determines which subnet a request belongs to.
-// Uses giaddr for relayed packets, or server interface IP for direct.
+// Uses giaddr for relayed packets, ciaddr for renewals, or interface IP for direct.
 func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 	// Check for subnet selection option (RFC 3011, option 118)
 	if subSelData, ok := pkt.Options[dhcpv4.OptionSubnetSelection]; ok && len(subSelData) == 4 {
@@ -470,8 +495,23 @@ func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 		return h.findSubnetForIP(pkt.GIAddr)
 	}
 
-	// Direct: use server IP
-	return h.findSubnetForIP(h.serverIP)
+	// Direct: ciaddr set means renewal/rebind — use client's current IP
+	// RFC 2131 §4.3.2: renewing client sets ciaddr to its current address
+	if !pkt.CIAddr.Equal(net.IPv4zero) {
+		return h.findSubnetForIP(pkt.CIAddr)
+	}
+
+	// Direct: use server IP if configured
+	if h.serverIP != nil {
+		return h.findSubnetForIP(h.serverIP)
+	}
+
+	// Fallback: discover IP from the listening interface
+	if h.ifaceIP != nil {
+		return h.findSubnetForIP(h.ifaceIP)
+	}
+
+	return -1, nil
 }
 
 // findSubnetForIP finds the subnet config that contains the given IP.

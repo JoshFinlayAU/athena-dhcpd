@@ -202,6 +202,111 @@ func TestValidateDDNSConfig(t *testing.T) {
 	}
 }
 
+func TestValidatePoolRangeOrdering(t *testing.T) {
+	cfg := &Config{
+		Server: ServerConfig{
+			BindAddress: "0.0.0.0:67",
+			ServerID:    "192.168.1.1",
+			LeaseDB:     "/tmp/test.db",
+		},
+		Defaults: DefaultsConfig{
+			LeaseTime:   "8h",
+			RenewalTime: "4h",
+			RebindTime:  "7h",
+		},
+		Subnets: []SubnetConfig{
+			{
+				Network: "192.168.1.0/24",
+				Pools: []PoolConfig{
+					{RangeStart: "192.168.1.200", RangeEnd: "192.168.1.100"},
+				},
+			},
+		},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Error("expected error for range_end before range_start")
+	}
+}
+
+func TestValidateOverlappingPools(t *testing.T) {
+	cfg := &Config{
+		Server: ServerConfig{
+			BindAddress: "0.0.0.0:67",
+			ServerID:    "192.168.1.1",
+			LeaseDB:     "/tmp/test.db",
+		},
+		Defaults: DefaultsConfig{
+			LeaseTime:   "8h",
+			RenewalTime: "4h",
+			RebindTime:  "7h",
+		},
+		Subnets: []SubnetConfig{
+			{
+				Network: "192.168.1.0/24",
+				Pools: []PoolConfig{
+					{RangeStart: "192.168.1.100", RangeEnd: "192.168.1.150"},
+					{RangeStart: "192.168.1.140", RangeEnd: "192.168.1.200"},
+				},
+			},
+		},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Error("expected error for overlapping pools")
+	}
+}
+
+func TestValidateNonOverlappingPools(t *testing.T) {
+	cfg := &Config{
+		Server: ServerConfig{
+			BindAddress: "0.0.0.0:67",
+			ServerID:    "192.168.1.1",
+			LeaseDB:     "/tmp/test.db",
+		},
+		Defaults: DefaultsConfig{
+			LeaseTime:   "8h",
+			RenewalTime: "4h",
+			RebindTime:  "7h",
+		},
+		Subnets: []SubnetConfig{
+			{
+				Network: "192.168.1.0/24",
+				Pools: []PoolConfig{
+					{RangeStart: "192.168.1.100", RangeEnd: "192.168.1.149"},
+					{RangeStart: "192.168.1.150", RangeEnd: "192.168.1.200"},
+				},
+			},
+		},
+	}
+	if err := validate(cfg); err != nil {
+		t.Errorf("unexpected error for non-overlapping pools: %v", err)
+	}
+}
+
+func TestValidateOverlappingSubnets(t *testing.T) {
+	cfg := &Config{
+		Server: ServerConfig{
+			BindAddress: "0.0.0.0:67",
+			ServerID:    "192.168.1.1",
+			LeaseDB:     "/tmp/test.db",
+		},
+		Defaults: DefaultsConfig{
+			LeaseTime:   "8h",
+			RenewalTime: "4h",
+			RebindTime:  "7h",
+		},
+		Subnets: []SubnetConfig{
+			{Network: "10.0.0.0/16"},
+			{Network: "10.0.1.0/24"},
+		},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Error("expected error for overlapping subnets")
+	}
+}
+
 func TestGetLeaseTime(t *testing.T) {
 	cfg := &Config{
 		Defaults: DefaultsConfig{LeaseTime: "8h"},

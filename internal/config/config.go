@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -421,6 +422,30 @@ func validate(cfg *Config) error {
 			}
 		}
 
+		// Validate pool range ordering (end >= start)
+		for j, pool := range sub.Pools {
+			start := net.ParseIP(pool.RangeStart).To4()
+			end := net.ParseIP(pool.RangeEnd).To4()
+			if start != nil && end != nil {
+				startU := binary.BigEndian.Uint32(start)
+				endU := binary.BigEndian.Uint32(end)
+				if endU < startU {
+					return fmt.Errorf("subnet[%d].pool[%d]: range_end %s is before range_start %s", i, j, pool.RangeEnd, pool.RangeStart)
+				}
+			}
+		}
+
+		// Validate no overlapping pools within the subnet
+		for j := 0; j < len(sub.Pools); j++ {
+			for k := j + 1; k < len(sub.Pools); k++ {
+				if poolsOverlap(sub.Pools[j], sub.Pools[k]) {
+					return fmt.Errorf("subnet[%d]: pool[%d] (%s-%s) overlaps with pool[%d] (%s-%s)",
+						i, j, sub.Pools[j].RangeStart, sub.Pools[j].RangeEnd,
+						k, sub.Pools[k].RangeStart, sub.Pools[k].RangeEnd)
+				}
+			}
+		}
+
 		// Validate reservations
 		for j, res := range sub.Reservations {
 			if res.MAC == "" && res.Identifier == "" {
@@ -442,6 +467,16 @@ func validate(cfg *Config) error {
 		if sub.LeaseTime != "" {
 			if _, err := time.ParseDuration(sub.LeaseTime); err != nil {
 				return fmt.Errorf("subnet[%d].lease_time: %w", i, err)
+			}
+		}
+	}
+
+	// Validate no overlapping subnets
+	for i := 0; i < len(cfg.Subnets); i++ {
+		for j := i + 1; j < len(cfg.Subnets); j++ {
+			if subnetsOverlap(cfg.Subnets[i].Network, cfg.Subnets[j].Network) {
+				return fmt.Errorf("subnet[%d] (%s) overlaps with subnet[%d] (%s)",
+					i, cfg.Subnets[i].Network, j, cfg.Subnets[j].Network)
 			}
 		}
 	}
@@ -471,6 +506,32 @@ func validate(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// poolsOverlap returns true if two pool ranges overlap.
+func poolsOverlap(a, b PoolConfig) bool {
+	aStart := net.ParseIP(a.RangeStart).To4()
+	aEnd := net.ParseIP(a.RangeEnd).To4()
+	bStart := net.ParseIP(b.RangeStart).To4()
+	bEnd := net.ParseIP(b.RangeEnd).To4()
+	if aStart == nil || aEnd == nil || bStart == nil || bEnd == nil {
+		return false
+	}
+	aS := binary.BigEndian.Uint32(aStart)
+	aE := binary.BigEndian.Uint32(aEnd)
+	bS := binary.BigEndian.Uint32(bStart)
+	bE := binary.BigEndian.Uint32(bEnd)
+	return aS <= bE && bS <= aE
+}
+
+// subnetsOverlap returns true if two subnet CIDRs overlap.
+func subnetsOverlap(cidrA, cidrB string) bool {
+	_, netA, errA := net.ParseCIDR(cidrA)
+	_, netB, errB := net.ParseCIDR(cidrB)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return netA.Contains(netB.IP) || netB.Contains(netA.IP)
 }
 
 // ParseDuration is a helper for parsing Go-style duration strings.

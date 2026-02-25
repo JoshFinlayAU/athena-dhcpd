@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/logging"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
 )
 
@@ -90,6 +92,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set server metrics
+	metrics.ServerStartTime.SetToCurrentTime()
+	metrics.ServerInfo.WithLabelValues("dev").Set(1)
+
+	// Write PID file
+	if cfg.Server.PIDFile != "" {
+		if err := writePIDFile(cfg.Server.PIDFile); err != nil {
+			logger.Warn("failed to write PID file", "path", cfg.Server.PIDFile, "error", err)
+		} else {
+			defer removePIDFile(cfg.Server.PIDFile)
+		}
+	}
+
 	logger.Info("athena-dhcpd ready",
 		"subnets", len(cfg.Subnets),
 		"conflict_detection", cfg.ConflictDetection.Enabled)
@@ -121,12 +136,39 @@ func main() {
 
 		case syscall.SIGINT, syscall.SIGTERM:
 			logger.Info("received shutdown signal", "signal", sig.String())
+
+			// Graceful shutdown with timeout
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer shutdownCancel()
+
+			// Cancel the main context to stop all background goroutines
 			cancel()
+
+			// Stop DHCP server (stops accepting new packets)
 			server.Stop()
+
+			// Stop event bus (drains remaining events)
+			bus.Stop()
+
+			// Close lease store
+			store.Close()
+
+			_ = shutdownCtx // used for future API server shutdown
+
 			logger.Info("athena-dhcpd stopped")
 			return
 		}
 	}
+}
+
+// writePIDFile writes the current process ID to the given path.
+func writePIDFile(path string) error {
+	return os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
+}
+
+// removePIDFile removes the PID file.
+func removePIDFile(path string) {
+	os.Remove(path)
 }
 
 // initConflictDetection sets up the conflict detector with ARP and ICMP probers.

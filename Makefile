@@ -24,7 +24,7 @@ build-web:
 # Build .deb package (requires dpkg-deb, linux only)
 build-deb: build
 	@chmod +x scripts/build-deb.sh
-	scripts/build-deb.sh $(VERSION)
+	scripts/build-deb.sh $(VERSION:v%=%)
 
 # Build APT repo structure from .deb packages in build/
 apt-repo: build-deb

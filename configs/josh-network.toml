@@ -1,0 +1,367 @@
+# athena-dhcpd configuration
+# Network: 10.80.111.0/24
+# Migrated from MikroTik RouterOS static leases
+
+[server]
+interface = "eth0"
+bind_address = "0.0.0.0:67"
+log_level = "info"
+lease_db = "/var/lib/athena-dhcpd/leases.db"
+pid_file = "/var/run/athena-dhcpd.pid"
+
+[server.rate_limit]
+enabled = true
+max_discovers_per_second = 50
+max_per_mac_per_second = 5
+
+[defaults]
+lease_time = "1h"
+renewal_time = "45m"
+rebind_time = "1h15m"
+dns_servers = ["10.80.111.1"]
+domain_name = "teganandjosh.com"
+
+[conflict_detection]
+enabled = true
+probe_strategy = "sequential"
+probe_timeout = "500ms"
+max_probes_per_discover = 3
+conflict_hold_time = "1h"
+max_conflict_count = 3
+send_gratuitous_arp = true
+icmp_fallback = true
+
+# --- DNS Proxy ---
+
+[dns]
+enabled = true
+listen_udp = "0.0.0.0:53"
+domain = "teganandjosh.com"
+ttl = 60
+register_leases = true
+register_leases_ptr = true
+forwarders = ["1.1.1.1", "8.8.8.8"]
+cache_size = 10000
+cache_ttl = "5m"
+
+[[dns.list]]
+name = "steven-black-hosts"
+url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+type = "block"
+format = "hosts"
+action = "nxdomain"
+enabled = true
+refresh_interval = "24h"
+
+[[dns.list]]
+name = "threat-intelligence"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/multi.txt"
+type = "block"
+format = "domains"
+action = "nxdomain"
+enabled = true
+refresh_interval = "12h"
+
+# --- API & Web UI ---
+
+[api]
+enabled = true
+listen = "0.0.0.0:8067"
+web_ui = true
+
+[api.auth]
+auth_token = ""
+
+[api.tls]
+enabled = false
+
+# --- Subnet ---
+
+[[subnet]]
+network = "10.80.111.0/24"
+routers = ["10.80.111.1"]
+dns_servers = ["10.80.111.1"]
+domain_name = "teganandjosh.com"
+lease_time = "1h"
+
+[[subnet.pool]]
+range_start = "10.80.111.10"
+range_end = "10.80.111.200"
+
+# --- Static Reservations (migrated from MikroTik) ---
+
+[[subnet.reservation]]
+mac = "64:d1:54:ed:7b:0f"
+ip = "10.80.111.253"
+
+[[subnet.reservation]]
+mac = "00:10:18:7a:30:d8"
+ip = "10.80.111.200"
+
+[[subnet.reservation]]
+mac = "58:c1:7a:ec:c3:c1"
+ip = "10.80.111.199"
+hostname = "SW01-BNE"
+
+[[subnet.reservation]]
+mac = "00:a0:ba:10:36:31"
+ip = "10.80.111.30"
+hostname = "Fax-Gateway"
+
+[[subnet.reservation]]
+mac = "dc:a6:32:27:71:bb"
+ip = "10.80.111.44"
+
+[[subnet.reservation]]
+mac = "b4:7a:f1:de:e4:ae"
+ip = "10.80.111.127"
+hostname = "NAS-iLO"
+
+[[subnet.reservation]]
+mac = "74:4d:28:e7:1c:2e"
+ip = "10.80.111.56"
+
+[[subnet.reservation]]
+mac = "84:f7:03:89:11:e2"
+ip = "10.80.111.13"
+hostname = "Solar-Controller"
+
+[[subnet.reservation]]
+mac = "48:e1:e9:ac:1b:49"
+ip = "10.80.111.31"
+hostname = "SmartPlug-Christmas-Tree"
+
+[[subnet.reservation]]
+mac = "48:e1:e9:ac:1e:9c"
+ip = "10.80.111.34"
+hostname = "SmartPlug-Computers"
+
+[[subnet.reservation]]
+mac = "48:e1:e9:ac:19:d2"
+ip = "10.80.111.36"
+hostname = "SmartPlug-Servers"
+
+[[subnet.reservation]]
+mac = "64:d1:54:c8:b6:37"
+ip = "10.80.111.17"
+
+[[subnet.reservation]]
+mac = "ec:a9:07:20:44:03"
+ip = "10.80.111.14"
+
+[[subnet.reservation]]
+mac = "04:7c:16:b3:37:33"
+ip = "10.80.111.80"
+
+[[subnet.reservation]]
+mac = "50:91:e3:4e:74:dd"
+ip = "10.80.111.110"
+
+[[subnet.reservation]]
+mac = "60:22:32:9d:ac:3f"
+ip = "10.80.111.112"
+
+[[subnet.reservation]]
+mac = "ac:8b:a9:0f:36:9b"
+ip = "10.80.111.113"
+
+[[subnet.reservation]]
+mac = "ac:8b:a9:0f:e7:36"
+ip = "10.80.111.114"
+
+[[subnet.reservation]]
+mac = "ac:8b:a9:0f:e7:83"
+ip = "10.80.111.118"
+
+[[subnet.reservation]]
+mac = "ac:8b:a9:0f:e6:1e"
+ip = "10.80.111.119"
+
+[[subnet.reservation]]
+mac = "18:e8:29:cf:9d:68"
+ip = "10.80.111.29"
+
+[[subnet.reservation]]
+mac = "dc:a6:32:a8:1f:70"
+ip = "10.80.111.74"
+
+[[subnet.reservation]]
+mac = "a8:93:4a:21:28:c4"
+ip = "10.80.111.32"
+
+[[subnet.reservation]]
+mac = "60:01:94:70:00:ee"
+ip = "10.80.111.35"
+hostname = "Fish-Tank-Sensor"
+
+[[subnet.reservation]]
+mac = "18:e8:29:cf:9c:44"
+ip = "10.80.111.26"
+
+[[subnet.reservation]]
+mac = "b6:6d:a7:45:57:92"
+ip = "10.80.111.64"
+
+[[subnet.reservation]]
+mac = "d0:94:66:7e:c7:63"
+ip = "10.80.111.160"
+
+[[subnet.reservation]]
+mac = "00:0e:1e:b7:8f:d0"
+ip = "10.80.111.159"
+hostname = "Big-Boy-Server"
+
+[[subnet.reservation]]
+mac = "bc:24:11:66:18:db"
+ip = "10.80.111.156"
+hostname = "Proxmox-Backup-Server"
+
+[[subnet.reservation]]
+mac = "bc:24:11:42:48:29"
+ip = "10.80.111.152"
+
+[[subnet.reservation]]
+mac = "bc:24:11:95:ae:c5"
+ip = "10.80.111.150"
+hostname = "Media-Tools"
+
+[[subnet.reservation]]
+mac = "bc:24:11:5f:65:52"
+ip = "10.80.111.6"
+
+[[subnet.reservation]]
+mac = "c8:08:73:2e:c8:e0"
+ip = "10.80.111.180"
+
+[[subnet.reservation]]
+mac = "c4:f7:c1:15:cc:21"
+ip = "10.80.111.25"
+
+[[subnet.reservation]]
+mac = "4c:6b:b8:d2:d9:18"
+ip = "10.80.111.24"
+
+[[subnet.reservation]]
+mac = "28:70:4e:7e:dd:d5"
+ip = "10.80.111.23"
+
+[[subnet.reservation]]
+mac = "b8:ab:62:c2:ac:0e"
+ip = "10.80.111.22"
+
+[[subnet.reservation]]
+mac = "8c:26:aa:be:03:d5"
+ip = "10.80.111.21"
+
+[[subnet.reservation]]
+mac = "3c:6a:d2:0c:49:93"
+ip = "10.80.111.16"
+
+[[subnet.reservation]]
+mac = "3c:52:a1:0f:14:2e"
+ip = "10.80.111.19"
+
+[[subnet.reservation]]
+mac = "c0:74:ad:f0:9d:10"
+ip = "10.80.111.43"
+
+[[subnet.reservation]]
+mac = "6c:6e:07:0b:7a:d3"
+ip = "10.80.111.28"
+
+[[subnet.reservation]]
+mac = "84:78:48:84:9d:1d"
+ip = "10.80.111.108"
+
+[[subnet.reservation]]
+mac = "c4:5b:be:6c:ef:30"
+ip = "10.80.111.38"
+
+[[subnet.reservation]]
+mac = "94:2a:6f:50:16:d3"
+ip = "10.80.111.117"
+
+[[subnet.reservation]]
+mac = "b0:4a:39:a5:1b:18"
+ip = "10.80.111.18"
+
+[[subnet.reservation]]
+mac = "48:e1:5c:af:12:c2"
+ip = "10.80.111.198"
+
+[[subnet.reservation]]
+mac = "1c:6a:1b:81:a9:88"
+ip = "10.80.111.37"
+
+[[subnet.reservation]]
+mac = "86:5a:bd:1a:d9:8c"
+ip = "10.80.111.27"
+
+[[subnet.reservation]]
+mac = "28:70:4e:11:c0:2b"
+ip = "10.80.111.12"
+
+[[subnet.reservation]]
+mac = "1c:6a:1b:81:a8:e0"
+ip = "10.80.111.115"
+
+[[subnet.reservation]]
+mac = "10:ff:e0:6d:02:85"
+ip = "10.80.111.106"
+
+[[subnet.reservation]]
+mac = "50:8b:b9:36:2a:2e"
+ip = "10.80.111.10"
+
+[[subnet.reservation]]
+mac = "48:e1:e9:dd:8d:f6"
+ip = "10.80.111.11"
+
+[[subnet.reservation]]
+mac = "bc:24:11:c5:89:a2"
+ip = "10.80.111.45"
+
+[[subnet.reservation]]
+mac = "e6:f8:1c:16:4a:c2"
+ip = "10.80.111.39"
+
+[[subnet.reservation]]
+mac = "98:ba:5f:1e:3f:cc"
+ip = "10.80.111.111"
+
+[[subnet.reservation]]
+mac = "54:60:09:39:70:ca"
+ip = "10.80.111.33"
+
+[[subnet.reservation]]
+mac = "44:3e:07:38:9c:a4"
+ip = "10.80.111.41"
+
+[[subnet.reservation]]
+mac = "bc:24:11:59:4f:4d"
+ip = "10.80.111.67"
+
+[[subnet.reservation]]
+mac = "30:d0:42:e4:a2:61"
+ip = "10.80.111.66"
+
+[[subnet.reservation]]
+mac = "1a:c7:1f:3b:60:5f"
+ip = "10.80.111.68"
+
+[[subnet.reservation]]
+mac = "ca:a1:24:c7:0b:c6"
+ip = "10.80.111.20"
+hostname = "Josh-iPhone"
+
+[[subnet.reservation]]
+mac = "de:46:ef:11:45:83"
+ip = "10.80.111.51"
+
+[[subnet.reservation]]
+mac = "d4:5d:64:54:19:b0"
+ip = "10.80.111.47"
+
+[[subnet.reservation]]
+mac = "58:d6:1f:1e:e4:78"
+ip = "10.80.111.46"

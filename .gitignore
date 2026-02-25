@@ -44,3 +44,14 @@ configs/config.toml
 
 # Windsurf
 *.windsurf
+
+# APT repo artifacts (keep folder structure, ignore debs/metadata)
+apt/pool/main/*.deb
+apt/dists/stable/Release
+apt/dists/stable/Release.gpg
+apt/dists/stable/InRelease
+apt/dists/stable/main/binary-*/Packages
+apt/dists/stable/main/binary-*/Packages.gz
+
+# Temp files
+tmp/

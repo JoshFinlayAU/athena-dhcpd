@@ -6,7 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/athena-dhcpd -config /etc/athena-dhcpd/config.toml
+ExecStart=/usr/bin/athena-dhcpd -config /etc/athena-dhcpd/config.toml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s

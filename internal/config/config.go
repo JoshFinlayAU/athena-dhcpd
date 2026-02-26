@@ -202,6 +202,7 @@ type DNSStaticRecord struct {
 // SubnetConfig holds per-subnet configuration.
 type SubnetConfig struct {
 	Network      string              `toml:"network" json:"network"`
+	Interface    string              `toml:"interface" json:"interface,omitempty"`
 	Routers      []string            `toml:"routers" json:"routers,omitempty"`
 	DNSServers   []string            `toml:"dns_servers" json:"dns_servers,omitempty"`
 	DomainName   string              `toml:"domain_name" json:"domain_name,omitempty"`

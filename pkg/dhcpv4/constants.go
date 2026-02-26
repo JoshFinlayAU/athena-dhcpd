@@ -201,14 +201,15 @@ const (
 type HAMessageType byte
 
 const (
-	HAMsgHeartbeat     HAMessageType = 0x01
-	HAMsgLeaseUpdate   HAMessageType = 0x02
-	HAMsgBulkStart     HAMessageType = 0x03
-	HAMsgBulkData      HAMessageType = 0x04
-	HAMsgBulkEnd       HAMessageType = 0x05
-	HAMsgFailoverClaim HAMessageType = 0x06
-	HAMsgFailoverAck   HAMessageType = 0x07
-	HAMsgStateRequest  HAMessageType = 0x08
+	HAMsgHeartbeat      HAMessageType = 0x01
+	HAMsgLeaseUpdate    HAMessageType = 0x02
+	HAMsgBulkStart      HAMessageType = 0x03
+	HAMsgBulkData       HAMessageType = 0x04
+	HAMsgBulkEnd        HAMessageType = 0x05
+	HAMsgFailoverClaim  HAMessageType = 0x06
+	HAMsgFailoverAck    HAMessageType = 0x07
+	HAMsgStateRequest   HAMessageType = 0x08
 	HAMsgConflictUpdate HAMessageType = 0x09
-	HAMsgConflictBulk  HAMessageType = 0x0A
+	HAMsgConflictBulk   HAMessageType = 0x0A
+	HAMsgConfigSync     HAMessageType = 0x0B
 )

@@ -493,7 +493,7 @@ func (h *Handler) buildNAK(pkt *Packet, reason string) *Packet {
 }
 
 // findSubnet determines which subnet a request belongs to.
-// Uses giaddr for relayed packets, ciaddr for renewals, or interface IP for direct.
+// Uses giaddr for relayed packets, interface matching for direct packets.
 func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 	// Check for subnet selection option (RFC 3011, option 118)
 	if subSelData, ok := pkt.Options[dhcpv4.OptionSubnetSelection]; ok && len(subSelData) == 4 {
@@ -519,16 +519,33 @@ func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 		return h.findSubnetForIP(pkt.CIAddr)
 	}
 
-	// Direct: use server IP if configured
+	// Direct: match by receiving interface — each subnet declares its interface
+	if pkt.ReceivingInterface != "" {
+		if idx, sub := h.findSubnetForInterface(pkt.ReceivingInterface); idx >= 0 {
+			return idx, sub
+		}
+	}
+
+	// Fallback: use server IP if configured
 	if h.serverIP != nil {
 		return h.findSubnetForIP(h.serverIP)
 	}
 
-	// Fallback: discover IP from the listening interface
+	// Fallback: discover IP from the default interface
 	if h.ifaceIP != nil {
 		return h.findSubnetForIP(h.ifaceIP)
 	}
 
+	return -1, nil
+}
+
+// findSubnetForInterface finds the subnet assigned to a specific network interface.
+func (h *Handler) findSubnetForInterface(iface string) (int, *config.SubnetConfig) {
+	for i, sub := range h.cfg.Subnets {
+		if sub.Interface == iface {
+			return i, &h.cfg.Subnets[i]
+		}
+	}
 	return -1, nil
 }
 

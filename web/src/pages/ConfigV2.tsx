@@ -148,6 +148,7 @@ function SubnetsTab({ onStatus }: { onStatus: StatusFn }) {
           <div className="flex items-center justify-between px-5 py-3 bg-surface-overlay/30">
             <div>
               <span className="font-mono font-semibold text-sm">{sub.network}</span>
+              {sub.interface && <span className="text-xs text-accent font-mono ml-2">{sub.interface}</span>}
               {sub.domain_name && <span className="text-xs text-text-muted ml-3">{sub.domain_name}</span>}
             </div>
             <div className="flex items-center gap-2">
@@ -200,6 +201,9 @@ function SubnetEditor({ subnet, isNew, onSave, onCancel }: {
       <FieldGrid>
         <Field label="Network" hint="CIDR">
           <TextInput value={s.network} onChange={v => setS({ ...s, network: v })} placeholder="192.168.1.0/24" mono disabled={!isNew} />
+        </Field>
+        <Field label="Interface" hint="Network interface for this subnet">
+          <TextInput value={s.interface || ''} onChange={v => setS({ ...s, interface: v })} placeholder="eth0" mono />
         </Field>
         <Field label="Domain Name">
           <TextInput value={s.domain_name || ''} onChange={v => setS({ ...s, domain_name: v })} placeholder="example.com" />

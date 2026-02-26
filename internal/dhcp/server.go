@@ -111,6 +111,9 @@ func (s *Server) processPacket(ctx context.Context, data []byte, src *net.UDPAdd
 		return
 	}
 
+	// Tag packet with receiving interface for multi-interface subnet matching
+	pkt.ReceivingInterface = s.iface
+
 	// Validate it's a BOOTREQUEST
 	if pkt.Op != dhcpv4.OpCodeBootRequest {
 		return

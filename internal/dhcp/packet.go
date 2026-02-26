@@ -27,6 +27,10 @@ type Packet struct {
 	SName   [64]byte            // Server host name
 	File    [128]byte           // Boot file name
 	Options Options             // DHCP options
+
+	// ReceivingInterface is set by the server to indicate which network
+	// interface this packet arrived on. Not part of the wire format.
+	ReceivingInterface string
 }
 
 // packetPool reuses packet buffers to reduce allocations in the hot path.

@@ -22,7 +22,7 @@ Core server settings. the basics
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface` | string | `"eth0"` | Network interface to listen on |
+| `interface` | string | `"eth0"` | Default network interface. can be overridden per-subnet |
 | `bind_address` | string | `"0.0.0.0:67"` | UDP bind address for DHCP |
 | `server_id` | string | required | Server identifier IP (sent in option 54). usually your server's IP on the DHCP interface |
 | `log_level` | string | `"info"` | Log level: `debug`, `info`, `warn`, `error` |
@@ -400,6 +400,7 @@ Subnet definitions. you need at least one or the server has nothing to do
 | Field | Type | Description |
 |-------|------|-------------|
 | `network` | string | Subnet in CIDR notation e.g. `"192.168.1.0/24"` |
+| `interface` | string | Network interface for this subnet (e.g. `"eth0"`, `"vlan100"`). the server listens on each unique interface |
 | `routers` | string[] | Default gateway(s) — option 3 |
 | `dns_servers` | string[] | DNS servers for this subnet — option 6. overrides `[defaults]` |
 | `domain_name` | string | Domain name for this subnet — option 15 |
@@ -450,6 +451,7 @@ Custom DHCP options. for anything not covered by the built-in fields
 ```toml
 [[subnet]]
 network = "192.168.1.0/24"
+interface = "eth0"
 routers = ["192.168.1.1"]
 dns_servers = ["192.168.1.1", "8.8.8.8"]
 domain_name = "office.example.com"

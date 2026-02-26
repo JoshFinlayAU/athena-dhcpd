@@ -36,7 +36,7 @@ failover_timeout = "10s"
 sync_batch_size = 100
 ```
 
-everything else in the config should be the same on both nodes — same subnets, same pools, same options. they need to agree on what IPs to hand out
+the TOML config on each node only needs `[server]` and `[api]` — everything else (subnets, pools, options, DNS, hooks, etc.) is stored in the database and automatically synced between peers. see [config sync](#config-sync) below
 
 ## state machine
 
@@ -75,6 +75,45 @@ once both nodes establish a TCP connection and exchange heartbeats, both transit
    - Primary → `ACTIVE`
    - Secondary → `STANDBY`
 
+## config sync
+
+configuration is replicated between peers automatically. you change something on one node (via the web UI or API) and the other node picks it up within seconds
+
+### how it works
+
+- every config change (subnets, defaults, conflict detection, DNS, hooks, DDNS, HA) fires an `onLocalChange` event
+- the local node sends a `ConfigSync` message (type `0x0B`) to the peer containing the section name and full JSON payload
+- the peer applies it to its own BoltDB via `ApplyPeerConfig` and triggers a live reload
+- the peer does NOT echo the change back — no infinite loops
+
+### adjacency push
+
+every time a TCP connection forms between peers (initial startup, reconnect after failure, network blip recovery), whoever is currently **active** pushes their entire config to the peer. this happens:
+
+- on normal startup (primary pushes to secondary)
+- after failover recovery (the node that was active during the outage pushes to the returning node)
+- on any reconnection regardless of cause
+
+this means config is always consistent after adjacency. if you made changes on the active node while the peer was offline, those changes get pushed as soon as the peer reconnects
+
+### conflict resolution
+
+last-write-wins using millisecond timestamps. in practice this is fine because only one node should be active at a time, and all writes go through the active node's web UI
+
+### what gets synced
+
+| Section | Description |
+|---------|-------------|
+| `subnets` | All subnet configs including pools, reservations, options, interface bindings |
+| `defaults` | Global default lease time, DNS servers, domain name |
+| `conflict_detection` | Probe strategy, timeouts, ARP/ICMP settings |
+| `ha` | HA settings (role, peer address, timeouts) |
+| `hooks` | Script and webhook hook configurations |
+| `ddns` | Dynamic DNS zones, TSIG keys, API keys |
+| `dns` | DNS proxy settings, forwarders, filter lists, static records |
+
+bootstrap config (`[server]` and `[api]`) is NOT synced — each node keeps its own
+
 ## lease synchronisation
 
 leases are synced event-driven (not polling). whenever a lease changes on the active node:
@@ -111,9 +150,14 @@ message types:
 - `0x01` — Heartbeat (state, lease count, sequence number, uptime)
 - `0x02` — Lease Update
 - `0x03` — Bulk Start
-- `0x04` — Bulk End
-- `0x05` — Failover Claim
+- `0x04` — Bulk Data
+- `0x05` — Bulk End
+- `0x06` — Failover Claim
+- `0x07` — Failover Ack
+- `0x08` — State Request
 - `0x09` — Conflict Update
+- `0x0A` — Conflict Bulk
+- `0x0B` — Config Sync (section name + JSON payload + timestamp)
 
 max message size is 1MB (more than enough, lease updates are tiny)
 
@@ -133,7 +177,7 @@ if no heartbeat is received within `failover_timeout` (default 10s), the peer is
 you can force a failover via the API:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/ha/failover \
+curl -X POST http://localhost:8067/api/v2/ha/failover \
   -H "Authorization: Bearer mytoken"
 ```
 
@@ -171,7 +215,7 @@ these are available to hooks. good for alerting — you probably want to know wh
 - `athena_dhcpd_ha_state{state,role}` — current state (gauge, 1 = current)
 - `athena_dhcpd_ha_heartbeats_sent_total` — heartbeats sent
 - `athena_dhcpd_ha_heartbeats_received_total` — heartbeats received
-- `athena_dhcpd_ha_sync_operations_total{type}` — sync ops (lease_update, conflict_update)
+- `athena_dhcpd_ha_sync_operations_total{type}` — sync ops (lease_update, conflict_update, config_sync)
 - `athena_dhcpd_ha_sync_errors_total` — sync failures
 
 ## floating IP for DNS
@@ -180,7 +224,7 @@ if you're running the DNS proxy in HA, clients need a stable IP to send DNS quer
 
 ## things to know
 
-- both nodes must have the same subnet/pool configuration or bad things happen
+- config is synced automatically between peers — you only need to manage one node's web UI
 - the lease database path should be different on each node (they each maintain their own BoltDB)
 - network partition = split brain risk. the `failover_timeout` is your safety margin. make it long enough that transient network blips don't cause unnecessary failovers
 - there's no quorum mechanism (its 2 nodes). if both nodes think they're active, clients might get duplicate offers. this is temporary and resolves once the partition heals

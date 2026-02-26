@@ -31,6 +31,8 @@ type Peer struct {
 	wg                sync.WaitGroup
 	onLeaseUpdate     func(LeaseUpdatePayload)
 	onConflictUpdate  func(ConflictUpdatePayload)
+	onConfigSync      func(ConfigSyncPayload)
+	onAdjacencyFormed func()
 }
 
 // NewPeer creates a new HA peer manager.
@@ -59,6 +61,42 @@ func (p *Peer) OnLeaseUpdate(fn func(LeaseUpdatePayload)) {
 // OnConflictUpdate sets a callback for incoming conflict updates from the peer.
 func (p *Peer) OnConflictUpdate(fn func(ConflictUpdatePayload)) {
 	p.onConflictUpdate = fn
+}
+
+// OnConfigSync sets a callback for incoming config sync messages from the peer.
+func (p *Peer) OnConfigSync(fn func(ConfigSyncPayload)) {
+	p.onConfigSync = fn
+}
+
+// OnAdjacencyFormed sets a callback that fires every time a peer connection
+// is established (both inbound and outbound). The primary uses this to push
+// its full config to the backup.
+func (p *Peer) OnAdjacencyFormed(fn func()) {
+	p.onAdjacencyFormed = fn
+}
+
+// SendConfigSync sends a config section update to the peer.
+func (p *Peer) SendConfigSync(section string, data []byte) error {
+	msg, err := NewConfigSync(section, data)
+	if err != nil {
+		return fmt.Errorf("creating config sync message for %s: %w", section, err)
+	}
+	return p.sendMessage(msg)
+}
+
+// SendFullConfigSync sends all config sections to the peer.
+func (p *Peer) SendFullConfigSync(sections map[string][]byte) error {
+	var firstErr error
+	for section, data := range sections {
+		if err := p.SendConfigSync(section, data); err != nil {
+			p.logger.Error("failed to send config section to peer",
+				"section", section, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // Start begins the HA peer connection (listen + connect).
@@ -178,6 +216,12 @@ func (p *Peer) acceptLoop(ctx context.Context) {
 
 		p.logger.Info("peer connection accepted", "remote", conn.RemoteAddr().String())
 		p.setConn(conn)
+		p.fsm.PeerUp()
+
+		// Notify adjacency formed (primary pushes config here)
+		if p.onAdjacencyFormed != nil {
+			go p.onAdjacencyFormed()
+		}
 
 		// Handle incoming messages
 		p.wg.Add(1)
@@ -228,6 +272,11 @@ func (p *Peer) connectLoop(ctx context.Context) {
 		p.logger.Info("connected to peer", "address", p.cfg.PeerAddress)
 		p.setConn(conn)
 		p.fsm.PeerUp()
+
+		// Notify adjacency formed (primary pushes config here)
+		if p.onAdjacencyFormed != nil {
+			go p.onAdjacencyFormed()
+		}
 
 		// Handle incoming messages on this connection
 		p.wg.Add(1)
@@ -315,6 +364,19 @@ func (p *Peer) handleMessage(msg *Message) {
 	case dhcpv4.HAMsgBulkEnd:
 		p.logger.Info("peer bulk sync complete")
 		p.fsm.BulkSyncComplete()
+
+	case dhcpv4.HAMsgConfigSync:
+		var cs ConfigSyncPayload
+		if err := json.Unmarshal(msg.Payload, &cs); err != nil {
+			metrics.HASyncErrors.Inc()
+			p.logger.Error("failed to unmarshal config sync", "error", err)
+			return
+		}
+		metrics.HASyncOperations.WithLabelValues("config_sync").Inc()
+		p.logger.Info("config sync received from peer", "section", cs.Section)
+		if p.onConfigSync != nil {
+			p.onConfigSync(cs)
+		}
 
 	case dhcpv4.HAMsgFailoverClaim:
 		var fc FailoverClaimPayload

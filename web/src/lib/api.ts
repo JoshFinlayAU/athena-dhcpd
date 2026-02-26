@@ -243,6 +243,7 @@ export const getDNSQueryLog = (limit?: number) =>
 // Subnet types matching Go config.SubnetConfig
 export interface SubnetConfig {
   network: string
+  interface?: string
   routers?: string[]
   dns_servers?: string[]
   domain_name?: string

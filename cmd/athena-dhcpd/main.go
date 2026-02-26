@@ -20,6 +20,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dhcp"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/ha"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/logging"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
@@ -115,9 +116,9 @@ func main() {
 	// Create DHCP handler
 	handler := dhcp.NewHandler(cfg, leaseMgr, pools, detector, bus, logger)
 
-	// Create and start DHCP server
-	server := dhcp.NewServer(handler, cfg.Server.Interface, fmt.Sprintf(":%d", 67), logger)
-	if err := server.Start(ctx); err != nil {
+	// Create and start DHCP server group (one listener per interface)
+	serverGroup := dhcp.NewServerGroup(handler, logger)
+	if err := serverGroup.Start(ctx, cfg); err != nil {
 		logger.Error("failed to start DHCP server", "error", err)
 		os.Exit(1)
 	}
@@ -190,26 +191,106 @@ func main() {
 		}()
 	}
 
+	// Initialize HA peer with config sync
+	var haPeer *ha.Peer
+	if cfg.HA.Enabled {
+		failoverTimeout, _ := time.ParseDuration(cfg.HA.FailoverTimeout)
+		if failoverTimeout == 0 {
+			failoverTimeout = 10 * time.Second
+		}
+		fsm := ha.NewFSM(cfg.HA.Role, failoverTimeout, bus, logger)
+		peer, err := ha.NewPeer(&cfg.HA, fsm, store, bus, logger)
+		if err != nil {
+			logger.Error("failed to create HA peer", "error", err)
+		} else {
+			// Wire config sync: incoming peer config → apply to local DB
+			peer.OnConfigSync(func(cs ha.ConfigSyncPayload) {
+				if err := cfgStore.ApplyPeerConfig(cs.Section, cs.Data); err != nil {
+					logger.Error("failed to apply config from peer",
+						"section", cs.Section, "error", err)
+				} else {
+					logger.Info("applied config from peer", "section", cs.Section)
+				}
+			})
+
+			// On adjacency formed: if we are the active node, push full config to backup
+			peer.OnAdjacencyFormed(func() {
+				if !peer.FSM().IsActive() {
+					logger.Info("HA adjacency formed, we are standby — waiting for config from primary")
+					return
+				}
+				logger.Info("HA adjacency formed, we are active — pushing full config to peer")
+				sections := cfgStore.ExportAllSections()
+				if err := peer.SendFullConfigSync(sections); err != nil {
+					logger.Error("failed to push full config to peer on adjacency", "error", err)
+				} else {
+					logger.Info("full config sync to peer complete", "sections", len(sections))
+				}
+			})
+
+			if err := peer.Start(ctx); err != nil {
+				logger.Error("failed to start HA peer", "error", err)
+			} else {
+				haPeer = peer
+				defer haPeer.Stop()
+			}
+		}
+	}
+
 	logger.Info("athena-dhcpd ready",
 		"subnets", len(cfg.Subnets),
 		"conflict_detection", cfg.ConflictDetection.Enabled,
 		"dns_proxy", cfg.DNS.Enabled,
-		"api", cfg.API.Enabled)
+		"api", cfg.API.Enabled,
+		"ha", cfg.HA.Enabled)
 
-	// Register config change callback — rebuild config + reload pools on DB changes
+	// Wire local config changes → send to HA peer
+	cfgStore.OnLocalChange(func(section string, data []byte) {
+		if haPeer == nil {
+			return
+		}
+		if err := haPeer.SendConfigSync(section, data); err != nil {
+			logger.Warn("failed to sync config to HA peer",
+				"section", section, "error", err)
+		} else {
+			logger.Debug("config synced to HA peer", "section", section)
+		}
+	})
+
+	// Register config change callback — full live reload on every DB config change
 	cfgStore.OnChange(func() {
 		logger.Info("config changed in database, rebuilding")
 		newCfg := cfgStore.BuildConfig(bootstrap)
 		config.ApplyDynamicDefaults(newCfg)
 		cfg = newCfg
+
+		// Update DHCP handler + lease manager
 		leaseMgr.UpdateConfig(cfg)
 		handler.UpdateConfig(cfg)
+
+		// Rebuild pools
 		newPools, err := initPools(cfg, store)
 		if err != nil {
 			logger.Error("failed to reinitialize pools after config change", "error", err)
 			return
 		}
 		handler.UpdatePools(newPools)
+
+		// Update API server pool list
+		if apiServer != nil {
+			var allPools []*pool.Pool
+			for _, subPools := range newPools {
+				allPools = append(allPools, subPools...)
+			}
+			apiServer.UpdatePools(allPools)
+		}
+
+		// Reload DHCP listeners — add/remove interfaces as needed
+		serverGroup.Reload(cfg)
+
+		logger.Info("live config reload complete",
+			"subnets", len(cfg.Subnets),
+			"conflict_detection", cfg.ConflictDetection.Enabled)
 	})
 
 	// Wait for shutdown signal
@@ -237,6 +318,7 @@ func main() {
 				continue
 			}
 			handler.UpdatePools(newPools)
+			serverGroup.Reload(cfg)
 			logger.Info("configuration reloaded successfully")
 
 		case syscall.SIGINT, syscall.SIGTERM:
@@ -259,8 +341,8 @@ func main() {
 				dnsServer.Stop()
 			}
 
-			// Stop DHCP server (stops accepting new packets)
-			server.Stop()
+			// Stop DHCP server group (stops accepting new packets)
+			serverGroup.Stop()
 
 			// Stop event bus (drains remaining events)
 			bus.Stop()

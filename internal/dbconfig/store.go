@@ -13,22 +13,22 @@ import (
 
 // BoltDB bucket names for config storage.
 var (
-	bucketSubnets   = []byte("config_subnets")
-	bucketDefaults  = []byte("config_defaults")
-	bucketConflict  = []byte("config_conflict")
-	bucketHA        = []byte("config_ha")
-	bucketHooks     = []byte("config_hooks")
-	bucketDDNS      = []byte("config_ddns")
-	bucketDNS       = []byte("config_dns")
-	bucketMeta      = []byte("config_meta")
+	bucketSubnets  = []byte("config_subnets")
+	bucketDefaults = []byte("config_defaults")
+	bucketConflict = []byte("config_conflict")
+	bucketHA       = []byte("config_ha")
+	bucketHooks    = []byte("config_hooks")
+	bucketDDNS     = []byte("config_ddns")
+	bucketDNS      = []byte("config_dns")
+	bucketMeta     = []byte("config_meta")
 
-	keyDefaults  = []byte("defaults")
-	keyConflict  = []byte("conflict_detection")
-	keyHA        = []byte("ha")
-	keyHooks     = []byte("hooks")
-	keyDDNS      = []byte("ddns")
-	keyDNS       = []byte("dns")
-	keyImported  = []byte("v1_imported")
+	keyDefaults = []byte("defaults")
+	keyConflict = []byte("conflict_detection")
+	keyHA       = []byte("ha")
+	keyHooks    = []byte("hooks")
+	keyDDNS     = []byte("ddns")
+	keyDNS      = []byte("dns")
+	keyImported = []byte("v1_imported")
 )
 
 // Store provides CRUD access to dynamic configuration stored in BoltDB.
@@ -38,16 +38,18 @@ type Store struct {
 	mu sync.RWMutex
 
 	// In-memory cache
-	subnets   []config.SubnetConfig
-	defaults  config.DefaultsConfig
-	conflict  config.ConflictDetectionConfig
-	ha        config.HAConfig
-	hooks     config.HooksConfig
-	ddns      config.DDNSConfig
-	dns       config.DNSProxyConfig
+	subnets  []config.SubnetConfig
+	defaults config.DefaultsConfig
+	conflict config.ConflictDetectionConfig
+	ha       config.HAConfig
+	hooks    config.HooksConfig
+	ddns     config.DDNSConfig
+	dns      config.DNSProxyConfig
 
-	// Listeners notified on config changes
+	// Listeners notified on config changes (fires for ALL changes, local + peer)
 	onChange []func()
+	// Listeners notified only for local changes (used to trigger HA peer sync)
+	onLocalChange []func(section string, data []byte)
 }
 
 // NewStore initializes the config store, creating buckets and loading cached state.
@@ -86,6 +88,21 @@ func (s *Store) notifyChange() {
 	for _, fn := range s.onChange {
 		go fn()
 	}
+}
+
+func (s *Store) notifyLocalChange(section string, data []byte) {
+	s.notifyChange()
+	for _, fn := range s.onLocalChange {
+		go fn(section, data)
+	}
+}
+
+// OnLocalChange registers a callback that fires only for local config changes
+// (not peer-replicated). Used by HA to send config to the partner.
+func (s *Store) OnLocalChange(fn func(section string, data []byte)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onLocalChange = append(s.onLocalChange, fn)
 }
 
 // IsV1Imported returns true if a v1 TOML config has already been imported.
@@ -160,8 +177,9 @@ func (s *Store) PutSubnet(sub config.SubnetConfig) error {
 	if !found {
 		s.subnets = append(s.subnets, sub)
 	}
+	snapshot, _ := json.Marshal(s.subnets)
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("subnets", snapshot)
 	return nil
 }
 
@@ -181,8 +199,9 @@ func (s *Store) DeleteSubnet(network string) error {
 			break
 		}
 	}
+	snapshot, _ := json.Marshal(s.subnets)
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("subnets", snapshot)
 	return nil
 }
 
@@ -295,13 +314,14 @@ func (s *Store) Defaults() config.DefaultsConfig {
 }
 
 func (s *Store) SetDefaults(d config.DefaultsConfig) error {
+	data, _ := json.Marshal(d)
 	if err := s.putJSON(bucketDefaults, keyDefaults, d); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.defaults = d
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("defaults", data)
 	return nil
 }
 
@@ -312,13 +332,14 @@ func (s *Store) ConflictDetection() config.ConflictDetectionConfig {
 }
 
 func (s *Store) SetConflictDetection(c config.ConflictDetectionConfig) error {
+	data, _ := json.Marshal(c)
 	if err := s.putJSON(bucketConflict, keyConflict, c); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.conflict = c
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("conflict_detection", data)
 	return nil
 }
 
@@ -329,13 +350,14 @@ func (s *Store) HA() config.HAConfig {
 }
 
 func (s *Store) SetHA(h config.HAConfig) error {
+	data, _ := json.Marshal(h)
 	if err := s.putJSON(bucketHA, keyHA, h); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.ha = h
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("ha", data)
 	return nil
 }
 
@@ -346,13 +368,14 @@ func (s *Store) Hooks() config.HooksConfig {
 }
 
 func (s *Store) SetHooks(h config.HooksConfig) error {
+	data, _ := json.Marshal(h)
 	if err := s.putJSON(bucketHooks, keyHooks, h); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.hooks = h
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("hooks", data)
 	return nil
 }
 
@@ -363,13 +386,14 @@ func (s *Store) DDNS() config.DDNSConfig {
 }
 
 func (s *Store) SetDDNS(d config.DDNSConfig) error {
+	data, _ := json.Marshal(d)
 	if err := s.putJSON(bucketDDNS, keyDDNS, d); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.ddns = d
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("ddns", data)
 	return nil
 }
 
@@ -380,13 +404,14 @@ func (s *Store) DNS() config.DNSProxyConfig {
 }
 
 func (s *Store) SetDNS(d config.DNSProxyConfig) error {
+	data, _ := json.Marshal(d)
 	if err := s.putJSON(bucketDNS, keyDNS, d); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.dns = d
 	s.mu.Unlock()
-	s.notifyChange()
+	s.notifyLocalChange("dns", data)
 	return nil
 }
 
@@ -434,6 +459,159 @@ func (s *Store) ImportFromConfig(cfg *config.Config) error {
 			return fmt.Errorf("importing subnet %s: %w", sub.Network, err)
 		}
 	}
+	return nil
+}
+
+// --- HA Config Export ---
+
+// ExportAllSections returns a map of section name → JSON data for full config sync.
+func (s *Store) ExportAllSections() map[string][]byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sections := make(map[string][]byte, 7)
+	if data, err := json.Marshal(s.subnets); err == nil {
+		sections["subnets"] = data
+	}
+	if data, err := json.Marshal(s.defaults); err == nil {
+		sections["defaults"] = data
+	}
+	if data, err := json.Marshal(s.conflict); err == nil {
+		sections["conflict_detection"] = data
+	}
+	if data, err := json.Marshal(s.ha); err == nil {
+		sections["ha"] = data
+	}
+	if data, err := json.Marshal(s.hooks); err == nil {
+		sections["hooks"] = data
+	}
+	if data, err := json.Marshal(s.ddns); err == nil {
+		sections["ddns"] = data
+	}
+	if data, err := json.Marshal(s.dns); err == nil {
+		sections["dns"] = data
+	}
+	return sections
+}
+
+// --- HA Peer Config Sync ---
+
+// ApplyPeerConfig applies a config section received from the HA peer.
+// It persists to BoltDB, updates the in-memory cache, and fires onChange
+// (for local reload) but NOT onLocalChange (to avoid echoing back to peer).
+func (s *Store) ApplyPeerConfig(section string, data []byte) error {
+	switch section {
+	case "subnets":
+		var subs []config.SubnetConfig
+		if err := json.Unmarshal(data, &subs); err != nil {
+			return fmt.Errorf("unmarshalling peer subnets: %w", err)
+		}
+		// Replace all subnets in BoltDB
+		if err := s.db.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucketSubnets)
+			// Clear existing
+			c := b.Cursor()
+			for k, _ := c.First(); k != nil; k, _ = c.Next() {
+				if err := b.Delete(k); err != nil {
+					return err
+				}
+			}
+			// Write new
+			for _, sub := range subs {
+				d, err := json.Marshal(sub)
+				if err != nil {
+					return err
+				}
+				if err := b.Put([]byte(sub.Network), d); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("applying peer subnets: %w", err)
+		}
+		s.mu.Lock()
+		s.subnets = subs
+		s.mu.Unlock()
+
+	case "defaults":
+		var d config.DefaultsConfig
+		if err := json.Unmarshal(data, &d); err != nil {
+			return fmt.Errorf("unmarshalling peer defaults: %w", err)
+		}
+		if err := s.putJSON(bucketDefaults, keyDefaults, d); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.defaults = d
+		s.mu.Unlock()
+
+	case "conflict_detection":
+		var c config.ConflictDetectionConfig
+		if err := json.Unmarshal(data, &c); err != nil {
+			return fmt.Errorf("unmarshalling peer conflict config: %w", err)
+		}
+		if err := s.putJSON(bucketConflict, keyConflict, c); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.conflict = c
+		s.mu.Unlock()
+
+	case "ha":
+		var h config.HAConfig
+		if err := json.Unmarshal(data, &h); err != nil {
+			return fmt.Errorf("unmarshalling peer HA config: %w", err)
+		}
+		if err := s.putJSON(bucketHA, keyHA, h); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.ha = h
+		s.mu.Unlock()
+
+	case "hooks":
+		var h config.HooksConfig
+		if err := json.Unmarshal(data, &h); err != nil {
+			return fmt.Errorf("unmarshalling peer hooks config: %w", err)
+		}
+		if err := s.putJSON(bucketHooks, keyHooks, h); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.hooks = h
+		s.mu.Unlock()
+
+	case "ddns":
+		var d config.DDNSConfig
+		if err := json.Unmarshal(data, &d); err != nil {
+			return fmt.Errorf("unmarshalling peer DDNS config: %w", err)
+		}
+		if err := s.putJSON(bucketDDNS, keyDDNS, d); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.ddns = d
+		s.mu.Unlock()
+
+	case "dns":
+		var d config.DNSProxyConfig
+		if err := json.Unmarshal(data, &d); err != nil {
+			return fmt.Errorf("unmarshalling peer DNS config: %w", err)
+		}
+		if err := s.putJSON(bucketDNS, keyDNS, d); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.dns = d
+		s.mu.Unlock()
+
+	default:
+		return fmt.Errorf("unknown config section from peer: %s", section)
+	}
+
+	// Fire onChange only (triggers local reload) — no onLocalChange (no echo back)
+	s.notifyChange()
 	return nil
 }
 

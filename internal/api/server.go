@@ -237,6 +237,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	}
 }
 
+// UpdatePools replaces the pool list (called on live config reload).
+func (s *Server) UpdatePools(pools []*pool.Pool) {
+	s.pools = pools
+}
+
 // JSONResponse writes a JSON response with the given status code.
 func JSONResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

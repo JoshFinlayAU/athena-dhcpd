@@ -21,24 +21,24 @@ type Message struct {
 
 // HeartbeatPayload is sent periodically to confirm peer liveness.
 type HeartbeatPayload struct {
-	State       string `json:"state"`
-	LeaseCount  int    `json:"lease_count"`
-	Seq         uint64 `json:"seq"`
-	Uptime      int64  `json:"uptime_seconds"`
+	State      string `json:"state"`
+	LeaseCount int    `json:"lease_count"`
+	Seq        uint64 `json:"seq"`
+	Uptime     int64  `json:"uptime_seconds"`
 }
 
 // LeaseUpdatePayload carries a single lease change to the peer.
 type LeaseUpdatePayload struct {
-	IP        string `json:"ip"`
-	MAC       string `json:"mac"`
-	ClientID  string `json:"client_id,omitempty"`
-	Hostname  string `json:"hostname,omitempty"`
-	Subnet    string `json:"subnet"`
-	Pool      string `json:"pool,omitempty"`
-	State     string `json:"state"`
-	Start     int64  `json:"start"`
-	Expiry    int64  `json:"expiry"`
-	Seq       uint64 `json:"seq"`
+	IP       string `json:"ip"`
+	MAC      string `json:"mac"`
+	ClientID string `json:"client_id,omitempty"`
+	Hostname string `json:"hostname,omitempty"`
+	Subnet   string `json:"subnet"`
+	Pool     string `json:"pool,omitempty"`
+	State    string `json:"state"`
+	Start    int64  `json:"start"`
+	Expiry   int64  `json:"expiry"`
+	Seq      uint64 `json:"seq"`
 }
 
 // BulkStartPayload signals the beginning of a bulk sync.
@@ -68,6 +68,15 @@ type ConflictUpdatePayload struct {
 type FailoverClaimPayload struct {
 	Reason    string `json:"reason"`
 	ClaimedAt int64  `json:"claimed_at"`
+}
+
+// ConfigSyncPayload carries a config section update to the peer.
+// Section identifies which part changed; Data is the full JSON of that section.
+// Timestamp is used for last-write-wins conflict resolution.
+type ConfigSyncPayload struct {
+	Section   string          `json:"section"`
+	Data      json.RawMessage `json:"data"`
+	Timestamp int64           `json:"timestamp"`
 }
 
 // EncodeMessage serializes a Message to bytes with a length prefix (4-byte big-endian).
@@ -150,6 +159,23 @@ func NewLeaseUpdate(ip net.IP, mac net.HardwareAddr, clientID, hostname, subnet,
 	}
 	return &Message{
 		Type:      dhcpv4.HAMsgLeaseUpdate,
+		Timestamp: time.Now().Unix(),
+		Payload:   payload,
+	}, nil
+}
+
+// NewConfigSync creates a config sync message for a given section.
+func NewConfigSync(section string, data json.RawMessage) (*Message, error) {
+	payload, err := json.Marshal(ConfigSyncPayload{
+		Section:   section,
+		Data:      data,
+		Timestamp: time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Message{
+		Type:      dhcpv4.HAMsgConfigSync,
 		Timestamp: time.Now().Unix(),
 		Payload:   payload,
 	}, nil

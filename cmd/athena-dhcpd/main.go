@@ -292,8 +292,9 @@ func main() {
 		}
 		handler.UpdatePools(newPools)
 
-		// Update API server pool list
+		// Update API server config + pool list
 		if apiServer != nil {
+			apiServer.UpdateConfig(cfg)
 			var allPools []*pool.Pool
 			for _, subPools := range newPools {
 				allPools = append(allPools, subPools...)

@@ -53,7 +53,8 @@ func (s *Server) handleV2UpdateSubnet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	network, _ := url.PathUnescape(r.PathValue("network"))
-	if _, exists := s.cfgStore.GetSubnet(network); !exists {
+	existing, exists := s.cfgStore.GetSubnet(network)
+	if !exists {
 		JSONError(w, http.StatusNotFound, "not_found", "subnet not found")
 		return
 	}
@@ -63,6 +64,16 @@ func (s *Server) handleV2UpdateSubnet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub.Network = network
+	// Preserve pools, reservations, and options if not sent in the update
+	if sub.Pools == nil {
+		sub.Pools = existing.Pools
+	}
+	if sub.Reservations == nil {
+		sub.Reservations = existing.Reservations
+	}
+	if sub.Options == nil {
+		sub.Options = existing.Options
+	}
 	if err := s.cfgStore.PutSubnet(sub); err != nil {
 		JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return

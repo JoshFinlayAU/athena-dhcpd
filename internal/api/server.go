@@ -238,6 +238,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	}
 }
 
+// UpdateConfig updates the runtime config pointer (called on live config reload).
+func (s *Server) UpdateConfig(cfg *config.Config) {
+	s.cfg = cfg
+}
+
 // UpdatePools replaces the pool list (called on live config reload).
 func (s *Server) UpdatePools(pools []*pool.Pool) {
 	s.pools = pools

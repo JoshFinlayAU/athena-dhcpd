@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/miekg/dns"
 )
 
@@ -143,6 +145,72 @@ func (s *Server) handleDNSListTest(w http.ResponseWriter, r *http.Request) {
 
 	result := lists.TestDomain(body.Domain)
 	JSONResponse(w, http.StatusOK, result)
+}
+
+// handleDNSQueryLog returns recent DNS query log entries.
+func (s *Server) handleDNSQueryLog(w http.ResponseWriter, r *http.Request) {
+	if s.dns == nil {
+		JSONError(w, http.StatusServiceUnavailable, "dns_disabled", "DNS proxy is not enabled")
+		return
+	}
+
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	entries := s.dns.GetQueryLog().Recent(limit)
+	if entries == nil {
+		entries = []dnsproxy.QueryLogEntry{}
+	}
+
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"entries": entries,
+		"total":   s.dns.GetQueryLog().Count(),
+	})
+}
+
+// handleDNSQueryLogStream streams DNS query log entries via SSE.
+func (s *Server) handleDNSQueryLogStream(w http.ResponseWriter, r *http.Request) {
+	if s.dns == nil {
+		JSONError(w, http.StatusServiceUnavailable, "dns_disabled", "DNS proxy is not enabled")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	qlog := s.dns.GetQueryLog()
+	subID, ch := qlog.Subscribe(256)
+	defer qlog.Unsubscribe(subID)
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case entry, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(entry)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }
 
 // dnsTypeString converts a DNS type uint16 to a human-readable string.

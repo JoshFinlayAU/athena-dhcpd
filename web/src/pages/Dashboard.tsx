@@ -10,7 +10,7 @@ import { formatDuration, timeAgo } from '@/lib/utils'
 export default function Dashboard() {
   const { events, connected } = useWS()
   const { data: health } = usePolling(useCallback(() => getHealth(), []), 5000)
-  const { data: leases } = usePolling(useCallback(() => getLeases('page_size=1'), []), 5000)
+  const { data: leases } = usePolling(useCallback(() => getLeases(), []), 5000)
   const { data: conflicts } = usePolling(useCallback(() => getConflictStats(), []), 10000)
   const { data: ha } = usePolling(useCallback(() => getHAStatus(), []), 5000)
 

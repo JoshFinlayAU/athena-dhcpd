@@ -289,6 +289,7 @@ type SessionConfig struct {
 }
 
 // Load reads and parses a TOML config file, applies defaults, and validates.
+// This loads ALL sections (v1 compat). For v2, use LoadBootstrap + dbconfig.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -307,6 +308,182 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// LoadBootstrap reads only the bootstrap sections (server + api) from TOML.
+// All other config (subnets, defaults, hooks, etc.) comes from the database.
+func LoadBootstrap(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+
+	cfg := &Config{}
+	if err := toml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config file %s: %w", path, err)
+	}
+
+	applyBootstrapDefaults(cfg)
+
+	if err := validateBootstrap(cfg); err != nil {
+		return nil, fmt.Errorf("validating bootstrap config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// HasDynamicConfig returns true if the TOML file contains any dynamic config
+// sections (subnets, defaults, hooks, etc.) — used for v1 auto-migration.
+func HasDynamicConfig(cfg *Config) bool {
+	return len(cfg.Subnets) > 0 ||
+		cfg.Defaults.LeaseTime != "" ||
+		cfg.ConflictDetection.Enabled ||
+		cfg.HA.Enabled ||
+		cfg.DDNS.Enabled ||
+		cfg.DNS.Enabled ||
+		len(cfg.Hooks.Scripts) > 0 ||
+		len(cfg.Hooks.Webhooks) > 0
+}
+
+// applyBootstrapDefaults fills defaults for server + api sections only.
+func applyBootstrapDefaults(cfg *Config) {
+	if cfg.Server.Interface == "" {
+		cfg.Server.Interface = DefaultInterface
+	}
+	if cfg.Server.LogLevel == "" {
+		cfg.Server.LogLevel = DefaultLogLevel
+	}
+	if cfg.Server.LeaseDB == "" {
+		cfg.Server.LeaseDB = DefaultLeaseDB
+	}
+	if cfg.Server.PIDFile == "" {
+		cfg.Server.PIDFile = DefaultPIDFile
+	}
+	if cfg.API.Listen == "" {
+		cfg.API.Listen = DefaultAPIListen
+	}
+	if cfg.API.Session.CookieName == "" {
+		cfg.API.Session.CookieName = DefaultSessionCookieName
+	}
+	if cfg.API.Session.Expiry == "" {
+		cfg.API.Session.Expiry = DefaultSessionExpiry.String()
+	}
+}
+
+// validateBootstrap checks only the bootstrap config sections.
+func validateBootstrap(cfg *Config) error {
+	if cfg.Server.ServerID != "" {
+		if ip := net.ParseIP(cfg.Server.ServerID); ip == nil {
+			return fmt.Errorf("server.server_id %q is not a valid IP address", cfg.Server.ServerID)
+		}
+	}
+	return nil
+}
+
+// ApplyDynamicDefaults fills in default values for dynamic config sections
+// (everything except server + api). Called after building config from DB.
+func ApplyDynamicDefaults(cfg *Config) {
+	// Rate limit defaults
+	if cfg.Server.RateLimit.MaxDiscoversPerSecond == 0 {
+		cfg.Server.RateLimit.MaxDiscoversPerSecond = DefaultRateLimitDiscovers
+	}
+	if cfg.Server.RateLimit.MaxPerMACPerSecond == 0 {
+		cfg.Server.RateLimit.MaxPerMACPerSecond = DefaultRateLimitPerMAC
+	}
+
+	// Conflict detection defaults
+	if cfg.ConflictDetection.ProbeStrategy == "" {
+		cfg.ConflictDetection.ProbeStrategy = DefaultProbeStrategy
+	}
+	if cfg.ConflictDetection.ProbeTimeout == "" {
+		cfg.ConflictDetection.ProbeTimeout = DefaultProbeTimeout.String()
+	}
+	if cfg.ConflictDetection.MaxProbesPerDiscover == 0 {
+		cfg.ConflictDetection.MaxProbesPerDiscover = DefaultMaxProbesPerDiscover
+	}
+	if cfg.ConflictDetection.ParallelProbeCount == 0 {
+		cfg.ConflictDetection.ParallelProbeCount = DefaultParallelProbeCount
+	}
+	if cfg.ConflictDetection.ConflictHoldTime == "" {
+		cfg.ConflictDetection.ConflictHoldTime = DefaultConflictHoldTime.String()
+	}
+	if cfg.ConflictDetection.MaxConflictCount == 0 {
+		cfg.ConflictDetection.MaxConflictCount = DefaultMaxConflictCount
+	}
+	if cfg.ConflictDetection.ProbeCacheTTL == "" {
+		cfg.ConflictDetection.ProbeCacheTTL = DefaultProbeCacheTTL.String()
+	}
+	if cfg.ConflictDetection.ProbeLogLevel == "" {
+		cfg.ConflictDetection.ProbeLogLevel = DefaultProbeLogLevel
+	}
+
+	// Hooks defaults
+	if cfg.Hooks.EventBufferSize == 0 {
+		cfg.Hooks.EventBufferSize = DefaultEventBufferSize
+	}
+	if cfg.Hooks.ScriptConcurrency == 0 {
+		cfg.Hooks.ScriptConcurrency = DefaultScriptConcurrency
+	}
+	if cfg.Hooks.ScriptTimeout == "" {
+		cfg.Hooks.ScriptTimeout = DefaultScriptTimeout.String()
+	}
+
+	// HA defaults
+	if cfg.HA.HeartbeatInterval == "" {
+		cfg.HA.HeartbeatInterval = DefaultHAHeartbeatInterval.String()
+	}
+	if cfg.HA.FailoverTimeout == "" {
+		cfg.HA.FailoverTimeout = DefaultHAFailoverTimeout.String()
+	}
+	if cfg.HA.SyncBatchSize == 0 {
+		cfg.HA.SyncBatchSize = DefaultHASyncBatchSize
+	}
+
+	// Global defaults
+	if cfg.Defaults.LeaseTime == "" {
+		cfg.Defaults.LeaseTime = DefaultLeaseTime.String()
+	}
+	if cfg.Defaults.RenewalTime == "" {
+		cfg.Defaults.RenewalTime = DefaultRenewalTime.String()
+	}
+	if cfg.Defaults.RebindTime == "" {
+		cfg.Defaults.RebindTime = DefaultRebindTime.String()
+	}
+
+	// DNS proxy defaults
+	if cfg.DNS.ListenUDP == "" {
+		cfg.DNS.ListenUDP = DefaultDNSListenUDP
+	}
+	if cfg.DNS.TTL == 0 {
+		cfg.DNS.TTL = DefaultDNSTTL
+	}
+	if cfg.DNS.CacheSize == 0 {
+		cfg.DNS.CacheSize = DefaultDNSCacheSize
+	}
+	if cfg.DNS.CacheTTL == "" {
+		cfg.DNS.CacheTTL = DefaultDNSCacheTTL.String()
+	}
+
+	// DDNS defaults
+	if cfg.DDNS.TTL == 0 {
+		cfg.DDNS.TTL = DefaultDDNSTTL
+	}
+	if cfg.DDNS.ConflictPolicy == "" {
+		cfg.DDNS.ConflictPolicy = DefaultDDNSConflictPolicy
+	}
+
+	// Webhook defaults
+	for i := range cfg.Hooks.Webhooks {
+		if cfg.Hooks.Webhooks[i].Method == "" {
+			cfg.Hooks.Webhooks[i].Method = "POST"
+		}
+		if cfg.Hooks.Webhooks[i].Retries == 0 {
+			cfg.Hooks.Webhooks[i].Retries = DefaultWebhookRetries
+		}
+		if cfg.Hooks.Webhooks[i].RetryBackoff == "" {
+			cfg.Hooks.Webhooks[i].RetryBackoff = DefaultWebhookRetryBackoff.String()
+		}
+	}
 }
 
 // applyDefaults fills in default values for unset fields.

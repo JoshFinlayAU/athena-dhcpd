@@ -45,13 +45,14 @@ export function Label({ children, htmlFor, hint }: { children: ReactNode; htmlFo
   )
 }
 
-export function TextInput({ id, value, onChange, placeholder, mono, className }: {
+export function TextInput({ id, value, onChange, placeholder, mono, className, disabled }: {
   id?: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
   mono?: boolean
   className?: string
+  disabled?: boolean
 }) {
   return (
     <input
@@ -60,9 +61,11 @@ export function TextInput({ id, value, onChange, placeholder, mono, className }:
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
+      disabled={disabled}
       className={cn(
         'w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface hover:border-border-hover focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition-colors',
         mono && 'font-mono',
+        disabled && 'opacity-50 cursor-not-allowed',
         className
       )}
     />

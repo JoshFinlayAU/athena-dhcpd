@@ -16,16 +16,18 @@ import (
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/miekg/dns"
 )
 
 // Server is the built-in DNS proxy with local zone support and upstream forwarding.
 type Server struct {
-	cfg    *config.DNSProxyConfig
-	zone   *Zone
-	cache  *Cache
-	lists  *ListManager
-	logger *slog.Logger
+	cfg      *config.DNSProxyConfig
+	zone     *Zone
+	cache    *Cache
+	lists    *ListManager
+	queryLog *QueryLog
+	logger   *slog.Logger
 
 	udpServer *dns.Server
 	tcpServer *dns.Server
@@ -51,6 +53,7 @@ func NewServer(cfg *config.DNSProxyConfig, logger *slog.Logger) *Server {
 		zone:          NewZone(cfg.Domain, uint32(cfg.TTL)),
 		cache:         NewCache(cfg.CacheSize),
 		lists:         NewListManager(cfg.Lists, logger),
+		queryLog:      NewQueryLog(5000),
 		logger:        logger,
 		forwarders:    cfg.Forwarders,
 		zoneOverrides: make(map[string]config.DNSZoneOverride),
@@ -85,6 +88,11 @@ func NewServer(cfg *config.DNSProxyConfig, logger *slog.Logger) *Server {
 // Zone returns the local zone for external lease registration.
 func (s *Server) Zone() *Zone {
 	return s.zone
+}
+
+// GetQueryLog returns the DNS query log for API access.
+func (s *Server) GetQueryLog() *QueryLog {
+	return s.queryLog
 }
 
 // Cache returns the DNS cache.
@@ -203,19 +211,34 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 	q := r.Question[0]
 	qname := strings.ToLower(q.Name)
+	qtype := dns.TypeToString[q.Qtype]
+	source := ""
+	if w.RemoteAddr() != nil {
+		source = w.RemoteAddr().String()
+	}
+	start := time.Now()
 
 	s.logger.Debug("DNS query",
 		"name", qname,
-		"type", dns.TypeToString[q.Qtype],
-		"source", w.RemoteAddr())
+		"type", qtype,
+		"source", source)
 
 	// 1. Check filter lists (blocklists/allowlists)
 	if s.lists != nil {
 		if blocked, action, listName := s.lists.Check(qname); blocked {
 			resp := BlockResponse(r, action)
 			w.WriteMsg(resp)
+			elapsed := time.Since(start).Seconds()
 			s.logger.Debug("DNS query blocked by list",
 				"name", qname, "list", listName, "action", action)
+			s.queryLog.Add(QueryLogEntry{
+				Timestamp: start, Name: qname, Type: qtype, Source: source,
+				Status: "blocked", Latency: float64(time.Since(start).Microseconds()) / 1000,
+				ListName: listName, Action: action,
+			})
+			metrics.DNSQueriesTotal.WithLabelValues(qtype, "blocked").Inc()
+			metrics.DNSQueryDuration.WithLabelValues("blocked").Observe(elapsed)
+			metrics.DNSBlockedTotal.WithLabelValues(listName, action).Inc()
 			return
 		}
 	}
@@ -227,8 +250,20 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		resp.Authoritative = true
 		resp.Answer = rrs
 		w.WriteMsg(resp)
+		elapsed := time.Since(start).Seconds()
 		s.logger.Debug("DNS query answered from local zone",
 			"name", qname, "answers", len(rrs))
+		answer := ""
+		if len(rrs) > 0 {
+			answer = rrs[0].String()
+		}
+		s.queryLog.Add(QueryLogEntry{
+			Timestamp: start, Name: qname, Type: qtype, Source: source,
+			Status: "local", Latency: float64(time.Since(start).Microseconds()) / 1000,
+			Answer: answer,
+		})
+		metrics.DNSQueriesTotal.WithLabelValues(qtype, "local").Inc()
+		metrics.DNSQueryDuration.WithLabelValues("local").Observe(elapsed)
 		return
 	}
 
@@ -236,20 +271,55 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 	if cached := s.cache.Get(qname, q.Qtype, q.Qclass); cached != nil {
 		cached.SetReply(r)
 		w.WriteMsg(cached)
+		elapsed := time.Since(start).Seconds()
 		s.logger.Debug("DNS query answered from cache", "name", qname)
+		answer := ""
+		if len(cached.Answer) > 0 {
+			answer = cached.Answer[0].String()
+		}
+		s.queryLog.Add(QueryLogEntry{
+			Timestamp: start, Name: qname, Type: qtype, Source: source,
+			Status: "cached", Latency: float64(time.Since(start).Microseconds()) / 1000,
+			Answer: answer,
+		})
+		metrics.DNSQueriesTotal.WithLabelValues(qtype, "cached").Inc()
+		metrics.DNSQueryDuration.WithLabelValues("cached").Observe(elapsed)
+		metrics.DNSCacheHits.Inc()
 		return
 	}
+	metrics.DNSCacheMisses.Inc()
 
 	// 4. Forward upstream
 	resp, err := s.forward(r)
 	if err != nil {
+		elapsed := time.Since(start).Seconds()
 		s.logger.Debug("DNS forward failed", "name", qname, "error", err)
 		dns.HandleFailed(w, r)
+		s.queryLog.Add(QueryLogEntry{
+			Timestamp: start, Name: qname, Type: qtype, Source: source,
+			Status: "failed", Latency: float64(time.Since(start).Microseconds()) / 1000,
+		})
+		metrics.DNSQueriesTotal.WithLabelValues(qtype, "failed").Inc()
+		metrics.DNSQueryDuration.WithLabelValues("failed").Observe(elapsed)
+		metrics.DNSUpstreamErrors.Inc()
 		return
 	}
 
 	// Cache the response
 	s.cache.Set(resp, s.cacheTTL)
+
+	elapsed := time.Since(start).Seconds()
+	answer := ""
+	if len(resp.Answer) > 0 {
+		answer = resp.Answer[0].String()
+	}
+	s.queryLog.Add(QueryLogEntry{
+		Timestamp: start, Name: qname, Type: qtype, Source: source,
+		Status: "forwarded", Latency: float64(time.Since(start).Microseconds()) / 1000,
+		Answer: answer,
+	})
+	metrics.DNSQueriesTotal.WithLabelValues(qtype, "forwarded").Inc()
+	metrics.DNSQueryDuration.WithLabelValues("forwarded").Observe(elapsed)
 
 	resp.SetReply(r)
 	w.WriteMsg(resp)

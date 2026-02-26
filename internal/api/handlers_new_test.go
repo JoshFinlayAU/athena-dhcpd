@@ -94,31 +94,34 @@ func TestHandleListLeasesFiltering(t *testing.T) {
 	})
 
 	// Filter by subnet
-	req := httptest.NewRequest("GET", "/api/v1/leases?subnet=192.168.1.0/24", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases?subnet=192.168.1.0/24", nil)
 	w := httptest.NewRecorder()
 	srv.handleListLeases(w, req)
-	var leases []map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &leases)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	leases := resp["leases"].([]interface{})
 	if len(leases) != 1 {
 		t.Errorf("subnet filter: got %d leases, want 1", len(leases))
 	}
 
 	// Filter by MAC
-	req2 := httptest.NewRequest("GET", "/api/v1/leases?mac=aa:bb", nil)
+	req2 := httptest.NewRequest("GET", "/api/v2/leases?mac=aa:bb", nil)
 	w2 := httptest.NewRecorder()
 	srv.handleListLeases(w2, req2)
-	var leases2 []map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &leases2)
+	var resp2 map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	leases2 := resp2["leases"].([]interface{})
 	if len(leases2) != 1 {
 		t.Errorf("mac filter: got %d leases, want 1", len(leases2))
 	}
 
 	// Filter by hostname
-	req3 := httptest.NewRequest("GET", "/api/v1/leases?hostname=host-a", nil)
+	req3 := httptest.NewRequest("GET", "/api/v2/leases?hostname=host-a", nil)
 	w3 := httptest.NewRecorder()
 	srv.handleListLeases(w3, req3)
-	var leases3 []map[string]interface{}
-	json.Unmarshal(w3.Body.Bytes(), &leases3)
+	var resp3 map[string]interface{}
+	json.Unmarshal(w3.Body.Bytes(), &resp3)
+	leases3 := resp3["leases"].([]interface{})
 	if len(leases3) != 1 {
 		t.Errorf("hostname filter: got %d leases, want 1", len(leases3))
 	}
@@ -138,7 +141,7 @@ func TestHandleListLeasesPagination(t *testing.T) {
 		})
 	}
 
-	req := httptest.NewRequest("GET", "/api/v1/leases?limit=2&offset=1", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases?page=2&page_size=2", nil)
 	w := httptest.NewRecorder()
 	srv.handleListLeases(w, req)
 
@@ -146,10 +149,17 @@ func TestHandleListLeasesPagination(t *testing.T) {
 		t.Errorf("X-Total-Count = %q, want 5", w.Header().Get("X-Total-Count"))
 	}
 
-	var leases []map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &leases)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	leases := resp["leases"].([]interface{})
 	if len(leases) != 2 {
 		t.Errorf("pagination: got %d leases, want 2", len(leases))
+	}
+	if resp["total"].(float64) != 5 {
+		t.Errorf("total = %v, want 5", resp["total"])
+	}
+	if resp["page"].(float64) != 2 {
+		t.Errorf("page = %v, want 2", resp["page"])
 	}
 }
 
@@ -164,7 +174,7 @@ func TestHandleExportLeases(t *testing.T) {
 		Start: now, Expiry: now.Add(time.Hour), LastUpdated: now,
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/leases/export", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases/export", nil)
 	w := httptest.NewRecorder()
 	srv.handleExportLeases(w, req)
 
@@ -188,7 +198,7 @@ func TestHandleExportLeases(t *testing.T) {
 func TestHandleListReservations(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/reservations", nil)
+	req := httptest.NewRequest("GET", "/api/v2/reservations", nil)
 	w := httptest.NewRecorder()
 	srv.handleListReservations(w, req)
 
@@ -210,7 +220,7 @@ func TestHandleCreateReservation(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
 	body := `{"subnet_index": 0, "mac": "aa:bb:cc:dd:ee:ff", "ip": "192.168.1.20", "hostname": "new-host"}`
-	req := httptest.NewRequest("POST", "/api/v1/reservations", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/v2/reservations", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handleCreateReservation(w, req)
 
@@ -228,7 +238,7 @@ func TestHandleCreateReservationValidation(t *testing.T) {
 
 	// Missing MAC and identifier
 	body := `{"subnet_index": 0, "ip": "192.168.1.20"}`
-	req := httptest.NewRequest("POST", "/api/v1/reservations", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/v2/reservations", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handleCreateReservation(w, req)
 
@@ -240,7 +250,7 @@ func TestHandleCreateReservationValidation(t *testing.T) {
 func TestHandleDeleteReservation(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/reservations/0", nil)
+	req := httptest.NewRequest("DELETE", "/api/v2/reservations/0", nil)
 	req.SetPathValue("id", "0")
 	w := httptest.NewRecorder()
 	srv.handleDeleteReservation(w, req)
@@ -256,7 +266,7 @@ func TestHandleDeleteReservation(t *testing.T) {
 func TestHandleDeleteReservationNotFound(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/reservations/99", nil)
+	req := httptest.NewRequest("DELETE", "/api/v2/reservations/99", nil)
 	req.SetPathValue("id", "99")
 	w := httptest.NewRecorder()
 	srv.handleDeleteReservation(w, req)
@@ -269,7 +279,7 @@ func TestHandleDeleteReservationNotFound(t *testing.T) {
 func TestHandleExportReservations(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/reservations/export", nil)
+	req := httptest.NewRequest("GET", "/api/v2/reservations/export", nil)
 	w := httptest.NewRecorder()
 	srv.handleExportReservations(w, req)
 
@@ -288,7 +298,7 @@ func TestHandleGetConflict(t *testing.T) {
 
 	ct.Add(net.IPv4(192, 168, 1, 50), "arp_probe", "aa:bb:cc:11:22:33", "192.168.1.0/24")
 
-	req := httptest.NewRequest("GET", "/api/v1/conflicts/192.168.1.50", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conflicts/192.168.1.50", nil)
 	req.SetPathValue("ip", "192.168.1.50")
 	w := httptest.NewRecorder()
 	srv.handleGetConflict(w, req)
@@ -307,7 +317,7 @@ func TestHandleGetConflict(t *testing.T) {
 func TestHandleGetConflictNotFound(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/conflicts/10.0.0.1", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conflicts/10.0.0.1", nil)
 	req.SetPathValue("ip", "10.0.0.1")
 	w := httptest.NewRecorder()
 	srv.handleGetConflict(w, req)
@@ -320,7 +330,7 @@ func TestHandleGetConflictNotFound(t *testing.T) {
 func TestHandleExcludeConflict(t *testing.T) {
 	srv, ct := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("POST", "/api/v1/conflicts/192.168.1.60/exclude", nil)
+	req := httptest.NewRequest("POST", "/api/v2/conflicts/192.168.1.60/exclude", nil)
 	req.SetPathValue("ip", "192.168.1.60")
 	w := httptest.NewRecorder()
 	srv.handleExcludeConflict(w, req)
@@ -340,7 +350,7 @@ func TestHandleConflictHistory(t *testing.T) {
 	ct.Add(net.IPv4(192, 168, 1, 50), "arp_probe", "", "192.168.1.0/24")
 	ct.Resolve(net.IPv4(192, 168, 1, 50))
 
-	req := httptest.NewRequest("GET", "/api/v1/conflicts/history", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conflicts/history", nil)
 	w := httptest.NewRecorder()
 	srv.handleConflictHistory(w, req)
 
@@ -361,7 +371,7 @@ func TestHandleConflictStats(t *testing.T) {
 	ct.Add(net.IPv4(192, 168, 1, 50), "arp_probe", "", "192.168.1.0/24")
 	ct.Add(net.IPv4(192, 168, 1, 51), "icmp_probe", "", "192.168.1.0/24")
 
-	req := httptest.NewRequest("GET", "/api/v1/conflicts/stats", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conflicts/stats", nil)
 	w := httptest.NewRecorder()
 	srv.handleConflictStats(w, req)
 
@@ -374,8 +384,8 @@ func TestHandleConflictStats(t *testing.T) {
 	if stats["enabled"] != true {
 		t.Error("expected enabled=true")
 	}
-	if stats["active_count"].(float64) != 2 {
-		t.Errorf("active_count = %v, want 2", stats["active_count"])
+	if stats["total_active"].(float64) != 2 {
+		t.Errorf("total_active = %v, want 2", stats["total_active"])
 	}
 }
 
@@ -389,7 +399,7 @@ func TestHandleGetConfigRaw(t *testing.T) {
 	srv := newTestServer(t)
 	srv.configPath = cfgPath
 
-	req := httptest.NewRequest("GET", "/api/v1/config/raw", nil)
+	req := httptest.NewRequest("GET", "/api/v2/config/raw", nil)
 	w := httptest.NewRecorder()
 	srv.handleGetConfigRaw(w, req)
 
@@ -405,7 +415,7 @@ func TestHandleGetConfigRawNoPath(t *testing.T) {
 	srv := newTestServer(t)
 	// configPath is empty
 
-	req := httptest.NewRequest("GET", "/api/v1/config/raw", nil)
+	req := httptest.NewRequest("GET", "/api/v2/config/raw", nil)
 	w := httptest.NewRecorder()
 	srv.handleGetConfigRaw(w, req)
 
@@ -419,7 +429,7 @@ func TestHandleValidateConfig(t *testing.T) {
 
 	// Valid TOML
 	body := `{"config": "[server]\nbind_address = \"0.0.0.0:67\"\n"}`
-	req := httptest.NewRequest("POST", "/api/v1/config/validate", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/v2/config/validate", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handleValidateConfig(w, req)
 
@@ -437,7 +447,7 @@ func TestHandleValidateConfigInvalid(t *testing.T) {
 	srv := newTestServer(t)
 
 	body := `{"config": "this is not valid toml {{{{"}`
-	req := httptest.NewRequest("POST", "/api/v1/config/validate", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/v2/config/validate", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handleValidateConfig(w, req)
 
@@ -461,7 +471,7 @@ func TestHandleUpdateConfig(t *testing.T) {
 
 	reqBody := map[string]string{"config": "[server]\nbind_address = \"0.0.0.0:6767\"\n"}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest("PUT", "/api/v1/config", strings.NewReader(string(bodyBytes)))
+	req := httptest.NewRequest("PUT", "/api/v2/config", strings.NewReader(string(bodyBytes)))
 	w := httptest.NewRecorder()
 	srv.handleUpdateConfig(w, req)
 
@@ -492,7 +502,7 @@ func TestHandleListConfigBackups(t *testing.T) {
 	srv := newTestServer(t)
 	srv.configPath = cfgPath
 
-	req := httptest.NewRequest("GET", "/api/v1/config/backups", nil)
+	req := httptest.NewRequest("GET", "/api/v2/config/backups", nil)
 	w := httptest.NewRecorder()
 	srv.handleListConfigBackups(w, req)
 
@@ -512,7 +522,7 @@ func TestHandleListConfigBackups(t *testing.T) {
 func TestHandleListEvents(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/events", nil)
+	req := httptest.NewRequest("GET", "/api/v2/events", nil)
 	w := httptest.NewRecorder()
 	srv.handleListEvents(w, req)
 
@@ -524,7 +534,7 @@ func TestHandleListEvents(t *testing.T) {
 func TestHandleListHooks(t *testing.T) {
 	srv, _ := newTestServerWithConflicts(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/hooks", nil)
+	req := httptest.NewRequest("GET", "/api/v2/hooks", nil)
 	w := httptest.NewRecorder()
 	srv.handleListHooks(w, req)
 
@@ -542,7 +552,7 @@ func TestHandleListHooks(t *testing.T) {
 func TestHandleTestHook(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("POST", "/api/v1/hooks/test", nil)
+	req := httptest.NewRequest("POST", "/api/v2/hooks/test", nil)
 	w := httptest.NewRecorder()
 	srv.handleTestHook(w, req)
 
@@ -556,7 +566,7 @@ func TestHandleTestHook(t *testing.T) {
 func TestHandleHAStatusDisabled(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/ha/status", nil)
+	req := httptest.NewRequest("GET", "/api/v2/ha/status", nil)
 	w := httptest.NewRecorder()
 	srv.handleHAStatus(w, req)
 
@@ -589,7 +599,7 @@ func TestHandleHAStatusEnabled(t *testing.T) {
 
 	srv := NewServer(cfg, store, nil, nil, nil, bus, logger, WithFSM(fsm))
 
-	req := httptest.NewRequest("GET", "/api/v1/ha/status", nil)
+	req := httptest.NewRequest("GET", "/api/v2/ha/status", nil)
 	w := httptest.NewRecorder()
 	srv.handleHAStatus(w, req)
 
@@ -613,7 +623,7 @@ func TestHandleHAStatusEnabled(t *testing.T) {
 func TestHandleHAFailoverDisabled(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("POST", "/api/v1/ha/failover", nil)
+	req := httptest.NewRequest("POST", "/api/v2/ha/failover", nil)
 	w := httptest.NewRecorder()
 	srv.handleHAFailover(w, req)
 
@@ -639,7 +649,7 @@ func TestHandleHAFailoverEnabled(t *testing.T) {
 
 	srv := NewServer(cfg, store, nil, nil, nil, bus, logger, WithFSM(fsm))
 
-	req := httptest.NewRequest("POST", "/api/v1/ha/failover", nil)
+	req := httptest.NewRequest("POST", "/api/v2/ha/failover", nil)
 	w := httptest.NewRecorder()
 	srv.handleHAFailover(w, req)
 
@@ -689,7 +699,7 @@ func TestMetricsMiddlewareTracksRequests(t *testing.T) {
 	handler := newMetricsMiddleware(mux)
 
 	// Make a health request through the middleware
-	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req := httptest.NewRequest("GET", "/api/v2/health", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

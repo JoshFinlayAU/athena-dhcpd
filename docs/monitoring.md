@@ -2,6 +2,8 @@
 
 Prometheus metrics at `/metrics`. no auth on this endpoint so your prometheus scraper doesn't need to deal with tokens
 
+for a full walkthrough on installing prometheus, configuring grafana dashboards, and setting up alerts, see [Prometheus Setup Guide](prometheus-setup.md)
+
 ## scrape config
 
 ```yaml
@@ -140,6 +142,36 @@ rate(athena_dhcpd_api_requests_total{status=~"5.."}[5m])
 
 # API latency p95
 histogram_quantile(0.95, rate(athena_dhcpd_api_request_duration_seconds_bucket[5m]))
+```
+
+### DNS proxy
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `dns_queries_total` | counter | `qtype`, `status` | Queries by DNS type (A, AAAA, etc) and result (local, cached, forwarded, blocked, failed) |
+| `dns_query_duration_seconds` | histogram | `status` | Query processing latency. buckets from 0.1ms to 1s |
+| `dns_cache_entries` | gauge | | Current entries in the response cache |
+| `dns_cache_hits_total` | counter | | Cache hits |
+| `dns_cache_misses_total` | counter | | Cache misses |
+| `dns_blocked_total` | counter | `list`, `action` | Blocked queries by list name and action |
+| `dns_zone_records` | gauge | | Records in the local zone |
+| `dns_upstream_errors_total` | counter | | Failed upstream forward attempts |
+
+```promql
+# DNS queries per second by result
+sum by (status) (rate(athena_dhcpd_dns_queries_total[5m]))
+
+# cache hit ratio
+rate(athena_dhcpd_dns_cache_hits_total[5m]) / (rate(athena_dhcpd_dns_cache_hits_total[5m]) + rate(athena_dhcpd_dns_cache_misses_total[5m]))
+
+# block rate as percentage
+sum(rate(athena_dhcpd_dns_queries_total{status="blocked"}[5m])) / sum(rate(athena_dhcpd_dns_queries_total[5m])) * 100
+
+# queries blocked per list
+sum by (list) (rate(athena_dhcpd_dns_blocked_total[5m]))
+
+# upstream errors
+rate(athena_dhcpd_dns_upstream_errors_total[5m])
 ```
 
 ### DDNS

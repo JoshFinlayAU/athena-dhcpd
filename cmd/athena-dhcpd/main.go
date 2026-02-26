@@ -16,6 +16,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/api"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/dbconfig"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dhcp"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
@@ -29,37 +30,64 @@ func main() {
 	configPath := flag.String("config", "/etc/athena-dhcpd/config.toml", "path to configuration file")
 	flag.Parse()
 
-	// Load configuration
-	cfg, err := config.Load(*configPath)
+	// Load bootstrap configuration (server + api only from TOML)
+	bootstrap, err := config.LoadBootstrap(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Setup logging
-	logger := logging.Setup(cfg.Server.LogLevel, os.Stdout)
+	logger := logging.Setup(bootstrap.Server.LogLevel, os.Stdout)
 	logger.Info("athena-dhcpd starting",
 		"config", *configPath,
-		"interface", cfg.Server.Interface,
-		"server_id", cfg.Server.ServerID)
+		"interface", bootstrap.Server.Interface,
+		"server_id", bootstrap.Server.ServerID)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize event bus
-	bus := events.NewBus(cfg.Hooks.EventBufferSize, logger)
-	go bus.Start()
-	defer bus.Stop()
-
 	// Initialize lease store (BoltDB)
-	store, err := lease.NewStore(cfg.Server.LeaseDB)
+	store, err := lease.NewStore(bootstrap.Server.LeaseDB)
 	if err != nil {
 		logger.Error("failed to open lease database", "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
-	logger.Info("lease database opened", "path", cfg.Server.LeaseDB, "lease_count", store.Count())
+	logger.Info("lease database opened", "path", bootstrap.Server.LeaseDB, "lease_count", store.Count())
+
+	// Initialize config store (dynamic config in BoltDB)
+	cfgStore, err := dbconfig.NewStore(store.DB())
+	if err != nil {
+		logger.Error("failed to initialize config store", "error", err)
+		os.Exit(1)
+	}
+
+	// Auto-migrate v1 TOML config on first startup
+	if !cfgStore.IsV1Imported() {
+		// Try loading full TOML to check for dynamic config sections
+		fullCfg, fullErr := config.Load(*configPath)
+		if fullErr == nil && config.HasDynamicConfig(fullCfg) {
+			logger.Info("detected v1 TOML config with dynamic sections, importing to database")
+			if err := cfgStore.ImportFromConfig(fullCfg); err != nil {
+				logger.Error("failed to import v1 config", "error", err)
+				os.Exit(1)
+			}
+			logger.Info("v1 config imported successfully",
+				"subnets", len(fullCfg.Subnets))
+		}
+		cfgStore.MarkV1Imported()
+	}
+
+	// Build full config from bootstrap + DB
+	cfg := cfgStore.BuildConfig(bootstrap)
+	config.ApplyDynamicDefaults(cfg)
+
+	// Initialize event bus
+	bus := events.NewBus(cfg.Hooks.EventBufferSize, logger)
+	go bus.Start()
+	defer bus.Stop()
 
 	// Initialize lease manager
 	leaseMgr := lease.NewManager(store, cfg, bus, logger)
@@ -148,6 +176,7 @@ func main() {
 
 		apiOpts := []api.ServerOption{
 			api.WithConfigPath(*configPath),
+			api.WithConfigStore(cfgStore),
 		}
 		if dnsServer != nil {
 			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
@@ -167,6 +196,22 @@ func main() {
 		"dns_proxy", cfg.DNS.Enabled,
 		"api", cfg.API.Enabled)
 
+	// Register config change callback — rebuild config + reload pools on DB changes
+	cfgStore.OnChange(func() {
+		logger.Info("config changed in database, rebuilding")
+		newCfg := cfgStore.BuildConfig(bootstrap)
+		config.ApplyDynamicDefaults(newCfg)
+		cfg = newCfg
+		leaseMgr.UpdateConfig(cfg)
+		handler.UpdateConfig(cfg)
+		newPools, err := initPools(cfg, store)
+		if err != nil {
+			logger.Error("failed to reinitialize pools after config change", "error", err)
+			return
+		}
+		handler.UpdatePools(newPools)
+	})
+
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -175,13 +220,15 @@ func main() {
 		sig := <-sigCh
 		switch sig {
 		case syscall.SIGHUP:
-			logger.Info("received SIGHUP, reloading configuration")
-			newCfg, err := config.Load(*configPath)
+			logger.Info("received SIGHUP, reloading bootstrap config")
+			newBootstrap, err := config.LoadBootstrap(*configPath)
 			if err != nil {
-				logger.Error("failed to reload config", "error", err)
+				logger.Error("failed to reload bootstrap config", "error", err)
 				continue
 			}
-			cfg = newCfg
+			bootstrap = newBootstrap
+			cfg = cfgStore.BuildConfig(bootstrap)
+			config.ApplyDynamicDefaults(cfg)
 			leaseMgr.UpdateConfig(cfg)
 			handler.UpdateConfig(cfg)
 			newPools, err := initPools(cfg, store)
@@ -190,8 +237,6 @@ func main() {
 				continue
 			}
 			handler.UpdatePools(newPools)
-			// Note: DNS proxy config changes require restart for listener changes,
-			// but static records and forwarders could be refreshed here in the future.
 			logger.Info("configuration reloaded successfully")
 
 		case syscall.SIGINT, syscall.SIGTERM:

@@ -174,6 +174,10 @@ these are available to hooks. good for alerting — you probably want to know wh
 - `athena_dhcpd_ha_sync_operations_total{type}` — sync ops (lease_update, conflict_update)
 - `athena_dhcpd_ha_sync_errors_total` — sync failures
 
+## floating IP for DNS
+
+if you're running the DNS proxy in HA, clients need a stable IP to send DNS queries to. see [HA with Floating IP for DNS Proxy](ha-floating-ip.md) for a full guide on using keepalived (or event hooks) to move a virtual IP between nodes on failover
+
 ## things to know
 
 - both nodes must have the same subnet/pool configuration or bad things happen

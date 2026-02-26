@@ -63,24 +63,24 @@ func (w *statusWriter) Flush() {
 // normalizePath reduces cardinality by collapsing dynamic path segments.
 func normalizePath(path string) string {
 	switch {
-	case len(path) > 17 && path[:17] == "/api/v1/leases/ex":
-		return "/api/v1/leases/export"
-	case len(path) > 15 && path[:15] == "/api/v1/leases/":
-		return "/api/v1/leases/{ip}"
-	case len(path) > 22 && path[:22] == "/api/v1/reservations/e":
-		return "/api/v1/reservations/export"
-	case len(path) > 22 && path[:22] == "/api/v1/reservations/i":
-		return "/api/v1/reservations/import"
-	case len(path) > 21 && path[:21] == "/api/v1/reservations/":
-		return "/api/v1/reservations/{id}"
-	case len(path) > 22 && path[:22] == "/api/v1/conflicts/his":
-		return "/api/v1/conflicts/history"
-	case len(path) > 22 && path[:22] == "/api/v1/conflicts/sta":
-		return "/api/v1/conflicts/stats"
-	case len(path) > 18 && path[:18] == "/api/v1/conflicts/":
-		return "/api/v1/conflicts/{ip}"
-	case len(path) > 23 && path[:23] == "/api/v1/config/backups/":
-		return "/api/v1/config/backups/{timestamp}"
+	case len(path) > 17 && path[:17] == "/api/v2/leases/ex":
+		return "/api/v2/leases/export"
+	case len(path) > 15 && path[:15] == "/api/v2/leases/":
+		return "/api/v2/leases/{ip}"
+	case len(path) > 22 && path[:22] == "/api/v2/reservations/e":
+		return "/api/v2/reservations/export"
+	case len(path) > 22 && path[:22] == "/api/v2/reservations/i":
+		return "/api/v2/reservations/import"
+	case len(path) > 21 && path[:21] == "/api/v2/reservations/":
+		return "/api/v2/reservations/{id}"
+	case len(path) > 22 && path[:22] == "/api/v2/conflicts/his":
+		return "/api/v2/conflicts/history"
+	case len(path) > 22 && path[:22] == "/api/v2/conflicts/sta":
+		return "/api/v2/conflicts/stats"
+	case len(path) > 18 && path[:18] == "/api/v2/conflicts/":
+		return "/api/v2/conflicts/{ip}"
+	case len(path) > 23 && path[:23] == "/api/v2/config/backups/":
+		return "/api/v2/config/backups/{timestamp}"
 	default:
 		return path
 	}

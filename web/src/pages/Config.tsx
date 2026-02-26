@@ -28,6 +28,7 @@ export default function ConfigPage() {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
+  const [visualDirty, setVisualDirty] = useState(false)
   const initialToml = useRef<string>('')
 
   // Parse incoming TOML into structured config
@@ -71,8 +72,9 @@ export default function ConfigPage() {
   const switchTab = (newTab: Tab) => {
     if (newTab === tab) return
     if (newTab === 'toml') {
-      // Visual → TOML: serialize current config state
-      if (config) setRawContent(configToToml(config))
+      // Visual → TOML: only re-serialize if visual editor was modified
+      // Otherwise show the original server TOML (rawContent stays null)
+      if (visualDirty && config) setRawContent(configToToml(config))
     } else {
       // TOML → Visual: parse raw content
       const toml = rawContent ?? data?.config ?? ''
@@ -123,6 +125,7 @@ export default function ConfigPage() {
       const parsed = parse(data.config) as Record<string, unknown>
       setConfig(mergeWithDefaults(parsed))
       setRawContent(null)
+      setVisualDirty(false)
       setParseError(null)
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Failed to parse TOML')
@@ -210,15 +213,15 @@ export default function ConfigPage() {
         <Card className="p-8 text-center text-text-muted">Loading configuration...</Card>
       ) : tab === 'visual' && config && !parseError ? (
         <div className="space-y-4">
-          <ServerSection value={config.server} onChange={v => setConfig({ ...config, server: v })} />
-          <DefaultsSection value={config.defaults} onChange={v => setConfig({ ...config, defaults: v })} />
-          <SubnetsSection value={config.subnet || []} onChange={v => setConfig({ ...config, subnet: v })} />
-          <ConflictSection value={config.conflict_detection} onChange={v => setConfig({ ...config, conflict_detection: v })} />
-          <HASection value={config.ha} onChange={v => setConfig({ ...config, ha: v })} />
-          <DNSSection value={config.dns} onChange={v => setConfig({ ...config, dns: v })} />
-          <DDNSSection value={config.ddns} onChange={v => setConfig({ ...config, ddns: v })} />
-          <HooksSection value={config.hooks} onChange={v => setConfig({ ...config, hooks: v })} />
-          <APISection value={config.api} onChange={v => setConfig({ ...config, api: v })} />
+          <ServerSection value={config.server} onChange={v => { setVisualDirty(true); setConfig({ ...config, server: v }) }} />
+          <DefaultsSection value={config.defaults} onChange={v => { setVisualDirty(true); setConfig({ ...config, defaults: v }) }} />
+          <SubnetsSection value={config.subnet || []} onChange={v => { setVisualDirty(true); setConfig({ ...config, subnet: v }) }} />
+          <ConflictSection value={config.conflict_detection} onChange={v => { setVisualDirty(true); setConfig({ ...config, conflict_detection: v }) }} />
+          <HASection value={config.ha} onChange={v => { setVisualDirty(true); setConfig({ ...config, ha: v }) }} />
+          <DNSSection value={config.dns} onChange={v => { setVisualDirty(true); setConfig({ ...config, dns: v }) }} />
+          <DDNSSection value={config.ddns} onChange={v => { setVisualDirty(true); setConfig({ ...config, ddns: v }) }} />
+          <HooksSection value={config.hooks} onChange={v => { setVisualDirty(true); setConfig({ ...config, hooks: v }) }} />
+          <APISection value={config.api} onChange={v => { setVisualDirty(true); setConfig({ ...config, api: v }) }} />
         </div>
       ) : (
         <Card className="p-0 overflow-hidden">

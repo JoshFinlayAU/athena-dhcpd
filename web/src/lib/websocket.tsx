@@ -26,7 +26,7 @@ export function WSProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(() => {
     // SSE via native EventSource — works over plain HTTP, auto-reconnects
-    const es = new EventSource(`/api/v1/events/stream`)
+    const es = new EventSource(`/api/v2/events/stream`)
     esRef.current = es
 
     es.onopen = () => setConnected(true)

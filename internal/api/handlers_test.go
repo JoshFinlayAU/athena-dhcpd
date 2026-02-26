@@ -54,7 +54,7 @@ func newTestServer(t *testing.T) *Server {
 func TestHandleHealth(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req := httptest.NewRequest("GET", "/api/v2/health", nil)
 	w := httptest.NewRecorder()
 	srv.handleHealth(w, req)
 
@@ -86,7 +86,7 @@ func TestHandleListLeases(t *testing.T) {
 		LastUpdated: now,
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/leases", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases", nil)
 	w := httptest.NewRecorder()
 	srv.handleListLeases(w, req)
 
@@ -94,13 +94,21 @@ func TestHandleListLeases(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var leases []map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &leases)
-	if len(leases) != 1 {
-		t.Fatalf("expected 1 lease, got %d", len(leases))
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	leaseList, ok := resp["leases"].([]interface{})
+	if !ok {
+		t.Fatalf("expected leases array in response")
 	}
-	if leases[0]["hostname"] != "testhost" {
-		t.Errorf("hostname = %v, want testhost", leases[0]["hostname"])
+	if len(leaseList) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(leaseList))
+	}
+	first := leaseList[0].(map[string]interface{})
+	if first["hostname"] != "testhost" {
+		t.Errorf("hostname = %v, want testhost", first["hostname"])
+	}
+	if resp["total"].(float64) != 1 {
+		t.Errorf("total = %v, want 1", resp["total"])
 	}
 }
 
@@ -120,7 +128,7 @@ func TestHandleGetLease(t *testing.T) {
 		LastUpdated: now,
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/leases/192.168.1.100", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases/192.168.1.100", nil)
 	req.SetPathValue("ip", "192.168.1.100")
 	w := httptest.NewRecorder()
 	srv.handleGetLease(w, req)
@@ -133,7 +141,7 @@ func TestHandleGetLease(t *testing.T) {
 func TestHandleGetLeaseNotFound(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/leases/10.0.0.1", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases/10.0.0.1", nil)
 	req.SetPathValue("ip", "10.0.0.1")
 	w := httptest.NewRecorder()
 	srv.handleGetLease(w, req)
@@ -146,7 +154,7 @@ func TestHandleGetLeaseNotFound(t *testing.T) {
 func TestHandleGetLeaseInvalidIP(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/leases/badip", nil)
+	req := httptest.NewRequest("GET", "/api/v2/leases/badip", nil)
 	req.SetPathValue("ip", "badip")
 	w := httptest.NewRecorder()
 	srv.handleGetLease(w, req)
@@ -171,7 +179,7 @@ func TestHandleDeleteLease(t *testing.T) {
 		LastUpdated: now,
 	})
 
-	req := httptest.NewRequest("DELETE", "/api/v1/leases/192.168.1.100", nil)
+	req := httptest.NewRequest("DELETE", "/api/v2/leases/192.168.1.100", nil)
 	req.SetPathValue("ip", "192.168.1.100")
 	w := httptest.NewRecorder()
 	srv.handleDeleteLease(w, req)
@@ -188,7 +196,7 @@ func TestHandleDeleteLease(t *testing.T) {
 func TestHandleListSubnets(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/subnets", nil)
+	req := httptest.NewRequest("GET", "/api/v2/subnets", nil)
 	w := httptest.NewRecorder()
 	srv.handleListSubnets(w, req)
 
@@ -206,7 +214,7 @@ func TestHandleListSubnets(t *testing.T) {
 func TestHandleListConflictsNil(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/conflicts", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conflicts", nil)
 	w := httptest.NewRecorder()
 	srv.handleListConflicts(w, req)
 
@@ -218,7 +226,7 @@ func TestHandleListConflictsNil(t *testing.T) {
 func TestHandleGetStats(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	req := httptest.NewRequest("GET", "/api/v2/stats", nil)
 	w := httptest.NewRecorder()
 	srv.handleGetStats(w, req)
 
@@ -236,7 +244,7 @@ func TestHandleGetStats(t *testing.T) {
 func TestHandleGetConfig(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequest("GET", "/api/v2/config", nil)
 	w := httptest.NewRecorder()
 	srv.handleGetConfig(w, req)
 
@@ -263,7 +271,7 @@ func TestHandleSPA(t *testing.T) {
 func TestHandleSPANotForAPI(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/api/v2/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.handleSPA(w, req)
 

@@ -3,7 +3,7 @@ import { useWS } from '@/lib/websocket'
 import { useAuth } from '@/lib/auth'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut,
+  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut, ScrollText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,7 @@ const navItems = [
   { to: '/events', icon: Activity, label: 'Events' },
   { to: '/ha', icon: Shield, label: 'HA Status' },
   { to: '/dns', icon: ShieldCheck, label: 'DNS Filtering' },
+  { to: '/dns/querylog', icon: ScrollText, label: 'DNS Query Log' },
   { to: '/config', icon: Settings, label: 'Config' },
 ]
 

@@ -54,7 +54,7 @@ export default function Leases() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href="/api/v1/leases/export"
+            href="/api/v2/leases/export"
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-border hover:bg-surface-overlay transition-colors"
           >
             <Download className="w-3.5 h-3.5" /> Export

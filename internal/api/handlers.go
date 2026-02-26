@@ -16,9 +16,11 @@ import (
 // handleHealth returns server health status (no auth required).
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"status":    "ok",
-		"timestamp": time.Now().Unix(),
-		"leases":    s.leaseStore.Count(),
+		"status":      "ok",
+		"timestamp":   time.Now().Unix(),
+		"lease_count": s.leaseStore.Count(),
+		"uptime":      int64(time.Since(s.startTime).Seconds()),
+		"version":     s.version,
 	})
 }
 
@@ -38,11 +40,12 @@ type leaseResponse struct {
 }
 
 // handleListLeases returns all leases with optional filtering.
-// Query params: subnet, mac, hostname, state, limit, offset
+// Query params: search, subnet, mac, hostname, state, page, page_size
 func (s *Server) handleListLeases(w http.ResponseWriter, r *http.Request) {
 	leases := s.leaseStore.All()
 
 	// Apply filters
+	searchFilter := strings.ToLower(r.URL.Query().Get("search"))
 	subnetFilter := r.URL.Query().Get("subnet")
 	macFilter := strings.ToLower(r.URL.Query().Get("mac"))
 	hostnameFilter := strings.ToLower(r.URL.Query().Get("hostname"))
@@ -50,6 +53,17 @@ func (s *Server) handleListLeases(w http.ResponseWriter, r *http.Request) {
 
 	var filtered []*lease.Lease
 	for _, l := range leases {
+		// Generic search: OR match across IP, MAC, hostname
+		if searchFilter != "" {
+			ipStr := strings.ToLower(l.IP.String())
+			macStr := strings.ToLower(l.MAC.String())
+			hostStr := strings.ToLower(l.Hostname)
+			if !strings.Contains(ipStr, searchFilter) &&
+				!strings.Contains(macStr, searchFilter) &&
+				!strings.Contains(hostStr, searchFilter) {
+				continue
+			}
+		}
 		if subnetFilter != "" && l.Subnet != subnetFilter {
 			continue
 		}
@@ -65,28 +79,22 @@ func (s *Server) handleListLeases(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, l)
 	}
 
-	// Apply pagination
+	// Pagination
 	total := len(filtered)
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-
-	offset := 0
-	if offsetStr != "" {
-		if v, err := strconv.Atoi(offsetStr); err == nil && v > 0 {
-			offset = v
-		}
+	page := 1
+	pageSize := 100
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
+		page = v
 	}
-	limit := total
-	if limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
-			limit = v
-		}
+	if v, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && v > 0 {
+		pageSize = v
 	}
 
+	offset := (page - 1) * pageSize
 	if offset > total {
 		offset = total
 	}
-	end := offset + limit
+	end := offset + pageSize
 	if end > total {
 		end = total
 	}
@@ -98,7 +106,12 @@ func (s *Server) handleListLeases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("X-Total-Count", strconv.Itoa(total))
-	JSONResponse(w, http.StatusOK, result)
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"leases":    result,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 // handleExportLeases exports leases as CSV.
@@ -369,9 +382,9 @@ func (s *Server) handleConflictStats(w http.ResponseWriter, r *http.Request) {
 
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
 		"enabled":         true,
-		"active_count":    len(active),
-		"resolved_count":  len(resolved),
-		"permanent_count": s.conflictTable.PermanentCount(),
+		"total_active":    len(active),
+		"total_resolved":  len(resolved),
+		"total_permanent": s.conflictTable.PermanentCount(),
 		"by_method":       byMethod,
 		"by_subnet":       bySubnet,
 	})

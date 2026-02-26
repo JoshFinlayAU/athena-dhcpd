@@ -277,6 +277,67 @@ var (
 	}, []string{"type"})
 )
 
+// --- DNS Proxy Metrics ---
+
+var (
+	// DNSQueriesTotal counts DNS queries by type and result status.
+	DNSQueriesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dns_queries_total",
+		Help:      "Total DNS queries by query type and result status.",
+	}, []string{"qtype", "status"})
+
+	// DNSQueryDuration tracks DNS query processing latency.
+	DNSQueryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Name:      "dns_query_duration_seconds",
+		Help:      "DNS query processing duration in seconds.",
+		Buckets:   []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
+	}, []string{"status"})
+
+	// DNSCacheSize is the current number of entries in the DNS cache.
+	DNSCacheSize = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "dns_cache_entries",
+		Help:      "Current number of entries in the DNS response cache.",
+	})
+
+	// DNSCacheHits counts DNS cache hits.
+	DNSCacheHits = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dns_cache_hits_total",
+		Help:      "Total DNS cache hits.",
+	})
+
+	// DNSCacheMisses counts DNS cache misses.
+	DNSCacheMisses = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dns_cache_misses_total",
+		Help:      "Total DNS cache misses.",
+	})
+
+	// DNSBlockedTotal counts blocked DNS queries by list name.
+	DNSBlockedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dns_blocked_total",
+		Help:      "Total DNS queries blocked by filter lists.",
+	}, []string{"list", "action"})
+
+	// DNSZoneRecords is the current number of records in the local zone.
+	DNSZoneRecords = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "dns_zone_records",
+		Help:      "Current number of records in the local DNS zone.",
+	})
+
+	// DNSUpstreamErrors counts failed upstream DNS forwards.
+	DNSUpstreamErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dns_upstream_errors_total",
+		Help:      "Total failed DNS upstream forward attempts.",
+	})
+)
+
 // --- Server Info ---
 
 var (

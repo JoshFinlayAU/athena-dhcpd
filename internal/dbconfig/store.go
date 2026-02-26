@@ -1,0 +1,489 @@
+// Package dbconfig provides BoltDB-backed storage for dynamic configuration.
+// Bootstrap config (server + api) stays in TOML; everything else lives in the DB.
+package dbconfig
+
+import (
+	"encoding/json"
+	"fmt"
+	"sync"
+
+	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
+	bolt "go.etcd.io/bbolt"
+)
+
+// BoltDB bucket names for config storage.
+var (
+	bucketSubnets   = []byte("config_subnets")
+	bucketDefaults  = []byte("config_defaults")
+	bucketConflict  = []byte("config_conflict")
+	bucketHA        = []byte("config_ha")
+	bucketHooks     = []byte("config_hooks")
+	bucketDDNS      = []byte("config_ddns")
+	bucketDNS       = []byte("config_dns")
+	bucketMeta      = []byte("config_meta")
+
+	keyDefaults  = []byte("defaults")
+	keyConflict  = []byte("conflict_detection")
+	keyHA        = []byte("ha")
+	keyHooks     = []byte("hooks")
+	keyDDNS      = []byte("ddns")
+	keyDNS       = []byte("dns")
+	keyImported  = []byte("v1_imported")
+)
+
+// Store provides CRUD access to dynamic configuration stored in BoltDB.
+// Thread-safe — all reads and writes are protected by a mutex.
+type Store struct {
+	db *bolt.DB
+	mu sync.RWMutex
+
+	// In-memory cache
+	subnets   []config.SubnetConfig
+	defaults  config.DefaultsConfig
+	conflict  config.ConflictDetectionConfig
+	ha        config.HAConfig
+	hooks     config.HooksConfig
+	ddns      config.DDNSConfig
+	dns       config.DNSProxyConfig
+
+	// Listeners notified on config changes
+	onChange []func()
+}
+
+// NewStore initializes the config store, creating buckets and loading cached state.
+func NewStore(db *bolt.DB) (*Store, error) {
+	// Create buckets
+	err := db.Update(func(tx *bolt.Tx) error {
+		for _, b := range [][]byte{
+			bucketSubnets, bucketDefaults, bucketConflict,
+			bucketHA, bucketHooks, bucketDDNS, bucketDNS, bucketMeta,
+		} {
+			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
+				return fmt.Errorf("creating config bucket %s: %w", b, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initializing config buckets: %w", err)
+	}
+
+	s := &Store{db: db}
+	if err := s.loadAll(); err != nil {
+		return nil, fmt.Errorf("loading config from db: %w", err)
+	}
+	return s, nil
+}
+
+// OnChange registers a callback that fires whenever config is modified.
+func (s *Store) OnChange(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onChange = append(s.onChange, fn)
+}
+
+func (s *Store) notifyChange() {
+	for _, fn := range s.onChange {
+		go fn()
+	}
+}
+
+// IsV1Imported returns true if a v1 TOML config has already been imported.
+func (s *Store) IsV1Imported() bool {
+	var imported bool
+	s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMeta)
+		if b == nil {
+			return nil
+		}
+		imported = b.Get(keyImported) != nil
+		return nil
+	})
+	return imported
+}
+
+// MarkV1Imported marks the v1 TOML import as complete.
+func (s *Store) MarkV1Imported() error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMeta)
+		return b.Put(keyImported, []byte("1"))
+	})
+}
+
+// --- Subnets ---
+
+// Subnets returns all configured subnets.
+func (s *Store) Subnets() []config.SubnetConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]config.SubnetConfig, len(s.subnets))
+	copy(out, s.subnets)
+	return out
+}
+
+// GetSubnet returns a subnet by network CIDR.
+func (s *Store) GetSubnet(network string) (*config.SubnetConfig, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := range s.subnets {
+		if s.subnets[i].Network == network {
+			sub := s.subnets[i]
+			return &sub, true
+		}
+	}
+	return nil, false
+}
+
+// PutSubnet creates or updates a subnet.
+func (s *Store) PutSubnet(sub config.SubnetConfig) error {
+	data, err := json.Marshal(sub)
+	if err != nil {
+		return fmt.Errorf("marshalling subnet: %w", err)
+	}
+
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSubnets)
+		return b.Put([]byte(sub.Network), data)
+	}); err != nil {
+		return fmt.Errorf("storing subnet %s: %w", sub.Network, err)
+	}
+
+	s.mu.Lock()
+	found := false
+	for i := range s.subnets {
+		if s.subnets[i].Network == sub.Network {
+			s.subnets[i] = sub
+			found = true
+			break
+		}
+	}
+	if !found {
+		s.subnets = append(s.subnets, sub)
+	}
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+// DeleteSubnet removes a subnet by network CIDR.
+func (s *Store) DeleteSubnet(network string) error {
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSubnets)
+		return b.Delete([]byte(network))
+	}); err != nil {
+		return fmt.Errorf("deleting subnet %s: %w", network, err)
+	}
+
+	s.mu.Lock()
+	for i := range s.subnets {
+		if s.subnets[i].Network == network {
+			s.subnets = append(s.subnets[:i], s.subnets[i+1:]...)
+			break
+		}
+	}
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+// --- Reservations (scoped to a subnet) ---
+
+// GetReservations returns all reservations for a subnet.
+func (s *Store) GetReservations(network string) []config.ReservationConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, sub := range s.subnets {
+		if sub.Network == network {
+			out := make([]config.ReservationConfig, len(sub.Reservations))
+			copy(out, sub.Reservations)
+			return out
+		}
+	}
+	return nil
+}
+
+// PutReservation adds or updates a reservation within a subnet (matched by MAC or Identifier).
+func (s *Store) PutReservation(network string, res config.ReservationConfig) error {
+	s.mu.Lock()
+	var found bool
+	for i := range s.subnets {
+		if s.subnets[i].Network != network {
+			continue
+		}
+		// Update existing by MAC match
+		for j := range s.subnets[i].Reservations {
+			if s.subnets[i].Reservations[j].MAC == res.MAC && res.MAC != "" {
+				s.subnets[i].Reservations[j] = res
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.subnets[i].Reservations = append(s.subnets[i].Reservations, res)
+		}
+		// Persist the whole subnet
+		s.mu.Unlock()
+		return s.PutSubnet(s.subnets[i])
+	}
+	s.mu.Unlock()
+	return fmt.Errorf("subnet %s not found", network)
+}
+
+// DeleteReservation removes a reservation by MAC within a subnet.
+func (s *Store) DeleteReservation(network, mac string) error {
+	s.mu.Lock()
+	for i := range s.subnets {
+		if s.subnets[i].Network != network {
+			continue
+		}
+		for j := range s.subnets[i].Reservations {
+			if s.subnets[i].Reservations[j].MAC == mac {
+				s.subnets[i].Reservations = append(
+					s.subnets[i].Reservations[:j],
+					s.subnets[i].Reservations[j+1:]...,
+				)
+				s.mu.Unlock()
+				return s.PutSubnet(s.subnets[i])
+			}
+		}
+		s.mu.Unlock()
+		return fmt.Errorf("reservation with MAC %s not found in subnet %s", mac, network)
+	}
+	s.mu.Unlock()
+	return fmt.Errorf("subnet %s not found", network)
+}
+
+// ImportReservations bulk-imports reservations into a subnet (used for CSV import).
+func (s *Store) ImportReservations(network string, reservations []config.ReservationConfig) (int, error) {
+	s.mu.Lock()
+	for i := range s.subnets {
+		if s.subnets[i].Network != network {
+			continue
+		}
+		existing := make(map[string]int) // MAC → index
+		for j, r := range s.subnets[i].Reservations {
+			if r.MAC != "" {
+				existing[r.MAC] = j
+			}
+		}
+		added := 0
+		for _, r := range reservations {
+			if idx, ok := existing[r.MAC]; ok {
+				s.subnets[i].Reservations[idx] = r // update
+			} else {
+				s.subnets[i].Reservations = append(s.subnets[i].Reservations, r)
+				added++
+			}
+		}
+		sub := s.subnets[i]
+		s.mu.Unlock()
+		if err := s.PutSubnet(sub); err != nil {
+			return 0, err
+		}
+		return added, nil
+	}
+	s.mu.Unlock()
+	return 0, fmt.Errorf("subnet %s not found", network)
+}
+
+// --- Singleton config sections ---
+
+func (s *Store) Defaults() config.DefaultsConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.defaults
+}
+
+func (s *Store) SetDefaults(d config.DefaultsConfig) error {
+	if err := s.putJSON(bucketDefaults, keyDefaults, d); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.defaults = d
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+func (s *Store) ConflictDetection() config.ConflictDetectionConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.conflict
+}
+
+func (s *Store) SetConflictDetection(c config.ConflictDetectionConfig) error {
+	if err := s.putJSON(bucketConflict, keyConflict, c); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.conflict = c
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+func (s *Store) HA() config.HAConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ha
+}
+
+func (s *Store) SetHA(h config.HAConfig) error {
+	if err := s.putJSON(bucketHA, keyHA, h); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.ha = h
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+func (s *Store) Hooks() config.HooksConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.hooks
+}
+
+func (s *Store) SetHooks(h config.HooksConfig) error {
+	if err := s.putJSON(bucketHooks, keyHooks, h); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.hooks = h
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+func (s *Store) DDNS() config.DDNSConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ddns
+}
+
+func (s *Store) SetDDNS(d config.DDNSConfig) error {
+	if err := s.putJSON(bucketDDNS, keyDDNS, d); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.ddns = d
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+func (s *Store) DNS() config.DNSProxyConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dns
+}
+
+func (s *Store) SetDNS(d config.DNSProxyConfig) error {
+	if err := s.putJSON(bucketDNS, keyDNS, d); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.dns = d
+	s.mu.Unlock()
+	s.notifyChange()
+	return nil
+}
+
+// --- Build full config ---
+
+// BuildConfig merges bootstrap TOML config with DB-stored dynamic config.
+func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cfg := *bootstrap // shallow copy
+	cfg.Subnets = make([]config.SubnetConfig, len(s.subnets))
+	copy(cfg.Subnets, s.subnets)
+	cfg.Defaults = s.defaults
+	cfg.ConflictDetection = s.conflict
+	cfg.HA = s.ha
+	cfg.Hooks = s.hooks
+	cfg.DDNS = s.ddns
+	cfg.DNS = s.dns
+	return &cfg
+}
+
+// ImportFromConfig imports all dynamic sections from a full config (v1 TOML migration).
+func (s *Store) ImportFromConfig(cfg *config.Config) error {
+	if err := s.SetDefaults(cfg.Defaults); err != nil {
+		return fmt.Errorf("importing defaults: %w", err)
+	}
+	if err := s.SetConflictDetection(cfg.ConflictDetection); err != nil {
+		return fmt.Errorf("importing conflict detection: %w", err)
+	}
+	if err := s.SetHA(cfg.HA); err != nil {
+		return fmt.Errorf("importing HA: %w", err)
+	}
+	if err := s.SetHooks(cfg.Hooks); err != nil {
+		return fmt.Errorf("importing hooks: %w", err)
+	}
+	if err := s.SetDDNS(cfg.DDNS); err != nil {
+		return fmt.Errorf("importing DDNS: %w", err)
+	}
+	if err := s.SetDNS(cfg.DNS); err != nil {
+		return fmt.Errorf("importing DNS: %w", err)
+	}
+	for _, sub := range cfg.Subnets {
+		if err := s.PutSubnet(sub); err != nil {
+			return fmt.Errorf("importing subnet %s: %w", sub.Network, err)
+		}
+	}
+	return nil
+}
+
+// --- Internal helpers ---
+
+func (s *Store) putJSON(bucket, key []byte, v interface{}) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("marshalling config: %w", err)
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucket)
+		return b.Put(key, data)
+	})
+}
+
+func (s *Store) loadAll() error {
+	return s.db.View(func(tx *bolt.Tx) error {
+		// Load subnets
+		b := tx.Bucket(bucketSubnets)
+		if b != nil {
+			b.ForEach(func(k, v []byte) error {
+				var sub config.SubnetConfig
+				if err := json.Unmarshal(v, &sub); err == nil {
+					s.subnets = append(s.subnets, sub)
+				}
+				return nil
+			})
+		}
+
+		// Load singleton sections
+		loadJSON(tx, bucketDefaults, keyDefaults, &s.defaults)
+		loadJSON(tx, bucketConflict, keyConflict, &s.conflict)
+		loadJSON(tx, bucketHA, keyHA, &s.ha)
+		loadJSON(tx, bucketHooks, keyHooks, &s.hooks)
+		loadJSON(tx, bucketDDNS, keyDDNS, &s.ddns)
+		loadJSON(tx, bucketDNS, keyDNS, &s.dns)
+
+		return nil
+	})
+}
+
+func loadJSON(tx *bolt.Tx, bucket, key []byte, dest interface{}) {
+	b := tx.Bucket(bucket)
+	if b == nil {
+		return
+	}
+	data := b.Get(key)
+	if data == nil {
+		return
+	}
+	json.Unmarshal(data, dest)
+}

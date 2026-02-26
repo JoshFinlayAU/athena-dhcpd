@@ -8,8 +8,9 @@ import Reservations from '@/pages/Reservations'
 import Conflicts from '@/pages/Conflicts'
 import Events from '@/pages/Events'
 import HAStatus from '@/pages/HAStatus'
-import Config from '@/pages/Config'
+import Config from '@/pages/ConfigV2'
 import DNSFiltering from '@/pages/DNSFiltering'
+import DNSQueryLog from '@/pages/DNSQueryLog'
 import Login from '@/pages/Login'
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ export default function App() {
                 <Route path="/events" element={<Events />} />
                 <Route path="/ha" element={<HAStatus />} />
                 <Route path="/dns" element={<DNSFiltering />} />
+                <Route path="/dns/querylog" element={<DNSQueryLog />} />
                 <Route path="/config" element={<Config />} />
               </Route>
             </Routes>

@@ -434,9 +434,13 @@ all three protocols go through the same query pipeline so behaviour is identical
 
 ---
 
+## high availability
+
+if you're running two athena-dhcpd nodes in HA mode, you need a floating IP so DNS clients always have a stable address to query. see [HA with Floating IP for DNS Proxy](ha-floating-ip.md) for a full walkthrough using keepalived or event hook scripts
+
 ## practical tips
 
-- **point DNS at yourself** — set `dns_servers` in your subnet/defaults config to the server's own IP. clients will use the built-in proxy automatically
+- **point DNS at yourself** — set `dns_servers` in your subnet/defaults config to the server's own IP (or the floating VIP if running HA). clients will use the built-in proxy automatically
 - **start with one blocklist** — steven black unified is a good default. add more later if you want more aggressive blocking
 - **use allowlists for exceptions** — when a blocklist is too aggressive, don't remove the whole list. add an allowlist with the domains you need
 - **cache size** — 10000 is fine for most home/office networks. bump it up for larger deployments

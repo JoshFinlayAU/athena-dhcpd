@@ -455,6 +455,7 @@ function StandbyWaitStep({ haStatus, onComplete, saving }: {
 }) {
   const connected = haStatus?.peer_connected
   const state = haStatus?.state || 'waiting...'
+  const lastError = haStatus?.last_error
 
   return (
     <Card className="space-y-4 text-center">
@@ -476,6 +477,12 @@ function StandbyWaitStep({ haStatus, onComplete, saving }: {
             Peer: {connected ? <span className="text-success">Connected</span> : <span className="text-warning">Connecting...</span>}
           </p>
           <p className="text-xs text-text-muted font-mono">State: {state}</p>
+          {!connected && lastError && (
+            <p className="text-xs text-danger font-mono mt-2">{lastError}</p>
+          )}
+          {!connected && !lastError && haStatus?.enabled === false && (
+            <p className="text-xs text-text-muted mt-2">Initializing connection...</p>
+          )}
         </div>
       </div>
 

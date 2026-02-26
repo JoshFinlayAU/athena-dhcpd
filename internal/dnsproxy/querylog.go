@@ -7,15 +7,19 @@ import (
 
 // QueryLogEntry represents a single DNS query and its result.
 type QueryLogEntry struct {
-	Timestamp  time.Time `json:"timestamp"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	Source     string    `json:"source"`
-	Status     string    `json:"status"` // "allowed", "blocked", "cached", "local", "forwarded", "failed"
-	Latency    float64   `json:"latency_ms"`
-	Answer     string    `json:"answer,omitempty"`
-	ListName   string    `json:"list_name,omitempty"`
-	Action     string    `json:"action,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Source    string    `json:"source"`
+	Status    string    `json:"status"` // "allowed", "blocked", "cached", "local", "forwarded", "failed"
+	Latency   float64   `json:"latency_ms"`
+	Answer    string    `json:"answer,omitempty"`
+	ListName  string    `json:"list_name,omitempty"`
+	Action    string    `json:"action,omitempty"`
+	// Device identity fields (populated by DNS-to-device mapping)
+	DeviceMAC      string `json:"device_mac,omitempty"`
+	DeviceHostname string `json:"device_hostname,omitempty"`
+	DeviceType     string `json:"device_type,omitempty"`
 }
 
 // QueryLog is a thread-safe ring buffer for DNS query log entries.
@@ -27,9 +31,9 @@ type QueryLog struct {
 	count    int
 
 	// Subscribers for live streaming
-	subMu   sync.RWMutex
-	subs    map[int]chan QueryLogEntry
-	nextID  int
+	subMu  sync.RWMutex
+	subs   map[int]chan QueryLogEntry
+	nextID int
 }
 
 // NewQueryLog creates a new query log with the given capacity.

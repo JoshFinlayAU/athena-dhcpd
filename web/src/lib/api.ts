@@ -363,6 +363,50 @@ export interface DNSConfigType {
   list?: { name: string; url: string; type: string; format: string; action: string; enabled: boolean; refresh_interval: string }[]
 }
 
+export interface ScriptHookType {
+  name: string
+  events: string[]
+  command: string
+  timeout: string
+  subnets?: string[]
+}
+
+export interface WebhookHookType {
+  name: string
+  events: string[]
+  url: string
+  method: string
+  headers?: Record<string, string>
+  timeout: string
+  retries: number
+  retry_backoff: string
+  secret?: string
+  template?: string
+}
+
+export interface HooksConfigType {
+  event_buffer_size: number
+  script_concurrency: number
+  script_timeout: string
+  script?: ScriptHookType[]
+  webhook?: WebhookHookType[]
+}
+
+export const v2GetHooks = () => request<HooksConfigType>('/config/hooks')
+export const v2SetHooks = (cfg: HooksConfigType) =>
+  request<{ status: string }>('/config/hooks', { method: 'PUT', body: JSON.stringify(cfg) })
+
+export interface HostnameSanitisationConfig {
+  enabled: boolean
+  allow_regex: string
+  deny_patterns: string[]
+  dedup_suffix: boolean
+  max_length: number
+  strip_emoji: boolean
+  lowercase: boolean
+  fallback_template: string
+}
+
 // Subnets
 export const v2GetSubnets = () => request<SubnetConfig[]>('/config/subnets')
 export const v2CreateSubnet = (sub: SubnetConfig) =>
@@ -415,6 +459,176 @@ export const v2SetDDNSConfig = (d: DDNSConfigType) =>
 export const v2GetDNSConfig = () => request<DNSConfigType>('/config/dns')
 export const v2SetDNSConfig = (d: DNSConfigType) =>
   request<DNSConfigType>('/config/dns', { method: 'PUT', body: JSON.stringify(d) })
+
+export const v2GetHostnameSanitisation = () => request<HostnameSanitisationConfig>('/config/hostname-sanitisation')
+export const v2SetHostnameSanitisation = (h: HostnameSanitisationConfig) =>
+  request<HostnameSanitisationConfig>('/config/hostname-sanitisation', { method: 'PUT', body: JSON.stringify(h) })
+
+// Audit log
+export interface AuditRecord {
+  id: number
+  timestamp: string
+  event: string
+  ip: string
+  mac: string
+  client_id: string
+  hostname: string
+  fqdn: string
+  subnet: string
+  pool: string
+  lease_start: number
+  lease_expiry: number
+  circuit_id: string
+  remote_id: string
+  giaddr: string
+  server_id: string
+  ha_role: string
+  reason: string
+}
+
+export interface AuditQueryResult {
+  count: number
+  records: AuditRecord[]
+}
+
+export interface AuditQueryParams {
+  ip?: string
+  mac?: string
+  event?: string
+  from?: string
+  to?: string
+  at?: string
+  limit?: number
+}
+
+export const v2QueryAudit = (params: AuditQueryParams) => {
+  const qs = new URLSearchParams()
+  if (params.ip) qs.set('ip', params.ip)
+  if (params.mac) qs.set('mac', params.mac)
+  if (params.event) qs.set('event', params.event)
+  if (params.from) qs.set('from', params.from)
+  if (params.to) qs.set('to', params.to)
+  if (params.at) qs.set('at', params.at)
+  if (params.limit) qs.set('limit', String(params.limit))
+  return request<AuditQueryResult>(`/audit?${qs.toString()}`)
+}
+
+export const v2AuditStats = () => request<{ total_records: number }>('/audit/stats')
+
+export const v2AuditExportURL = (params: AuditQueryParams) => {
+  const qs = new URLSearchParams()
+  if (params.ip) qs.set('ip', params.ip)
+  if (params.mac) qs.set('mac', params.mac)
+  if (params.event) qs.set('event', params.event)
+  if (params.from) qs.set('from', params.from)
+  if (params.to) qs.set('to', params.to)
+  if (params.at) qs.set('at', params.at)
+  if (params.limit) qs.set('limit', String(params.limit))
+  return `${BASE}/audit/export?${qs.toString()}`
+}
+
+// Device fingerprints
+export interface DeviceFingerprint {
+  mac: string
+  fingerprint_hash: string
+  vendor_class: string
+  param_list: string
+  hostname: string
+  oui: string
+  device_type: string
+  device_name: string
+  os: string
+  confidence: number
+  source: string
+  first_seen: string
+  last_seen: string
+}
+
+export interface FingerprintStats {
+  total_devices: number
+  by_type: Record<string, number>
+  by_os: Record<string, number>
+}
+
+export const v2GetFingerprints = () => request<DeviceFingerprint[]>('/fingerprints')
+export const v2GetFingerprint = (mac: string) => request<DeviceFingerprint>(`/fingerprints/${encodeURIComponent(mac)}`)
+export const v2GetFingerprintStats = () => request<FingerprintStats>('/fingerprints/stats')
+
+// Rogue DHCP server detection
+export interface RogueServer {
+  server_ip: string
+  server_mac: string
+  last_offer_ip: string
+  last_client_mac: string
+  interface: string
+  first_seen: string
+  last_seen: string
+  count: number
+  acknowledged: boolean
+}
+
+export const v2GetRogueServers = () => request<RogueServer[]>('/rogue')
+export const v2GetRogueStats = () => request<{ total: number; active: number }>('/rogue/stats')
+export const v2AcknowledgeRogue = (serverIP: string) =>
+  request<{ status: string }>('/rogue/acknowledge', { method: 'POST', body: JSON.stringify({ server_ip: serverIP }) })
+export const v2RemoveRogue = (serverIP: string) =>
+  request<{ status: string }>('/rogue/remove', { method: 'POST', body: JSON.stringify({ server_ip: serverIP }) })
+
+// Topology
+export interface TopologyDevice {
+  mac: string
+  ip: string
+  hostname: string
+  subnet: string
+  first_seen: string
+  last_seen: string
+}
+
+export interface TopologyPort {
+  circuit_id: string
+  label: string
+  first_seen: string
+  last_seen: string
+  devices: TopologyDevice[]
+}
+
+export interface TopologySwitch {
+  id: string
+  remote_id: string
+  giaddr: string
+  label: string
+  first_seen: string
+  last_seen: string
+  ports: Record<string, TopologyPort>
+}
+
+export interface TopologyStats {
+  switches: number
+  ports: number
+  devices: number
+}
+
+export const v2GetTopology = () => request<TopologySwitch[]>('/topology')
+export const v2GetTopologyStats = () => request<TopologyStats>('/topology/stats')
+export const v2SetTopologyLabel = (switchId: string, portId: string, label: string) =>
+  request<{ status: string }>('/topology/label', { method: 'POST', body: JSON.stringify({ switch_id: switchId, port_id: portId, label }) })
+
+// Anomaly detection / Network Weather
+export interface SubnetWeather {
+  subnet: string
+  current_rate: number
+  baseline_rate: number
+  std_dev: number
+  known_macs: number
+  unknown_macs_recent: number
+  last_activity: string
+  silent_minutes: number
+  anomaly_score: number
+  anomaly_reason: string
+  status: string
+}
+
+export const v2GetWeather = () => request<SubnetWeather[]>('/anomaly/weather')
 
 export const v2ImportTOML = (toml: string) =>
   request<{ status: string; subnets: number }>('/config/import', { method: 'POST', body: JSON.stringify({ toml }) })

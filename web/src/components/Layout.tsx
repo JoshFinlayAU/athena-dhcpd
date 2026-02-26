@@ -6,7 +6,7 @@ import { usePolling } from '@/hooks/useApi'
 import { getHAStatus } from '@/lib/api'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut, ScrollText, ExternalLink,
+  Activity, Settings, Shield, ShieldCheck, ShieldAlert, Wifi, WifiOff, LogOut, ScrollText, FileText, Fingerprint, GitBranch, CloudSun, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +19,11 @@ const navItems = [
   { to: '/ha', icon: Shield, label: 'HA Status' },
   { to: '/dns', icon: ShieldCheck, label: 'DNS Filtering' },
   { to: '/dns/querylog', icon: ScrollText, label: 'DNS Query Log' },
+  { to: '/audit', icon: FileText, label: 'Audit Log' },
+  { to: '/fingerprints', icon: Fingerprint, label: 'Fingerprints' },
+  { to: '/rogue', icon: ShieldAlert, label: 'Rogue Servers' },
+  { to: '/topology', icon: GitBranch, label: 'Topology' },
+  { to: '/weather', icon: CloudSun, label: 'Network Weather' },
   { to: '/config', icon: Settings, label: 'Config' },
 ]
 

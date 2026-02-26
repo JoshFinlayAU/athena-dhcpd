@@ -12,14 +12,22 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/anomaly"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/audit"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dbconfig"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/fingerprint"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/ha"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/macvendor"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/portauto"
+	radiuspkg "github.com/athena-dhcpd/athena-dhcpd/internal/radius"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
 )
 
 // Server is the HTTP API server for athena-dhcpd.
@@ -34,6 +42,14 @@ type Server struct {
 	fsm             *ha.FSM
 	peer            *ha.Peer
 	dns             *dnsproxy.Server
+	auditLog        *audit.Log
+	fpStore         *fingerprint.Store
+	rogueDetector   *rogue.Detector
+	topoMap         *topology.Map
+	anomalyDetector *anomaly.Detector
+	macVendorDB     *macvendor.DB
+	radiusClient    *radiuspkg.Client
+	portAutoEngine  *portauto.Engine
 	logger          *slog.Logger
 	httpServer      *http.Server
 	auth            *AuthMiddleware
@@ -111,6 +127,46 @@ func WithConfigStore(cs *dbconfig.Store) ServerOption {
 	return func(s *Server) { s.cfgStore = cs }
 }
 
+// WithAuditLog sets the lease audit log.
+func WithAuditLog(al *audit.Log) ServerOption {
+	return func(s *Server) { s.auditLog = al }
+}
+
+// WithFingerprintStore sets the device fingerprint store.
+func WithFingerprintStore(fs *fingerprint.Store) ServerOption {
+	return func(s *Server) { s.fpStore = fs }
+}
+
+// WithRogueDetector sets the rogue DHCP server detector.
+func WithRogueDetector(rd *rogue.Detector) ServerOption {
+	return func(s *Server) { s.rogueDetector = rd }
+}
+
+// WithTopologyMap sets the Option 82 topology map.
+func WithTopologyMap(tm *topology.Map) ServerOption {
+	return func(s *Server) { s.topoMap = tm }
+}
+
+// WithAnomalyDetector sets the anomaly detector.
+func WithAnomalyDetector(ad *anomaly.Detector) ServerOption {
+	return func(s *Server) { s.anomalyDetector = ad }
+}
+
+// WithMACVendorDB sets the MAC vendor lookup database.
+func WithMACVendorDB(db *macvendor.DB) ServerOption {
+	return func(s *Server) { s.macVendorDB = db }
+}
+
+// WithRADIUSClient sets the RADIUS authentication client.
+func WithRADIUSClient(rc *radiuspkg.Client) ServerOption {
+	return func(s *Server) { s.radiusClient = rc }
+}
+
+// WithPortAutoEngine sets the port automation engine.
+func WithPortAutoEngine(pa *portauto.Engine) ServerOption {
+	return func(s *Server) { s.portAutoEngine = pa }
+}
+
 // WithSetupMode marks this server as running in setup wizard mode.
 func WithSetupMode(cb func()) ServerOption {
 	return func(s *Server) {
@@ -149,6 +205,12 @@ func (s *Server) Start() error {
 // Stop gracefully shuts down the API server.
 func (s *Server) Stop(ctx context.Context) error {
 	s.sseHub.Stop()
+	// Stop HA peer if one was started during the setup wizard
+	if s.setupMode && s.peer != nil {
+		s.peer.Stop()
+		s.peer = nil
+		s.fsm = nil
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 
@@ -212,6 +274,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v2/config/ddns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDDNS)))
 	mux.HandleFunc("GET /api/v2/config/dns", s.auth.RequireAuth(s.handleV2GetDNS))
 	mux.HandleFunc("PUT /api/v2/config/dns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDNS)))
+	mux.HandleFunc("GET /api/v2/config/hostname-sanitisation", s.auth.RequireAuth(s.handleV2GetHostnameSanitisation))
+	mux.HandleFunc("PUT /api/v2/config/hostname-sanitisation", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetHostnameSanitisation)))
 	mux.HandleFunc("POST /api/v2/config/import", s.auth.RequireAdmin(s.standbyGuard(s.handleV2ImportTOML)))
 	mux.HandleFunc("GET /api/v2/config/raw", s.auth.RequireAuth(s.handleGetConfigRaw))
 	mux.HandleFunc("POST /api/v2/config/validate", s.auth.RequireAuth(s.handleValidateConfig))
@@ -221,6 +285,46 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/events/stream", s.auth.RequireAuth(s.handleSSE))
 	mux.HandleFunc("GET /api/v2/hooks", s.auth.RequireAuth(s.handleListHooks))
 	mux.HandleFunc("POST /api/v2/hooks/test", s.auth.RequireAdmin(s.handleTestHook))
+
+	// Audit log
+	mux.HandleFunc("GET /api/v2/audit", s.auth.RequireAuth(s.handleAuditQuery))
+	mux.HandleFunc("GET /api/v2/audit/export", s.auth.RequireAuth(s.handleAuditExportCSV))
+	mux.HandleFunc("GET /api/v2/audit/stats", s.auth.RequireAuth(s.handleAuditStats))
+
+	// Device fingerprints
+	mux.HandleFunc("GET /api/v2/fingerprints", s.auth.RequireAuth(s.handleFingerprintList))
+	mux.HandleFunc("GET /api/v2/fingerprints/stats", s.auth.RequireAuth(s.handleFingerprintStats))
+	mux.HandleFunc("GET /api/v2/fingerprints/{mac}", s.auth.RequireAuth(s.handleFingerprintGet))
+
+	// Rogue DHCP server detection
+	mux.HandleFunc("GET /api/v2/rogue", s.auth.RequireAuth(s.handleRogueList))
+	mux.HandleFunc("GET /api/v2/rogue/stats", s.auth.RequireAuth(s.handleRogueStats))
+	mux.HandleFunc("POST /api/v2/rogue/acknowledge", s.auth.RequireAdmin(s.handleRogueAcknowledge))
+	mux.HandleFunc("POST /api/v2/rogue/remove", s.auth.RequireAdmin(s.handleRogueRemove))
+
+	// Topology
+	mux.HandleFunc("GET /api/v2/topology", s.auth.RequireAuth(s.handleTopologyTree))
+	mux.HandleFunc("GET /api/v2/topology/stats", s.auth.RequireAuth(s.handleTopologyStats))
+	mux.HandleFunc("POST /api/v2/topology/label", s.auth.RequireAdmin(s.handleTopologySetLabel))
+
+	// Anomaly detection
+	mux.HandleFunc("GET /api/v2/anomaly/weather", s.auth.RequireAuth(s.handleAnomalyWeather))
+
+	// MAC vendor lookup
+	mux.HandleFunc("GET /api/v2/macvendor/stats", s.auth.RequireAuth(s.handleMACVendorStats))
+	mux.HandleFunc("GET /api/v2/macvendor/{mac}", s.auth.RequireAuth(s.handleMACVendorLookup))
+
+	// RADIUS
+	mux.HandleFunc("GET /api/v2/radius", s.auth.RequireAuth(s.handleRADIUSList))
+	mux.HandleFunc("POST /api/v2/radius/test", s.auth.RequireAdmin(s.handleRADIUSTest))
+	mux.HandleFunc("GET /api/v2/radius/{subnet}", s.auth.RequireAuth(s.handleRADIUSGetSubnet))
+	mux.HandleFunc("PUT /api/v2/radius/{subnet}", s.auth.RequireAdmin(s.handleRADIUSSetSubnet))
+	mux.HandleFunc("DELETE /api/v2/radius/{subnet}", s.auth.RequireAdmin(s.handleRADIUSDeleteSubnet))
+
+	// Port automation
+	mux.HandleFunc("GET /api/v2/portauto/rules", s.auth.RequireAuth(s.handlePortAutoGetRules))
+	mux.HandleFunc("PUT /api/v2/portauto/rules", s.auth.RequireAdmin(s.handlePortAutoSetRules))
+	mux.HandleFunc("POST /api/v2/portauto/test", s.auth.RequireAdmin(s.handlePortAutoTest))
 
 	// HA
 	mux.HandleFunc("GET /api/v2/ha/status", s.auth.RequireAuth(s.handleHAStatus))

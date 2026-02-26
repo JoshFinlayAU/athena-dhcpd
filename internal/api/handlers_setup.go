@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/ha"
 )
 
 // --- Setup Wizard API ---
@@ -133,11 +136,45 @@ func (s *Server) handleSetupHA(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.HA = haCfg
 
+	// For secondary: start HA peer connection so the standby-wait step
+	// shows real connection status and errors to the user.
+	if req.Role == "secondary" {
+		s.startSetupHAPeer(&haCfg)
+	}
+
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
 		"status": "ok",
 		"mode":   "ha",
 		"role":   req.Role,
 	})
+}
+
+// startSetupHAPeer creates and starts an HA peer during the setup wizard
+// so the secondary can connect to the primary and show status in the UI.
+func (s *Server) startSetupHAPeer(haCfg *config.HAConfig) {
+	failoverTimeout := 10 * time.Second
+	if haCfg.FailoverTimeout != "" {
+		if d, err := time.ParseDuration(haCfg.FailoverTimeout); err == nil {
+			failoverTimeout = d
+		}
+	}
+
+	fsm := ha.NewFSM("secondary", failoverTimeout, s.bus, s.logger)
+	peer, err := ha.NewPeer(haCfg, fsm, s.leaseStore, s.bus, s.logger)
+	if err != nil {
+		s.logger.Error("failed to create HA peer during setup", "error", err)
+		return
+	}
+
+	if err := peer.Start(context.Background()); err != nil {
+		s.logger.Error("failed to start HA peer during setup", "error", err)
+		return
+	}
+
+	s.fsm = fsm
+	s.peer = peer
+	s.logger.Info("HA peer started for setup — connecting to primary",
+		"peer_address", haCfg.PeerAddress)
 }
 
 // setupConfigRequest is the JSON body for the config setup step.

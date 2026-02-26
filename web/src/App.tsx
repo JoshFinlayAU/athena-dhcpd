@@ -12,6 +12,11 @@ import HAStatus from '@/pages/HAStatus'
 import Config from '@/pages/ConfigV2'
 import DNSFiltering from '@/pages/DNSFiltering'
 import DNSQueryLog from '@/pages/DNSQueryLog'
+import AuditLog from '@/pages/AuditLog'
+import Fingerprints from '@/pages/Fingerprints'
+import RogueServers from '@/pages/RogueServers'
+import Topology from '@/pages/Topology'
+import NetworkWeather from '@/pages/NetworkWeather'
 import Login from '@/pages/Login'
 import SetupWizard from '@/pages/SetupWizard'
 import { getSetupStatus } from '@/lib/api'
@@ -75,6 +80,11 @@ export default function App() {
                   <Route path="/ha" element={<HAStatus />} />
                   <Route path="/dns" element={<DNSFiltering />} />
                   <Route path="/dns/querylog" element={<DNSQueryLog />} />
+                  <Route path="/audit" element={<AuditLog />} />
+                  <Route path="/fingerprints" element={<Fingerprints />} />
+                  <Route path="/rogue" element={<RogueServers />} />
+                  <Route path="/topology" element={<Topology />} />
+                  <Route path="/weather" element={<NetworkWeather />} />
                   <Route path="/config" element={<Config />} />
                 </Route>
               </Routes>

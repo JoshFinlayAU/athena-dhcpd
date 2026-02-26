@@ -33,6 +33,8 @@ type Peer struct {
 	onConflictUpdate  func(ConflictUpdatePayload)
 	onConfigSync      func(ConfigSyncPayload)
 	onAdjacencyFormed func()
+	lastConnErr       string
+	lastConnErrAt     time.Time
 }
 
 // NewPeer creates a new HA peer manager.
@@ -118,9 +120,14 @@ func (p *Peer) Start(ctx context.Context) error {
 	p.wg.Add(1)
 	go p.acceptLoop(ctx)
 
-	// Connect to peer (outbound)
-	p.wg.Add(1)
-	go p.connectLoop(ctx)
+	// Only secondary connects outbound to primary.
+	// Primary is active and just listens for the secondary to connect.
+	if p.cfg.Role == "secondary" {
+		p.wg.Add(1)
+		go p.connectLoop(ctx)
+	} else {
+		p.logger.Info("primary role — waiting for secondary to connect inbound")
+	}
 
 	// Heartbeat sender
 	p.wg.Add(1)
@@ -266,6 +273,10 @@ func (p *Peer) connectLoop(ctx context.Context) {
 
 		conn, err := net.DialTimeout("tcp", p.cfg.PeerAddress, 5*time.Second)
 		if err != nil {
+			p.mu.Lock()
+			p.lastConnErr = err.Error()
+			p.lastConnErrAt = time.Now()
+			p.mu.Unlock()
 			if backoff > time.Second {
 				p.logger.Warn("failed to connect to peer, retrying",
 					"address", p.cfg.PeerAddress,
@@ -283,6 +294,9 @@ func (p *Peer) connectLoop(ctx context.Context) {
 			continue
 		}
 
+		p.mu.Lock()
+		p.lastConnErr = ""
+		p.mu.Unlock()
 		backoff = time.Second
 		p.logger.Info("outbound peer connection established", "address", p.cfg.PeerAddress)
 		p.setConn(conn)
@@ -480,6 +494,13 @@ func (p *Peer) Connected() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.conn != nil
+}
+
+// LastConnError returns the last outbound connection error and when it occurred.
+func (p *Peer) LastConnError() (string, time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastConnErr, p.lastConnErrAt
 }
 
 // FSM returns the failover state machine.

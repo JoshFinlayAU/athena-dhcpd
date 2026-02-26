@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -33,14 +32,11 @@ func WriteHASection(path string, ha *HAConfig) error {
 	content := string(data)
 	newHA := buf.String()
 
-	// Try to replace existing [ha] section (everything from [ha] to next [section] or EOF)
-	haRe := regexp.MustCompile(`(?ms)^\[ha\]\s*\n.*?(?:\z|(?=^\[[a-z]))`)
-	if haRe.MatchString(content) {
-		content = haRe.ReplaceAllString(content, newHA+"\n")
-	} else {
-		// No existing [ha] section — append after the last line
-		content = strings.TrimRight(content, "\n") + "\n\n" + newHA
-	}
+	// Replace existing [ha] section using line-based parsing.
+	// Go's regexp package does not support Perl lookahead (?=...) so we
+	// walk lines instead: skip everything from [ha] (or [ha.*]) until the
+	// next top-level section that isn't a sub-table of ha.
+	content = replaceOrAppendSection(content, "ha", newHA)
 
 	// Create backup
 	ts := time.Now().Format("20060102T150405")
@@ -70,6 +66,47 @@ func WriteHASection(path string, ha *HAConfig) error {
 	}
 
 	return nil
+}
+
+// replaceOrAppendSection replaces a TOML top-level section (and its sub-tables)
+// with newContent, or appends it if the section doesn't exist.
+// sectionName should be bare, e.g. "ha" — it matches [ha] and [ha.*].
+func replaceOrAppendSection(content, sectionName, newContent string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	inSection := false
+	replaced := false
+	header := "[" + sectionName + "]"
+	subPrefix := "[" + sectionName + "."
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inSection {
+			if trimmed == header || strings.HasPrefix(trimmed, subPrefix) {
+				inSection = true
+				if !replaced {
+					result = append(result, strings.TrimRight(newContent, "\n"))
+					replaced = true
+				}
+				continue
+			}
+			result = append(result, line)
+		} else {
+			// Check if this line starts a new section that isn't part of our target
+			if len(trimmed) > 0 && trimmed[0] == '[' && trimmed != header && !strings.HasPrefix(trimmed, subPrefix) {
+				inSection = false
+				result = append(result, line)
+				continue
+			}
+			// Still inside the target section — skip
+			continue
+		}
+	}
+
+	if !replaced {
+		return strings.TrimRight(strings.Join(result, "\n"), "\n") + "\n\n" + newContent
+	}
+	return strings.Join(result, "\n")
 }
 
 // haToMap converts HAConfig to a flat map for TOML encoding without the

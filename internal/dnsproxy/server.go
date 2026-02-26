@@ -22,18 +22,20 @@ import (
 
 // Server is the built-in DNS proxy with local zone support and upstream forwarding.
 type Server struct {
-	cfg      *config.DNSProxyConfig
-	zone     *Zone
-	cache    *Cache
-	lists    *ListManager
-	queryLog *QueryLog
-	logger   *slog.Logger
+	cfg       *config.DNSProxyConfig
+	zone      *Zone
+	cache     *Cache
+	lists     *ListManager
+	queryLog  *QueryLog
+	deviceMap *DeviceMapper
+	logger    *slog.Logger
 
 	udpServer *dns.Server
 	tcpServer *dns.Server
 	dohServer *http.Server
 
 	forwarders    []string
+	upstream      *UpstreamTracker
 	zoneOverrides map[string]config.DNSZoneOverride // lowercased zone -> override
 	cacheTTL      time.Duration
 
@@ -54,8 +56,10 @@ func NewServer(cfg *config.DNSProxyConfig, logger *slog.Logger) *Server {
 		cache:         NewCache(cfg.CacheSize),
 		lists:         NewListManager(cfg.Lists, logger),
 		queryLog:      NewQueryLog(5000),
+		deviceMap:     NewDeviceMapper(),
 		logger:        logger,
 		forwarders:    cfg.Forwarders,
+		upstream:      NewUpstreamTracker(cfg.Forwarders, logger),
 		zoneOverrides: make(map[string]config.DNSZoneOverride),
 		cacheTTL:      cacheTTL,
 	}
@@ -160,6 +164,11 @@ func (s *Server) Start(ctx context.Context) error {
 		s.lists.Start(ctx)
 	}
 
+	// Start upstream latency tracker
+	if s.upstream != nil {
+		s.upstream.Start()
+	}
+
 	s.started = true
 	s.logger.Info("DNS proxy started",
 		"udp", s.cfg.ListenUDP,
@@ -183,6 +192,9 @@ func (s *Server) Stop() {
 		return
 	}
 
+	if s.upstream != nil {
+		s.upstream.Stop()
+	}
 	if s.lists != nil {
 		s.lists.Stop()
 	}
@@ -231,7 +243,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 			elapsed := time.Since(start).Seconds()
 			s.logger.Debug("DNS query blocked by list",
 				"name", qname, "list", listName, "action", action)
-			s.queryLog.Add(QueryLogEntry{
+			s.addQueryLog(QueryLogEntry{
 				Timestamp: start, Name: qname, Type: qtype, Source: source,
 				Status: "blocked", Latency: float64(time.Since(start).Microseconds()) / 1000,
 				ListName: listName, Action: action,
@@ -257,7 +269,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		if len(rrs) > 0 {
 			answer = rrs[0].String()
 		}
-		s.queryLog.Add(QueryLogEntry{
+		s.addQueryLog(QueryLogEntry{
 			Timestamp: start, Name: qname, Type: qtype, Source: source,
 			Status: "local", Latency: float64(time.Since(start).Microseconds()) / 1000,
 			Answer: answer,
@@ -277,7 +289,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		if len(cached.Answer) > 0 {
 			answer = cached.Answer[0].String()
 		}
-		s.queryLog.Add(QueryLogEntry{
+		s.addQueryLog(QueryLogEntry{
 			Timestamp: start, Name: qname, Type: qtype, Source: source,
 			Status: "cached", Latency: float64(time.Since(start).Microseconds()) / 1000,
 			Answer: answer,
@@ -295,7 +307,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		elapsed := time.Since(start).Seconds()
 		s.logger.Debug("DNS forward failed", "name", qname, "error", err)
 		dns.HandleFailed(w, r)
-		s.queryLog.Add(QueryLogEntry{
+		s.addQueryLog(QueryLogEntry{
 			Timestamp: start, Name: qname, Type: qtype, Source: source,
 			Status: "failed", Latency: float64(time.Since(start).Microseconds()) / 1000,
 		})
@@ -313,7 +325,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 	if len(resp.Answer) > 0 {
 		answer = resp.Answer[0].String()
 	}
-	s.queryLog.Add(QueryLogEntry{
+	s.addQueryLog(QueryLogEntry{
 		Timestamp: start, Name: qname, Type: qtype, Source: source,
 		Status: "forwarded", Latency: float64(time.Since(start).Microseconds()) / 1000,
 		Answer: answer,
@@ -374,26 +386,41 @@ func (s *Server) forwardToOverride(r *dns.Msg, zo config.DNSZoneOverride) (*dns.
 	return s.forwardToUpstream(r, []string{ns})
 }
 
-// forwardToUpstream tries each upstream server in order until one succeeds.
+// forwardToUpstream tries upstream servers ordered by latency until one succeeds.
 func (s *Server) forwardToUpstream(r *dns.Msg, servers []string) (*dns.Msg, error) {
 	client := &dns.Client{
 		Timeout: 5 * time.Second,
 	}
 
+	// Use latency-aware ordering if tracker is available and we're using the main forwarders
+	ordered := servers
+	if s.upstream != nil && len(servers) == len(s.forwarders) {
+		ordered = s.upstream.BestServers()
+	}
+
 	var lastErr error
-	for _, server := range servers {
+	for _, server := range ordered {
 		addr := server
 		if !strings.Contains(addr, ":") {
 			addr = addr + ":53"
 		}
 
+		start := time.Now()
 		resp, _, err := client.Exchange(r, addr)
+		elapsed := time.Since(start)
+
 		if err != nil {
 			lastErr = fmt.Errorf("forwarding to %s: %w", addr, err)
 			s.logger.Debug("upstream DNS server failed", "server", addr, "error", err)
+			if s.upstream != nil {
+				s.upstream.RecordFailure(addr)
+			}
 			continue
 		}
 
+		if s.upstream != nil {
+			s.upstream.RecordSuccess(addr, elapsed)
+		}
 		return resp, nil
 	}
 
@@ -649,5 +676,29 @@ func (s *Server) Stats() map[string]interface{} {
 	if s.lists != nil {
 		stats["blocked_domains"] = s.lists.TotalDomains()
 	}
+	if s.upstream != nil {
+		stats["upstreams"] = s.upstream.Stats()
+	}
 	return stats
+}
+
+// DeviceMap returns the device mapper for external lease registration.
+func (s *Server) DeviceMap() *DeviceMapper {
+	return s.deviceMap
+}
+
+// addQueryLog enriches a query log entry with device info and adds it.
+func (s *Server) addQueryLog(entry QueryLogEntry) {
+	if s.deviceMap != nil {
+		s.deviceMap.EnrichEntry(&entry)
+	}
+	s.queryLog.Add(entry)
+}
+
+// UpstreamStats returns latency and reliability stats for all upstream resolvers.
+func (s *Server) UpstreamStats() []UpstreamStats {
+	if s.upstream == nil {
+		return nil
+	}
+	return s.upstream.Stats()
 }

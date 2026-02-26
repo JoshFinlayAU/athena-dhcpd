@@ -9,6 +9,7 @@ import (
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/hostname"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 )
 
@@ -26,6 +27,7 @@ type Manager struct {
 	wg           sync.WaitGroup
 	retryBackoff time.Duration
 	maxRetries   int
+	sanitiser    *hostname.Sanitiser
 }
 
 // NewManager creates a new DDNS manager.
@@ -249,9 +251,14 @@ func (m *Manager) buildFQDN(l *events.LeaseData) string {
 		clientFQDN = l.FQDN
 	}
 
-	hostname := SanitizeHostname(l.Hostname)
+	var cleanHostname string
+	if m.sanitiser != nil {
+		cleanHostname, _ = m.sanitiser.Sanitise(l.Hostname, l.Subnet, l.MAC)
+	} else {
+		cleanHostname = SanitizeHostname(l.Hostname)
+	}
 
-	return BuildFQDN(clientFQDN, hostname, domain, l.MAC, m.cfg.FallbackToMAC)
+	return BuildFQDN(clientFQDN, cleanHostname, domain, l.MAC, m.cfg.FallbackToMAC)
 }
 
 // getForwardZone returns the forward zone for a subnet (with override support).
@@ -291,6 +298,11 @@ func (m *Manager) withRetry(op, name string, fn func() error) {
 	}
 	m.logger.Error("DDNS operation failed after all retries",
 		"op", op, "name", name, "error", err)
+}
+
+// SetSanitiser sets the hostname sanitiser for cleaning hostnames before DNS registration.
+func (m *Manager) SetSanitiser(s *hostname.Sanitiser) {
+	m.sanitiser = s
 }
 
 // UpdateConfig updates the DDNS configuration (for hot-reload).

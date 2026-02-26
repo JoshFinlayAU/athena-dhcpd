@@ -9,6 +9,7 @@ require (
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.48.0
 	golang.org/x/net v0.50.0
+	layeh.com/radius v0.0.0-20231213012653-1006025d24f8
 )
 
 require (

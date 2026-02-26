@@ -26,6 +26,9 @@ const (
 	EventConflictPermanent EventType = "conflict.permanent"
 	EventHAFailover        EventType = "ha.failover"
 	EventHASyncComplete    EventType = "ha.sync_complete"
+	EventRogueDetected     EventType = "rogue.detected"
+	EventRogueResolved     EventType = "rogue.resolved"
+	EventAnomalyDetected   EventType = "anomaly.detected"
 )
 
 // Event is the core event payload passed through the event bus.
@@ -36,6 +39,7 @@ type Event struct {
 	Conflict  *ConflictData `json:"conflict,omitempty"`
 	Server    *ServerData   `json:"server,omitempty"`
 	HA        *HAData       `json:"ha,omitempty"`
+	Rogue     *RogueData    `json:"rogue,omitempty"`
 	Reason    string        `json:"reason,omitempty"`
 }
 
@@ -86,6 +90,16 @@ type HAData struct {
 	OldRole   string `json:"old_role,omitempty"`
 	NewRole   string `json:"new_role,omitempty"`
 	PeerState string `json:"peer_state,omitempty"`
+}
+
+// RogueData carries rogue DHCP server detection information.
+type RogueData struct {
+	ServerIP  net.IP           `json:"server_ip"`
+	ServerMAC net.HardwareAddr `json:"server_mac,omitempty"`
+	OfferedIP net.IP           `json:"offered_ip,omitempty"`
+	ClientMAC net.HardwareAddr `json:"client_mac,omitempty"`
+	Interface string           `json:"interface,omitempty"`
+	Count     int              `json:"count"`
 }
 
 // MarshalJSON implements custom JSON marshalling for Event.

@@ -4,7 +4,7 @@ import { Card } from '@/components/Card'
 import { Section, Field, FieldGrid, TextInput, NumberInput, Toggle, Select, StringArrayInput } from '@/components/FormFields'
 import { Table, THead, TH, TD, TR, EmptyRow } from '@/components/Table'
 import {
-  Network, Settings, Shield, Zap, Globe, Radio, Upload, Save, Trash2, Plus, FileUp, AlertTriangle,
+  Network, Settings, Shield, Zap, Globe, Radio, Upload, Save, Trash2, Plus, FileUp, AlertTriangle, Type,
 } from 'lucide-react'
 import {
   v2GetSubnets, v2CreateSubnet, v2UpdateSubnet, v2DeleteSubnet,
@@ -15,13 +15,15 @@ import {
   v2GetHooksConfig, v2SetHooksConfig,
   v2GetDDNSConfig, v2SetDDNSConfig,
   v2GetDNSConfig, v2SetDNSConfig,
+  v2GetHostnameSanitisation, v2SetHostnameSanitisation,
   v2ImportTOML,
   type SubnetConfig, type ReservationConfig, type DefaultsConfig,
   type ConflictDetectionConfig, type HAConfigType, type HooksConfigType,
   type DDNSConfigType, type DDNSZoneType, type DNSConfigType, type PoolConfig,
+  type HostnameSanitisationConfig,
 } from '@/lib/api'
 
-type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'import'
+type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'import'
 
 const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'subnets', label: 'Subnets', icon: Network },
@@ -31,6 +33,7 @@ const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'hooks', label: 'Hooks', icon: Zap },
   { id: 'ddns', label: 'Dynamic DNS', icon: Globe },
   { id: 'dns', label: 'DNS Proxy', icon: Radio },
+  { id: 'hostname', label: 'Hostname Sanitisation', icon: Type },
   { id: 'import', label: 'Import', icon: Upload },
 ]
 
@@ -82,6 +85,7 @@ export default function ConfigV2() {
       {tab === 'hooks' && <HooksTab onStatus={showStatus} />}
       {tab === 'ddns' && <DDNSTab onStatus={showStatus} />}
       {tab === 'dns' && <DNSTab onStatus={showStatus} />}
+      {tab === 'hostname' && <HostnameSanitisationTab onStatus={showStatus} />}
       {tab === 'import' && <ImportTab onStatus={showStatus} />}
     </div>
   )
@@ -553,6 +557,51 @@ function HATab({ onStatus }: { onStatus: StatusFn }) {
 
 // ============== HOOKS TAB ==============
 
+const ALL_EVENTS = [
+  { group: 'Lease', events: ['lease.discover', 'lease.offer', 'lease.ack', 'lease.renew', 'lease.nak', 'lease.release', 'lease.decline', 'lease.expire'] },
+  { group: 'Conflict', events: ['conflict.detected', 'conflict.decline', 'conflict.resolved', 'conflict.permanent'] },
+  { group: 'HA', events: ['ha.failover', 'ha.sync_complete'] },
+  { group: 'Rogue', events: ['rogue.detected', 'rogue.resolved'] },
+  { group: 'Anomaly', events: ['anomaly.detected'] },
+]
+
+function EventSelector({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (evt: string) => {
+    if (value.includes(evt)) onChange(value.filter(e => e !== evt))
+    else onChange([...value, evt])
+  }
+  const selectAll = () => onChange(ALL_EVENTS.flatMap(g => g.events))
+  const selectNone = () => onChange([])
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 text-[10px]">
+        <button type="button" onClick={selectAll} className="text-accent hover:underline">Select All</button>
+        <button type="button" onClick={selectNone} className="text-text-muted hover:underline">Clear</button>
+        <span className="text-text-muted">{value.length} selected</span>
+      </div>
+      {ALL_EVENTS.map(group => (
+        <div key={group.group}>
+          <div className="text-[10px] font-medium text-text-muted uppercase tracking-wide mb-0.5">{group.group}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {group.events.map(evt => (
+              <label key={evt}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] cursor-pointer border transition-colors ${
+                  value.includes(evt)
+                    ? 'bg-accent/15 border-accent/40 text-accent'
+                    : 'bg-surface border-border text-text-muted hover:border-text-muted'
+                }`}>
+                <input type="checkbox" checked={value.includes(evt)} onChange={() => toggle(evt)} className="sr-only" />
+                {evt}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function HooksTab({ onStatus }: { onStatus: StatusFn }) {
   const { data, refetch } = useApi(useCallback(() => v2GetHooksConfig(), []))
   const [h, setH] = useState<HooksConfigType | null>(null)
@@ -597,8 +646,8 @@ function HooksTab({ onStatus }: { onStatus: StatusFn }) {
                 <Field label="Command"><TextInput value={s.command} onChange={v => updateScript({ command: v })} mono /></Field>
                 <Field label="Timeout"><TextInput value={s.timeout || ''} onChange={v => updateScript({ timeout: v })} placeholder="10s" mono /></Field>
               </FieldGrid>
-              <Field label="Events" hint="Comma-separated: lease.ack, lease.release, conflict.detected, etc.">
-                <TextInput value={(s.events || []).join(', ')} onChange={v => updateScript({ events: v.split(',').map(e => e.trim()).filter(Boolean) })} placeholder="lease.ack, lease.release" />
+              <Field label="Events" hint="Select which events trigger this hook">
+                <EventSelector value={s.events || []} onChange={v => updateScript({ events: v })} />
               </Field>
               <Field label="Subnet Filter" hint="Only fire for these subnets (empty = all)">
                 <StringArrayInput value={s.subnets || []} onChange={v => updateScript({ subnets: v })} placeholder="192.168.1.0/24" mono />
@@ -639,8 +688,8 @@ function HooksTab({ onStatus }: { onStatus: StatusFn }) {
                   <TextInput value={wh.template || ''} onChange={v => updateWH({ template: v })} placeholder="" />
                 </Field>
               </FieldGrid>
-              <Field label="Events" hint="Comma-separated: lease.ack, lease.release, conflict.detected, etc.">
-                <TextInput value={(wh.events || []).join(', ')} onChange={v => updateWH({ events: v.split(',').map(e => e.trim()).filter(Boolean) })} placeholder="lease.ack, lease.release" />
+              <Field label="Events" hint="Select which events trigger this webhook">
+                <EventSelector value={wh.events || []} onChange={v => updateWH({ events: v })} />
               </Field>
               <Field label="Custom Headers" hint="key: value, one per line">
                 <textarea
@@ -970,6 +1019,78 @@ function DNSTab({ onStatus }: { onStatus: StatusFn }) {
             <Field label="TLS Key"><TextInput value={current.doh_tls?.key_file || ''} onChange={v => setD({ ...current, doh_tls: { ...(current.doh_tls || {}), key_file: v } })} placeholder="/path/to/key.pem" mono /></Field>
           </FieldGrid>
         </Section>
+      )}
+
+      <div className="flex justify-end pt-2">
+        <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+          <Save className="w-3.5 h-3.5" /> Save
+        </button>
+      </div>
+    </Card>
+  )
+}
+
+// ============== HOSTNAME SANITISATION TAB ==============
+
+function HostnameSanitisationTab({ onStatus }: { onStatus: StatusFn }) {
+  const { data } = useApi(useCallback(() => v2GetHostnameSanitisation(), []))
+  const [current, setC] = useState<HostnameSanitisationConfig | null>(null)
+
+  if (data && !current) setC(data)
+  if (!current) return <Card className="p-6 text-sm text-text-muted">Loading...</Card>
+
+  const handleSave = async () => {
+    try {
+      await v2SetHostnameSanitisation(current)
+      onStatus('success', 'Hostname sanitisation config saved')
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Save failed')
+    }
+  }
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold">Hostname Sanitisation Pipeline</h3>
+        <p className="text-xs text-text-muted mt-1">
+          Clean client-supplied hostnames (option 12) before DNS registration. Strips invalid characters,
+          rejects known-bad patterns (localhost, android-*, etc.), deduplicates, and enforces naming policies.
+        </p>
+      </div>
+
+      <Toggle checked={current.enabled} onChange={v => setC({ ...current, enabled: v })} label="Enabled" description="Enable the full sanitisation pipeline (basic cleanup always runs)" />
+
+      {current.enabled && (
+        <div className="space-y-4">
+          <FieldGrid>
+            <Toggle checked={current.lowercase} onChange={v => setC({ ...current, lowercase: v })} label="Force Lowercase" description="Convert all hostnames to lowercase" />
+            <Toggle checked={current.strip_emoji} onChange={v => setC({ ...current, strip_emoji: v })} label="Strip Emoji" description="Remove emoji and symbol characters" />
+            <Toggle checked={current.dedup_suffix} onChange={v => setC({ ...current, dedup_suffix: v })} label="Deduplicate" description="Append -2, -3, etc. for duplicate hostnames" />
+          </FieldGrid>
+
+          <FieldGrid>
+            <Field label="Max Length" hint="Maximum hostname length (DNS label limit = 63)">
+              <NumberInput value={current.max_length || 63} onChange={v => setC({ ...current, max_length: v })} min={1} max={253} />
+            </Field>
+            <Field label="Fallback Template" hint="Template when hostname is rejected. {mac} = MAC without colons">
+              <TextInput value={current.fallback_template || ''} onChange={v => setC({ ...current, fallback_template: v })} placeholder="dhcp-{mac}" mono />
+            </Field>
+          </FieldGrid>
+
+          <Field label="Allow Regex" hint="If set, hostnames must match this regex to be accepted (leave empty to allow all)">
+            <TextInput value={current.allow_regex || ''} onChange={v => setC({ ...current, allow_regex: v })} placeholder="^[a-z]+-\d+$" mono />
+          </Field>
+
+          <Field label="Deny Patterns" hint="Regex patterns to reject (one per line, case-insensitive). Built-in patterns (localhost, android-*, etc.) always apply.">
+            <textarea
+              value={(current.deny_patterns || []).join('\n')}
+              onChange={e => setC({ ...current, deny_patterns: e.target.value.split('\n').filter(Boolean) })}
+              rows={4}
+              placeholder={"^printer-.*\n^kiosk\\d+$\n^guest-"}
+              className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-surface focus:outline-none focus:border-accent"
+            />
+          </Field>
+        </div>
       )}
 
       <div className="flex justify-end pt-2">

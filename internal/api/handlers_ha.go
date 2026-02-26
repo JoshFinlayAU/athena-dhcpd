@@ -26,6 +26,10 @@ func (s *Server) handleHAStatus(w http.ResponseWriter, r *http.Request) {
 
 	if s.peer != nil {
 		resp["peer_connected"] = s.peer.Connected()
+		if errMsg, errAt := s.peer.LastConnError(); errMsg != "" {
+			resp["last_error"] = errMsg
+			resp["last_error_at"] = errAt.Format(time.RFC3339)
+		}
 	} else {
 		resp["peer_connected"] = false
 	}

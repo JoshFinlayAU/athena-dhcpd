@@ -13,15 +13,16 @@ import (
 
 // Config is the top-level configuration for athena-dhcpd.
 type Config struct {
-	Server            ServerConfig            `toml:"server"`
-	ConflictDetection ConflictDetectionConfig `toml:"conflict_detection"`
-	HA                HAConfig                `toml:"ha"`
-	Hooks             HooksConfig             `toml:"hooks"`
-	DDNS              DDNSConfig              `toml:"ddns"`
-	DNS               DNSProxyConfig          `toml:"dns"`
-	Subnets           []SubnetConfig          `toml:"subnet"`
-	Defaults          DefaultsConfig          `toml:"defaults"`
-	API               APIConfig               `toml:"api"`
+	Server               ServerConfig               `toml:"server"`
+	ConflictDetection    ConflictDetectionConfig    `toml:"conflict_detection"`
+	HA                   HAConfig                   `toml:"ha"`
+	Hooks                HooksConfig                `toml:"hooks"`
+	DDNS                 DDNSConfig                 `toml:"ddns"`
+	DNS                  DNSProxyConfig             `toml:"dns"`
+	HostnameSanitisation HostnameSanitisationConfig `toml:"hostname_sanitisation" json:"hostname_sanitisation"`
+	Subnets              []SubnetConfig             `toml:"subnet"`
+	Defaults             DefaultsConfig             `toml:"defaults"`
+	API                  APIConfig                  `toml:"api"`
 }
 
 // ServerConfig holds core server settings.
@@ -199,20 +200,34 @@ type DNSStaticRecord struct {
 	TTL   int    `toml:"ttl" json:"ttl"`
 }
 
+// HostnameSanitisationConfig holds hostname sanitisation pipeline settings.
+// Applied globally and optionally overridden per-subnet.
+type HostnameSanitisationConfig struct {
+	Enabled          bool     `toml:"enabled" json:"enabled"`
+	AllowRegex       string   `toml:"allow_regex" json:"allow_regex,omitempty"`
+	DenyPatterns     []string `toml:"deny_patterns" json:"deny_patterns,omitempty"`
+	DedupSuffix      bool     `toml:"dedup_suffix" json:"dedup_suffix"`
+	MaxLength        int      `toml:"max_length" json:"max_length,omitempty"`
+	StripEmoji       bool     `toml:"strip_emoji" json:"strip_emoji"`
+	Lowercase        bool     `toml:"lowercase" json:"lowercase"`
+	FallbackTemplate string   `toml:"fallback_template" json:"fallback_template,omitempty"`
+}
+
 // SubnetConfig holds per-subnet configuration.
 type SubnetConfig struct {
-	Network      string              `toml:"network" json:"network"`
-	Interface    string              `toml:"interface" json:"interface,omitempty"`
-	Routers      []string            `toml:"routers" json:"routers,omitempty"`
-	DNSServers   []string            `toml:"dns_servers" json:"dns_servers,omitempty"`
-	DomainName   string              `toml:"domain_name" json:"domain_name,omitempty"`
-	LeaseTime    string              `toml:"lease_time" json:"lease_time,omitempty"`
-	RenewalTime  string              `toml:"renewal_time" json:"renewal_time,omitempty"`
-	RebindTime   string              `toml:"rebind_time" json:"rebind_time,omitempty"`
-	NTPServers   []string            `toml:"ntp_servers" json:"ntp_servers,omitempty"`
-	Pools        []PoolConfig        `toml:"pool" json:"pool,omitempty"`
-	Reservations []ReservationConfig `toml:"reservation" json:"reservation,omitempty"`
-	Options      []OptionConfig      `toml:"option" json:"option,omitempty"`
+	Network              string                      `toml:"network" json:"network"`
+	Interface            string                      `toml:"interface" json:"interface,omitempty"`
+	Routers              []string                    `toml:"routers" json:"routers,omitempty"`
+	DNSServers           []string                    `toml:"dns_servers" json:"dns_servers,omitempty"`
+	DomainName           string                      `toml:"domain_name" json:"domain_name,omitempty"`
+	LeaseTime            string                      `toml:"lease_time" json:"lease_time,omitempty"`
+	RenewalTime          string                      `toml:"renewal_time" json:"renewal_time,omitempty"`
+	RebindTime           string                      `toml:"rebind_time" json:"rebind_time,omitempty"`
+	NTPServers           []string                    `toml:"ntp_servers" json:"ntp_servers,omitempty"`
+	Pools                []PoolConfig                `toml:"pool" json:"pool,omitempty"`
+	Reservations         []ReservationConfig         `toml:"reservation" json:"reservation,omitempty"`
+	Options              []OptionConfig              `toml:"option" json:"option,omitempty"`
+	HostnameSanitisation *HostnameSanitisationConfig `toml:"hostname_sanitisation" json:"hostname_sanitisation,omitempty"`
 }
 
 // PoolConfig holds IP pool configuration.

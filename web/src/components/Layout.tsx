@@ -1,9 +1,12 @@
+import { useCallback } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useWS } from '@/lib/websocket'
 import { useAuth } from '@/lib/auth'
+import { usePolling } from '@/hooks/useApi'
+import { getHAStatus } from '@/lib/api'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut, ScrollText,
+  Activity, Settings, Shield, ShieldCheck, Wifi, WifiOff, LogOut, ScrollText, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +25,7 @@ const navItems = [
 export default function Layout() {
   const { connected } = useWS()
   const { user, logout } = useAuth()
+  const { data: ha } = usePolling(useCallback(() => getHAStatus(), []), 5000)
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -92,6 +96,19 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
+        {ha?.enabled && ha.is_standby && (
+          <div className="bg-warning/15 border-b border-warning/30 px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-warning" />
+              <span className="text-sm font-medium text-warning">Read-only — this node is standby</span>
+            </div>
+            {ha.primary_url && (
+              <a href={ha.primary_url} className="flex items-center gap-1 text-xs font-medium text-warning hover:text-warning/80 transition-colors">
+                Go to primary <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

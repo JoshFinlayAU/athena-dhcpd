@@ -18,7 +18,7 @@ import {
   v2ImportTOML,
   type SubnetConfig, type ReservationConfig, type DefaultsConfig,
   type ConflictDetectionConfig, type HAConfigType, type HooksConfigType,
-  type DDNSConfigType, type DNSConfigType, type PoolConfig,
+  type DDNSConfigType, type DDNSZoneType, type DNSConfigType, type PoolConfig,
 } from '@/lib/api'
 
 type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'import'
@@ -569,6 +569,55 @@ function HooksTab({ onStatus }: { onStatus: StatusFn }) {
 
 // ============== DDNS TAB ==============
 
+const emptyZone: DDNSZoneType = { zone: '', method: 'rfc2136', server: '', tsig_name: '', tsig_algorithm: 'hmac-sha256', tsig_secret: '', api_key: '' }
+
+function DDNSZoneEditor({ label, value, onChange }: { label: string; value: DDNSZoneType; onChange: (v: DDNSZoneType) => void }) {
+  const set = <K extends keyof DDNSZoneType>(k: K, v: DDNSZoneType[K]) => onChange({ ...value, [k]: v })
+  const isApi = value.method === 'powerdns_api' || value.method === 'technitium_api'
+  return (
+    <div className="border border-border/50 rounded-lg p-4 space-y-3 bg-surface/50">
+      <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider">{label}</h4>
+      <FieldGrid>
+        <Field label="Zone" hint="with trailing dot">
+          <TextInput value={value.zone} onChange={v => set('zone', v)} placeholder="example.com." mono />
+        </Field>
+        <Field label="Method">
+          <Select value={value.method} onChange={v => set('method', v)} options={[
+            { value: 'rfc2136', label: 'RFC 2136 (BIND/Knot/Windows/CoreDNS)' },
+            { value: 'powerdns_api', label: 'PowerDNS API' },
+            { value: 'technitium_api', label: 'Technitium API' },
+          ]} />
+        </Field>
+        <Field label="Server" hint={isApi ? 'http://host:port' : 'host:53'}>
+          <TextInput value={value.server} onChange={v => set('server', v)} placeholder={isApi ? 'http://dns:8081' : 'ns1.example.com:53'} mono />
+        </Field>
+        {isApi ? (
+          <Field label="API Key">
+            <TextInput value={value.api_key} onChange={v => set('api_key', v)} placeholder="api-key" />
+          </Field>
+        ) : (
+          <>
+            <Field label="TSIG Key Name">
+              <TextInput value={value.tsig_name} onChange={v => set('tsig_name', v)} placeholder="dhcp-update." mono />
+            </Field>
+            <Field label="TSIG Algorithm">
+              <Select value={value.tsig_algorithm} onChange={v => set('tsig_algorithm', v)} options={[
+                { value: 'hmac-md5', label: 'HMAC-MD5' },
+                { value: 'hmac-sha1', label: 'HMAC-SHA1' },
+                { value: 'hmac-sha256', label: 'HMAC-SHA256' },
+                { value: 'hmac-sha512', label: 'HMAC-SHA512' },
+              ]} />
+            </Field>
+            <Field label="TSIG Secret" hint="base64">
+              <TextInput value={value.tsig_secret} onChange={v => set('tsig_secret', v)} placeholder="base64-encoded-secret" />
+            </Field>
+          </>
+        )}
+      </FieldGrid>
+    </div>
+  )
+}
+
 function DDNSTab({ onStatus }: { onStatus: StatusFn }) {
   const { data, refetch } = useApi(useCallback(() => v2GetDDNSConfig(), []))
   const [d, setD] = useState<DDNSConfigType | null>(null)
@@ -604,19 +653,56 @@ function DDNSTab({ onStatus }: { onStatus: StatusFn }) {
       <Toggle checked={current.update_on_renew} onChange={v => setD({ ...current, update_on_renew: v })} label="Update on Renew" />
       <Toggle checked={current.use_dhcid} onChange={v => setD({ ...current, use_dhcid: v })} label="Use DHCID Records (RFC 4701)" />
 
-      {current.forward && (
-        <Section title="Forward Zone">
-          <FieldGrid>
-            <Field label="Zone"><TextInput value={current.forward.zone || ''} onChange={v => setD({ ...current, forward: { ...current.forward, zone: v } })} placeholder="example.com" /></Field>
-            <Field label="Method">
-              <Select value={current.forward.method || ''} onChange={v => setD({ ...current, forward: { ...current.forward, method: v } })}
-                options={[{ value: 'rfc2136', label: 'RFC 2136' }, { value: 'powerdns_api', label: 'PowerDNS API' }, { value: 'technitium_api', label: 'Technitium API' }]} placeholder="Select" />
-            </Field>
-            <Field label="Server"><TextInput value={current.forward.server || ''} onChange={v => setD({ ...current, forward: { ...current.forward, server: v } })} placeholder="ns1.example.com:53" mono /></Field>
-            <Field label="TSIG Name"><TextInput value={current.forward.tsig_name || ''} onChange={v => setD({ ...current, forward: { ...current.forward, tsig_name: v } })} /></Field>
-          </FieldGrid>
-        </Section>
-      )}
+      <DDNSZoneEditor label="Forward Zone (A Records)" value={current.forward || emptyZone} onChange={v => setD({ ...current, forward: v })} />
+      <DDNSZoneEditor label="Reverse Zone (PTR Records)" value={current.reverse || emptyZone} onChange={v => setD({ ...current, reverse: v })} />
+
+      {/* Zone Overrides */}
+      <Section title={`Per-Subnet Zone Overrides (${(current.zone_override || []).length})`}>
+        {(current.zone_override || []).map((o, i) => {
+          const update = (patch: Partial<typeof o>) => {
+            const n = [...(current.zone_override || [])]; n[i] = { ...o, ...patch }; setD({ ...current, zone_override: n })
+          }
+          const isApi = o.method === 'powerdns_api' || o.method === 'technitium_api'
+          return (
+            <div key={i} className="border border-border/50 rounded-lg p-4 space-y-3 bg-surface/50 mb-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-warning">{o.subnet || 'New Override'}</span>
+                <button type="button" onClick={() => setD({ ...current, zone_override: (current.zone_override || []).filter((_, idx) => idx !== i) })}
+                  className="p-1 rounded text-text-muted hover:text-danger hover:bg-danger/10 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <FieldGrid>
+                <Field label="Subnet"><TextInput value={o.subnet || ''} onChange={v => update({ subnet: v })} placeholder="10.0.0.0/24" mono /></Field>
+                <Field label="Forward Zone"><TextInput value={o.forward_zone || ''} onChange={v => update({ forward_zone: v })} placeholder="lab.example.com." mono /></Field>
+                <Field label="Reverse Zone"><TextInput value={o.reverse_zone || ''} onChange={v => update({ reverse_zone: v })} placeholder="0.0.10.in-addr.arpa." mono /></Field>
+                <Field label="Method">
+                  <Select value={o.method || 'rfc2136'} onChange={v => update({ method: v })}
+                    options={[{ value: 'rfc2136', label: 'RFC 2136' }, { value: 'powerdns_api', label: 'PowerDNS API' }, { value: 'technitium_api', label: 'Technitium API' }]} />
+                </Field>
+                <Field label="Server"><TextInput value={o.server || ''} onChange={v => update({ server: v })} mono /></Field>
+                {isApi ? (
+                  <Field label="API Key"><TextInput value={o.api_key || ''} onChange={v => update({ api_key: v })} placeholder="api-key" /></Field>
+                ) : (
+                  <>
+                    <Field label="TSIG Key Name"><TextInput value={o.tsig_name || ''} onChange={v => update({ tsig_name: v })} placeholder="dhcp-update." mono /></Field>
+                    <Field label="TSIG Algorithm">
+                      <Select value={o.tsig_algorithm || 'hmac-sha256'} onChange={v => update({ tsig_algorithm: v })}
+                        options={[{ value: 'hmac-md5', label: 'HMAC-MD5' }, { value: 'hmac-sha1', label: 'HMAC-SHA1' }, { value: 'hmac-sha256', label: 'HMAC-SHA256' }, { value: 'hmac-sha512', label: 'HMAC-SHA512' }]} />
+                    </Field>
+                    <Field label="TSIG Secret" hint="base64"><TextInput value={o.tsig_secret || ''} onChange={v => update({ tsig_secret: v })} placeholder="base64-encoded-secret" /></Field>
+                  </>
+                )}
+              </FieldGrid>
+            </div>
+          )
+        })}
+        {(current.zone_override || []).length === 0 && <p className="text-xs text-text-muted italic">No zone overrides — all subnets use the main forward/reverse zones</p>}
+        <button type="button" onClick={() => setD({ ...current, zone_override: [...(current.zone_override || []), { subnet: '', forward_zone: '', reverse_zone: '', method: 'rfc2136', server: '', api_key: '', tsig_name: '', tsig_algorithm: 'hmac-sha256', tsig_secret: '' }] })}
+          className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors mt-2">
+          <Plus className="w-3 h-3" /> Add Override
+        </button>
+      </Section>
 
       <div className="flex justify-end pt-2">
         <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">

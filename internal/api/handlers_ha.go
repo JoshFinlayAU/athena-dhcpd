@@ -20,11 +20,19 @@ func (s *Server) handleHAStatus(w http.ResponseWriter, r *http.Request) {
 		"state":          string(s.fsm.State()),
 		"is_active":      s.fsm.IsActive(),
 		"last_heartbeat": s.fsm.LastHeartbeat().Format(time.RFC3339),
+		"peer_address":   s.cfg.HA.PeerAddress,
+		"listen_address": s.cfg.HA.ListenAddress,
 	}
 
-	if s.cfg.HA.Enabled {
-		resp["peer_address"] = s.cfg.HA.PeerAddress
-		resp["listen_address"] = s.cfg.HA.ListenAddress
+	if s.peer != nil {
+		resp["peer_connected"] = s.peer.Connected()
+	} else {
+		resp["peer_connected"] = false
+	}
+
+	resp["is_standby"] = !s.fsm.IsActive()
+	if primaryURL := s.primaryWebURL(); primaryURL != "" {
+		resp["primary_url"] = primaryURL
 	}
 
 	JSONResponse(w, http.StatusOK, resp)

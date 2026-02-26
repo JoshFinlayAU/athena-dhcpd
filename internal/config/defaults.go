@@ -7,7 +7,7 @@ const (
 	DefaultInterface            = "eth0"
 	DefaultLogLevel             = "info"
 	DefaultLeaseDB              = "/var/lib/athena-dhcpd/leases.db"
-	DefaultPIDFile              = "/run/athena-dhcpd.pid"
+	DefaultPIDFile              = "/run/athena-dhcpd/athena-dhcpd.pid"
 	DefaultLeaseTime            = 12 * time.Hour
 	DefaultRenewalTime          = 6 * time.Hour
 	DefaultRebindTime           = 10*time.Hour + 30*time.Minute

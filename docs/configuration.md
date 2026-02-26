@@ -27,7 +27,7 @@ Core server settings. the basics
 | `server_id` | string | required | Server identifier IP (sent in option 54). usually your server's IP on the DHCP interface |
 | `log_level` | string | `"info"` | Log level: `debug`, `info`, `warn`, `error` |
 | `lease_db` | string | `"/var/lib/athena-dhcpd/leases.db"` | Path to BoltDB lease database |
-| `pid_file` | string | `"/run/athena-dhcpd.pid"` | PID file path. empty string disables |
+| `pid_file` | string | `"/run/athena-dhcpd/athena-dhcpd.pid"` | PID file path. parent directory is created automatically. empty string disables |
 
 ```toml
 [server]
@@ -36,7 +36,7 @@ bind_address = "0.0.0.0:67"
 server_id = "192.168.1.1"
 log_level = "info"
 lease_db = "/var/lib/athena-dhcpd/leases.db"
-pid_file = "/run/athena-dhcpd.pid"
+pid_file = "/run/athena-dhcpd/athena-dhcpd.pid"
 ```
 
 ### [server.rate_limit]

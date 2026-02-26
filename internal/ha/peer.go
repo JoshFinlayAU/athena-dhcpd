@@ -108,7 +108,11 @@ func (p *Peer) Start(ctx context.Context) error {
 	}
 	p.listener = listener
 
-	p.logger.Info("HA peer listener started", "address", p.cfg.ListenAddress)
+	p.logger.Info("HA peer listener started",
+		"listen", p.cfg.ListenAddress,
+		"peer", p.cfg.PeerAddress,
+		"role", p.cfg.Role,
+		"heartbeat_interval", p.heartbeatInterval.String())
 
 	// Accept incoming connections
 	p.wg.Add(1)
@@ -214,12 +218,15 @@ func (p *Peer) acceptLoop(ctx context.Context) {
 			continue
 		}
 
-		p.logger.Info("peer connection accepted", "remote", conn.RemoteAddr().String())
+		p.logger.Info("inbound peer connection accepted",
+			"remote", conn.RemoteAddr().String(),
+			"local", conn.LocalAddr().String())
 		p.setConn(conn)
 		p.fsm.PeerUp()
 
 		// Notify adjacency formed (primary pushes config here)
 		if p.onAdjacencyFormed != nil {
+			p.logger.Info("HA adjacency formed (inbound)", "remote", conn.RemoteAddr().String())
 			go p.onAdjacencyFormed()
 		}
 
@@ -259,7 +266,15 @@ func (p *Peer) connectLoop(ctx context.Context) {
 
 		conn, err := net.DialTimeout("tcp", p.cfg.PeerAddress, 5*time.Second)
 		if err != nil {
-			p.logger.Debug("failed to connect to peer", "address", p.cfg.PeerAddress, "error", err)
+			if backoff > time.Second {
+				p.logger.Warn("failed to connect to peer, retrying",
+					"address", p.cfg.PeerAddress,
+					"next_retry", backoff.String(),
+					"error", err)
+			} else {
+				p.logger.Debug("failed to connect to peer",
+					"address", p.cfg.PeerAddress, "error", err)
+			}
 			time.Sleep(backoff)
 			backoff *= 2
 			if backoff > maxBackoff {
@@ -269,12 +284,13 @@ func (p *Peer) connectLoop(ctx context.Context) {
 		}
 
 		backoff = time.Second
-		p.logger.Info("connected to peer", "address", p.cfg.PeerAddress)
+		p.logger.Info("outbound peer connection established", "address", p.cfg.PeerAddress)
 		p.setConn(conn)
 		p.fsm.PeerUp()
 
 		// Notify adjacency formed (primary pushes config here)
 		if p.onAdjacencyFormed != nil {
+			p.logger.Info("HA adjacency formed (outbound)", "address", p.cfg.PeerAddress)
 			go p.onAdjacencyFormed()
 		}
 
@@ -289,13 +305,18 @@ func (p *Peer) connectLoop(ctx context.Context) {
 
 // handleConnection processes messages from a peer connection.
 func (p *Peer) handleConnection(ctx context.Context, conn net.Conn) {
+	remote := conn.RemoteAddr().String()
 	defer func() {
 		conn.Close()
 		p.mu.Lock()
-		if p.conn == conn {
+		wasActive := p.conn == conn
+		if wasActive {
 			p.conn = nil
 		}
 		p.mu.Unlock()
+		if wasActive {
+			p.logger.Warn("peer connection lost", "remote", remote)
+		}
 	}()
 
 	for {
@@ -310,7 +331,7 @@ func (p *Peer) handleConnection(ctx context.Context, conn net.Conn) {
 		conn.SetReadDeadline(time.Now().Add(p.heartbeatInterval * 3))
 		msg, err := DecodeMessage(conn)
 		if err != nil {
-			p.logger.Debug("peer connection read error", "error", err)
+			p.logger.Warn("peer connection read error", "remote", remote, "error", err)
 			return
 		}
 
@@ -418,7 +439,7 @@ func (p *Peer) heartbeatLoop(ctx context.Context) {
 				continue
 			}
 			if err := p.sendMessage(msg); err != nil {
-				p.logger.Debug("failed to send heartbeat", "error", err)
+				p.logger.Warn("failed to send heartbeat to peer", "error", err)
 			} else {
 				metrics.HAHeartbeatsSent.Inc()
 			}

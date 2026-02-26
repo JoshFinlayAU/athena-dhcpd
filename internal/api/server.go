@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -182,28 +183,28 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Config (DB-backed CRUD)
 	mux.HandleFunc("GET /api/v2/config/subnets", s.auth.RequireAuth(s.handleV2ListSubnets))
-	mux.HandleFunc("POST /api/v2/config/subnets", s.auth.RequireAdmin(s.handleV2CreateSubnet))
-	mux.HandleFunc("PUT /api/v2/config/subnets/{network}", s.auth.RequireAdmin(s.handleV2UpdateSubnet))
-	mux.HandleFunc("DELETE /api/v2/config/subnets/{network}", s.auth.RequireAdmin(s.handleV2DeleteSubnet))
+	mux.HandleFunc("POST /api/v2/config/subnets", s.auth.RequireAdmin(s.standbyGuard(s.handleV2CreateSubnet)))
+	mux.HandleFunc("PUT /api/v2/config/subnets/{network}", s.auth.RequireAdmin(s.standbyGuard(s.handleV2UpdateSubnet)))
+	mux.HandleFunc("DELETE /api/v2/config/subnets/{network}", s.auth.RequireAdmin(s.standbyGuard(s.handleV2DeleteSubnet)))
 	mux.HandleFunc("GET /api/v2/config/subnets/{network}/reservations", s.auth.RequireAuth(s.handleV2ListReservations))
-	mux.HandleFunc("POST /api/v2/config/subnets/{network}/reservations", s.auth.RequireAdmin(s.handleV2CreateReservation))
-	mux.HandleFunc("DELETE /api/v2/config/subnets/{network}/reservations/{mac}", s.auth.RequireAdmin(s.handleV2DeleteReservation))
-	mux.HandleFunc("POST /api/v2/config/subnets/{network}/reservations/import", s.auth.RequireAdmin(s.handleV2ImportReservations))
+	mux.HandleFunc("POST /api/v2/config/subnets/{network}/reservations", s.auth.RequireAdmin(s.standbyGuard(s.handleV2CreateReservation)))
+	mux.HandleFunc("DELETE /api/v2/config/subnets/{network}/reservations/{mac}", s.auth.RequireAdmin(s.standbyGuard(s.handleV2DeleteReservation)))
+	mux.HandleFunc("POST /api/v2/config/subnets/{network}/reservations/import", s.auth.RequireAdmin(s.standbyGuard(s.handleV2ImportReservations)))
 	mux.HandleFunc("GET /api/v2/config/defaults", s.auth.RequireAuth(s.handleV2GetDefaults))
-	mux.HandleFunc("PUT /api/v2/config/defaults", s.auth.RequireAdmin(s.handleV2SetDefaults))
+	mux.HandleFunc("PUT /api/v2/config/defaults", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDefaults)))
 	mux.HandleFunc("GET /api/v2/config/conflict", s.auth.RequireAuth(s.handleV2GetConflict))
-	mux.HandleFunc("PUT /api/v2/config/conflict", s.auth.RequireAdmin(s.handleV2SetConflict))
+	mux.HandleFunc("PUT /api/v2/config/conflict", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetConflict)))
 	mux.HandleFunc("GET /api/v2/config/ha", s.auth.RequireAuth(s.handleV2GetHA))
-	mux.HandleFunc("PUT /api/v2/config/ha", s.auth.RequireAdmin(s.handleV2SetHA))
+	mux.HandleFunc("PUT /api/v2/config/ha", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetHA)))
 	mux.HandleFunc("GET /api/v2/config/hooks", s.auth.RequireAuth(s.handleV2GetHooks))
-	mux.HandleFunc("PUT /api/v2/config/hooks", s.auth.RequireAdmin(s.handleV2SetHooks))
+	mux.HandleFunc("PUT /api/v2/config/hooks", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetHooks)))
 	mux.HandleFunc("GET /api/v2/config/ddns", s.auth.RequireAuth(s.handleV2GetDDNS))
-	mux.HandleFunc("PUT /api/v2/config/ddns", s.auth.RequireAdmin(s.handleV2SetDDNS))
+	mux.HandleFunc("PUT /api/v2/config/ddns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDDNS)))
 	mux.HandleFunc("GET /api/v2/config/dns", s.auth.RequireAuth(s.handleV2GetDNS))
-	mux.HandleFunc("PUT /api/v2/config/dns", s.auth.RequireAdmin(s.handleV2SetDNS))
-	mux.HandleFunc("POST /api/v2/config/import", s.auth.RequireAdmin(s.handleV2ImportTOML))
+	mux.HandleFunc("PUT /api/v2/config/dns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDNS)))
+	mux.HandleFunc("POST /api/v2/config/import", s.auth.RequireAdmin(s.standbyGuard(s.handleV2ImportTOML)))
 	mux.HandleFunc("GET /api/v2/config/raw", s.auth.RequireAuth(s.handleGetConfigRaw))
-	mux.HandleFunc("PUT /api/v2/config", s.auth.RequireAdmin(s.handleUpdateConfig))
+	mux.HandleFunc("PUT /api/v2/config", s.auth.RequireAdmin(s.standbyGuard(s.handleUpdateConfig)))
 	mux.HandleFunc("POST /api/v2/config/validate", s.auth.RequireAuth(s.handleValidateConfig))
 	mux.HandleFunc("GET /api/v2/config/backups", s.auth.RequireAuth(s.handleListConfigBackups))
 	mux.HandleFunc("GET /api/v2/config/backups/{timestamp}", s.auth.RequireAuth(s.handleGetConfigBackup))
@@ -257,4 +258,41 @@ func JSONError(w http.ResponseWriter, status int, code, message string) {
 		"error": message,
 		"code":  code,
 	})
+}
+
+// primaryWebURL returns the primary node's web UI URL by combining the
+// peer's IP with our own API listen port. Returns empty string if HA is
+// not configured or the address can't be parsed.
+func (s *Server) primaryWebURL() string {
+	if !s.cfg.HA.Enabled || s.cfg.HA.PeerAddress == "" {
+		return ""
+	}
+	peerHost, _, err := net.SplitHostPort(s.cfg.HA.PeerAddress)
+	if err != nil {
+		return ""
+	}
+	_, apiPort, err := net.SplitHostPort(s.cfg.API.Listen)
+	if err != nil {
+		apiPort = "8067"
+	}
+	return fmt.Sprintf("http://%s", net.JoinHostPort(peerHost, apiPort))
+}
+
+// standbyGuard wraps a handler to block writes when this node is HA standby.
+// Returns 409 Conflict with the primary's URL so the client can redirect.
+func (s *Server) standbyGuard(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.fsm != nil && !s.fsm.IsActive() {
+			primaryURL := s.primaryWebURL()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error":       "this node is standby — config changes must be made on the primary",
+				"code":        "ha_standby",
+				"primary_url": primaryURL,
+			})
+			return
+		}
+		next(w, r)
+	}
 }

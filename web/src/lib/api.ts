@@ -63,6 +63,8 @@ export interface HAStatus {
   peer_address: string
   peer_connected: boolean
   last_heartbeat: string
+  is_standby: boolean
+  primary_url?: string
 }
 
 export interface HealthResponse {
@@ -322,6 +324,14 @@ export interface HooksConfigType {
   webhook?: { name: string; events: string[]; url: string; method: string; headers?: Record<string, string>; timeout: string; retries: number; retry_backoff: string; secret?: string; template?: string }[]
 }
 
+export interface DDNSZoneType {
+  zone: string; method: string; server: string; tsig_name: string; tsig_algorithm: string; tsig_secret: string; api_key: string
+}
+
+export interface DDNSZoneOverrideType {
+  subnet: string; forward_zone: string; reverse_zone: string; method: string; server: string; api_key: string; tsig_name: string; tsig_algorithm: string; tsig_secret: string
+}
+
 export interface DDNSConfigType {
   enabled: boolean
   allow_client_fqdn: boolean
@@ -330,8 +340,9 @@ export interface DDNSConfigType {
   update_on_renew: boolean
   conflict_policy: string
   use_dhcid: boolean
-  forward: { zone: string; method: string; server: string; tsig_name: string; tsig_algorithm: string; tsig_secret: string; api_key: string }
-  reverse: { zone: string; method: string; server: string; tsig_name: string; tsig_algorithm: string; tsig_secret: string; api_key: string }
+  forward: DDNSZoneType
+  reverse: DDNSZoneType
+  zone_override?: DDNSZoneOverrideType[]
 }
 
 export interface DNSConfigType {

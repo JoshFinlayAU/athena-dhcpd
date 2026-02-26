@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -168,46 +169,16 @@ func main() {
 		}
 	}
 
-	// Initialize API server
-	var apiServer *api.Server
-	if cfg.API.Enabled {
-		// Flatten pool map for API
-		var allPools []*pool.Pool
-		for _, subPools := range pools {
-			allPools = append(allPools, subPools...)
-		}
-
-		// Get conflict table if available
-		var conflictTable *conflict.Table
-		if detector != nil {
-			conflictTable = detector.Table()
-		}
-
-		apiOpts := []api.ServerOption{
-			api.WithConfigPath(*configPath),
-			api.WithConfigStore(cfgStore),
-		}
-		if dnsServer != nil {
-			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
-		}
-
-		apiServer = api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
-		go func() {
-			if err := apiServer.Start(); err != nil {
-				logger.Error("API server failed", "error", err)
-			}
-		}()
-	}
-
-	// Initialize HA peer with config sync
+	// Initialize HA peer with config sync (before API so status is available)
 	var haPeer *ha.Peer
+	var haFSM *ha.FSM
 	if cfg.HA.Enabled {
 		failoverTimeout, _ := time.ParseDuration(cfg.HA.FailoverTimeout)
 		if failoverTimeout == 0 {
 			failoverTimeout = 10 * time.Second
 		}
-		fsm := ha.NewFSM(cfg.HA.Role, failoverTimeout, bus, logger)
-		peer, err := ha.NewPeer(&cfg.HA, fsm, store, bus, logger)
+		haFSM = ha.NewFSM(cfg.HA.Role, failoverTimeout, bus, logger)
+		peer, err := ha.NewPeer(&cfg.HA, haFSM, store, bus, logger)
 		if err != nil {
 			logger.Error("failed to create HA peer", "error", err)
 		} else {
@@ -243,6 +214,43 @@ func main() {
 				defer haPeer.Stop()
 			}
 		}
+	}
+
+	// Initialize API server
+	var apiServer *api.Server
+	if cfg.API.Enabled {
+		// Flatten pool map for API
+		var allPools []*pool.Pool
+		for _, subPools := range pools {
+			allPools = append(allPools, subPools...)
+		}
+
+		// Get conflict table if available
+		var conflictTable *conflict.Table
+		if detector != nil {
+			conflictTable = detector.Table()
+		}
+
+		apiOpts := []api.ServerOption{
+			api.WithConfigPath(*configPath),
+			api.WithConfigStore(cfgStore),
+		}
+		if dnsServer != nil {
+			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
+		}
+		if haFSM != nil {
+			apiOpts = append(apiOpts, api.WithFSM(haFSM))
+		}
+		if haPeer != nil {
+			apiOpts = append(apiOpts, api.WithPeer(haPeer))
+		}
+
+		apiServer = api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
+		go func() {
+			if err := apiServer.Start(); err != nil {
+				logger.Error("API server failed", "error", err)
+			}
+		}()
 	}
 
 	logger.Info("athena-dhcpd ready",
@@ -368,6 +376,11 @@ func main() {
 
 // writePIDFile writes the current process ID to the given path.
 func writePIDFile(path string) error {
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("creating PID directory %s: %w", dir, err)
+		}
+	}
 	return os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
 }
 

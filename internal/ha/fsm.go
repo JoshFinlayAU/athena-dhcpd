@@ -30,13 +30,20 @@ func NewFSM(role string, failoverTimeout time.Duration, bus *events.Bus, logger 
 		initialState = dhcpv4.HAStateActive
 	}
 
-	return &FSM{
+	fsm := &FSM{
 		state:           initialState,
 		role:            role,
 		failoverTimeout: failoverTimeout,
 		bus:             bus,
 		logger:          logger,
 	}
+
+	logger.Info("HA FSM initialized",
+		"role", role,
+		"initial_state", string(initialState),
+		"failover_timeout", failoverTimeout.String())
+
+	return fsm
 }
 
 // State returns the current HA state.
@@ -86,10 +93,21 @@ func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 	cb := f.onStateChange
 	f.mu.Unlock()
 
-	f.logger.Info("HA state transition",
+	isNowActive := newState == dhcpv4.HAStateActive || newState == dhcpv4.HAStatePartnerDown
+	wasActive := oldState == dhcpv4.HAStateActive || oldState == dhcpv4.HAStatePartnerDown
+
+	f.logger.Warn("HA state transition",
 		"old_state", string(oldState),
 		"new_state", string(newState),
+		"role", f.role,
+		"serving_dhcp", isNowActive,
 		"reason", reason)
+
+	if isNowActive && !wasActive {
+		f.logger.Warn("this node is now ACTIVE and serving DHCP", "role", f.role)
+	} else if !isNowActive && wasActive {
+		f.logger.Warn("this node is no longer serving DHCP", "role", f.role, "new_state", string(newState))
+	}
 
 	if cb != nil {
 		cb(oldState, newState)
@@ -109,18 +127,20 @@ func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 // PeerUp is called when the peer connection is established or a heartbeat is received.
 func (f *FSM) PeerUp() {
 	f.mu.Lock()
+	prevHB := f.lastHeartbeat
 	f.lastHeartbeat = time.Now()
 	currentState := f.state
 	f.mu.Unlock()
 
 	switch currentState {
 	case dhcpv4.HAStatePartnerDown:
-		// Partner is back — transition to recovery
+		f.logger.Warn("peer came back after being down",
+			"downtime", time.Since(prevHB).Round(time.Millisecond).String(),
+			"current_state", string(currentState))
 		f.transition(dhcpv4.HAStateRecovery, "peer reconnected")
 	case dhcpv4.HAStateRecovery:
 		// Stay in recovery until bulk sync completes
 	case dhcpv4.HAStateActive, dhcpv4.HAStateStandby:
-		// Update to PARTNER_UP if not already
 		if currentState == dhcpv4.HAStateActive || currentState == dhcpv4.HAStateStandby {
 			f.transition(dhcpv4.HAStatePartnerUp, "peer heartbeat received")
 		}
@@ -131,14 +151,24 @@ func (f *FSM) PeerUp() {
 func (f *FSM) PeerDown() {
 	f.mu.RLock()
 	currentState := f.state
+	lastHB := f.lastHeartbeat
 	f.mu.RUnlock()
+
+	f.logger.Warn("peer declared DOWN",
+		"current_state", string(currentState),
+		"role", f.role,
+		"last_heartbeat_ago", time.Since(lastHB).Round(time.Millisecond).String(),
+		"failover_timeout", f.failoverTimeout.String())
 
 	switch currentState {
 	case dhcpv4.HAStatePartnerUp, dhcpv4.HAStateStandby:
 		f.transition(dhcpv4.HAStatePartnerDown, "peer heartbeat timeout")
-		// If we're the primary (or only node), claim active
 		if f.role == "primary" {
+			f.logger.Warn("primary node taking over as ACTIVE")
 			f.transition(dhcpv4.HAStateActive, "primary claiming active after partner down")
+		} else {
+			f.logger.Warn("secondary node detected primary down — waiting for manual failover or primary recovery",
+				"hint", "use POST /api/v2/ha/failover to force this node active")
 		}
 	case dhcpv4.HAStateRecovery:
 		f.transition(dhcpv4.HAStatePartnerDown, "peer lost during recovery")
@@ -151,6 +181,8 @@ func (f *FSM) BulkSyncComplete() {
 	currentState := f.state
 	f.mu.RUnlock()
 
+	f.logger.Info("bulk sync complete", "current_state", string(currentState), "role", f.role)
+
 	if currentState == dhcpv4.HAStateRecovery {
 		if f.role == "primary" {
 			f.transition(dhcpv4.HAStateActive, "bulk sync complete — primary resuming active")
@@ -162,6 +194,10 @@ func (f *FSM) BulkSyncComplete() {
 
 // ClaimActive forces this node to the ACTIVE state (manual failover or admin action).
 func (f *FSM) ClaimActive(reason string) {
+	f.logger.Warn("manual failover requested",
+		"role", f.role,
+		"current_state", string(f.State()),
+		"reason", reason)
 	f.transition(dhcpv4.HAStateActive, fmt.Sprintf("manual claim: %s", reason))
 }
 
@@ -177,7 +213,12 @@ func (f *FSM) CheckHeartbeatTimeout() {
 		return // No heartbeat received yet
 	}
 
-	if time.Since(lastHB) > f.failoverTimeout && currentState != dhcpv4.HAStatePartnerDown {
+	silence := time.Since(lastHB)
+	if silence > f.failoverTimeout && currentState != dhcpv4.HAStatePartnerDown {
+		f.logger.Warn("heartbeat timeout exceeded",
+			"silence", silence.Round(time.Millisecond).String(),
+			"timeout", f.failoverTimeout.String(),
+			"current_state", string(currentState))
 		f.PeerDown()
 	}
 }

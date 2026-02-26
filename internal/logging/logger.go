@@ -30,6 +30,12 @@ func Setup(level string, output io.Writer) *slog.Logger {
 
 	opts := &slog.HandlerOptions{
 		Level: lvl,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				a.Value = slog.TimeValue(a.Value.Time().Local())
+			}
+			return a
+		},
 	}
 
 	handler := slog.NewJSONHandler(output, opts)

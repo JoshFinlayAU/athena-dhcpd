@@ -67,10 +67,10 @@ install: build
 	@echo "==> Installing athena-dhcpd..."
 	install -d /usr/local/bin
 	install -m 0755 $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
-	@# Config
-	install -d -m 0755 /etc/athena-dhcpd
+	@# Config directory (775 so service can write backups + temp files)
+	install -d -m 0775 /etc/athena-dhcpd
 	@if [ ! -f /etc/athena-dhcpd/config.toml ]; then \
-		install -m 0640 configs/example.toml /etc/athena-dhcpd/config.toml; \
+		install -m 0660 configs/example.toml /etc/athena-dhcpd/config.toml; \
 		echo "    Installed example config to /etc/athena-dhcpd/config.toml"; \
 	else \
 		echo "    Config already exists, not overwriting"; \

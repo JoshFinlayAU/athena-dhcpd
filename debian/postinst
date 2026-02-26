@@ -17,10 +17,14 @@ case "$1" in
         chown athena-dhcpd:athena-dhcpd /var/lib/athena-dhcpd
         chmod 750 /var/lib/athena-dhcpd
 
+        # Set config directory permissions (service needs to write backups + temp files)
+        chown root:athena-dhcpd /etc/athena-dhcpd
+        chmod 775 /etc/athena-dhcpd
+
         # Set config file permissions (contains secrets)
         if [ -f /etc/athena-dhcpd/config.toml ]; then
             chown root:athena-dhcpd /etc/athena-dhcpd/config.toml
-            chmod 640 /etc/athena-dhcpd/config.toml
+            chmod 660 /etc/athena-dhcpd/config.toml
         fi
 
         # Set capabilities on the binary for raw sockets and privileged port binding

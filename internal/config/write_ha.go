@@ -38,11 +38,16 @@ func WriteHASection(path string, ha *HAConfig) error {
 	// next top-level section that isn't a sub-table of ha.
 	content = replaceOrAppendSection(content, "ha", newHA)
 
-	// Create backup
+	// Create backup (best-effort: try config dir, fall back to temp dir)
 	ts := time.Now().Format("20060102T150405")
 	backupPath := path + ".bak." + ts
 	if err := os.WriteFile(backupPath, data, 0600); err != nil {
-		return fmt.Errorf("creating backup: %w", err)
+		// Fall back to temp directory
+		tmpBackup := filepath.Join(os.TempDir(), filepath.Base(path)+".bak."+ts)
+		if err2 := os.WriteFile(tmpBackup, data, 0600); err2 != nil {
+			// Non-fatal: proceed without backup rather than blocking config writes
+			fmt.Fprintf(os.Stderr, "warning: could not create config backup (tried %s and %s): %v\n", backupPath, tmpBackup, err)
+		}
 	}
 
 	// Atomic write: temp file + rename

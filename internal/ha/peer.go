@@ -453,7 +453,7 @@ func (p *Peer) heartbeatLoop(ctx context.Context) {
 				continue
 			}
 			if err := p.sendMessage(msg); err != nil {
-				p.logger.Warn("failed to send heartbeat to peer", "error", err)
+				p.logger.Debug("heartbeat send skipped", "error", err)
 			} else {
 				metrics.HAHeartbeatsSent.Inc()
 			}

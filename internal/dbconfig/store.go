@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	bolt "go.etcd.io/bbolt"
@@ -51,6 +52,11 @@ type Store struct {
 	onChange []func()
 	// Listeners notified only for local changes (used to trigger HA peer sync)
 	onLocalChange []func(section string, data []byte)
+
+	// Debounce: coalesce rapid config changes into a single onChange callback.
+	// Prevents 7 concurrent rebuilds when HA primary pushes 7 config sections.
+	debounceMu    sync.Mutex
+	debounceTimer *time.Timer
 }
 
 // NewStore initializes the config store, creating buckets and loading cached state.
@@ -86,9 +92,16 @@ func (s *Store) OnChange(fn func()) {
 }
 
 func (s *Store) notifyChange() {
-	for _, fn := range s.onChange {
-		go fn()
+	s.debounceMu.Lock()
+	if s.debounceTimer != nil {
+		s.debounceTimer.Stop()
 	}
+	s.debounceTimer = time.AfterFunc(100*time.Millisecond, func() {
+		for _, fn := range s.onChange {
+			fn()
+		}
+	})
+	s.debounceMu.Unlock()
 }
 
 func (s *Store) notifyLocalChange(section string, data []byte) {

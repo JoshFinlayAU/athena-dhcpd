@@ -16,6 +16,11 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
 
+// HAChecker is satisfied by the HA FSM — lets the handler skip packets when standby.
+type HAChecker interface {
+	IsActive() bool
+}
+
 // Handler processes DHCP messages implementing the DORA cycle (RFC 2131).
 type Handler struct {
 	cfg      *config.Config
@@ -26,6 +31,7 @@ type Handler struct {
 	logger   *slog.Logger
 	serverIP net.IP
 	ifaceIP  net.IP // auto-discovered from listening interface
+	ha       HAChecker
 }
 
 // NewHandler creates a new DHCP message handler.
@@ -72,8 +78,18 @@ func NewHandler(
 	return h
 }
 
+// SetHA sets the HA state checker (call after FSM is created).
+func (h *Handler) SetHA(ha HAChecker) {
+	h.ha = ha
+}
+
 // HandlePacket dispatches a DHCP packet to the appropriate handler based on message type.
 func (h *Handler) HandlePacket(ctx context.Context, pkt *Packet, src net.Addr) (*Packet, error) {
+	// HA guard: if we have an FSM and we are NOT the active node, silently drop.
+	if h.ha != nil && !h.ha.IsActive() {
+		return nil, nil
+	}
+
 	msgType := pkt.MessageType()
 
 	h.logger.Debug("received DHCP packet",

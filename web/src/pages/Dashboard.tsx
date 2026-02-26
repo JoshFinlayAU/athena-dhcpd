@@ -53,7 +53,7 @@ export default function Dashboard() {
         />
         <StatCard
           label="HA State"
-          value={ha?.enabled ? ha.state : 'Standalone'}
+          value={ha?.enabled ? (ha.state || '—') : 'Standalone'}
           sub={ha?.enabled ? `Peer: ${ha.peer_connected ? 'connected' : 'disconnected'}` : 'HA disabled'}
           icon={Server}
           color="bg-info/15"

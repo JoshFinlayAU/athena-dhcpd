@@ -573,6 +573,8 @@ export const v2AcknowledgeRogue = (serverIP: string) =>
   request<{ status: string }>('/rogue/acknowledge', { method: 'POST', body: JSON.stringify({ server_ip: serverIP }) })
 export const v2RemoveRogue = (serverIP: string) =>
   request<{ status: string }>('/rogue/remove', { method: 'POST', body: JSON.stringify({ server_ip: serverIP }) })
+export const v2ScanRogue = () =>
+  request<{ status: string; servers_found: number; servers: RogueServer[]; total: number }>('/rogue/scan', { method: 'POST' })
 
 // Topology
 export interface TopologyDevice {

@@ -301,6 +301,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/rogue/stats", s.auth.RequireAuth(s.handleRogueStats))
 	mux.HandleFunc("POST /api/v2/rogue/acknowledge", s.auth.RequireAdmin(s.handleRogueAcknowledge))
 	mux.HandleFunc("POST /api/v2/rogue/remove", s.auth.RequireAdmin(s.handleRogueRemove))
+	mux.HandleFunc("POST /api/v2/rogue/scan", s.auth.RequireAdmin(s.handleRogueScan))
 
 	// Topology
 	mux.HandleFunc("GET /api/v2/topology", s.auth.RequireAuth(s.handleTopologyTree))

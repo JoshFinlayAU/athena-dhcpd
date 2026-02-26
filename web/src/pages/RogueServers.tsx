@@ -2,9 +2,9 @@ import { useState, useCallback } from 'react'
 import { useApi } from '@/hooks/useApi'
 import { Card } from '@/components/Card'
 import { Table, THead, TH, TD, TR } from '@/components/Table'
-import { ShieldAlert, Check, Trash2, Clock } from 'lucide-react'
+import { ShieldAlert, Check, Trash2, Clock, Radar } from 'lucide-react'
 import {
-  v2GetRogueServers, v2GetRogueStats, v2AcknowledgeRogue, v2RemoveRogue,
+  v2GetRogueServers, v2GetRogueStats, v2AcknowledgeRogue, v2RemoveRogue, v2ScanRogue,
   type RogueServer,
 } from '@/lib/api'
 
@@ -16,6 +16,7 @@ export default function RogueServers() {
   const { data: servers, refetch } = useApi(useCallback(() => v2GetRogueServers(), []))
   const { data: stats } = useApi(useCallback(() => v2GetRogueStats(), []))
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   const showStatus = (type: 'success' | 'error', msg: string) => {
     setStatus({ type, msg })
@@ -42,22 +43,45 @@ export default function RogueServers() {
     }
   }
 
+  const handleScan = async () => {
+    setScanning(true)
+    try {
+      const result = await v2ScanRogue()
+      showStatus('success', `Scan complete — ${result.servers_found} rogue server${result.servers_found !== 1 ? 's' : ''} found`)
+      refetch()
+    } catch (e) {
+      showStatus('error', e instanceof Error ? e.message : 'Scan failed')
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const list = servers || []
 
   return (
     <div className="p-6 max-w-7xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ShieldAlert className="w-6 h-6" /> Rogue DHCP Servers
-        </h1>
-        <p className="text-sm text-text-secondary mt-0.5">
-          Detected unauthorized DHCP servers on the network
-          {stats && stats.active > 0 && (
-            <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-danger/15 text-danger">
-              {stats.active} active
-            </span>
-          )}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ShieldAlert className="w-6 h-6" /> Rogue DHCP Servers
+          </h1>
+          <p className="text-sm text-text-secondary mt-0.5">
+            Detected unauthorized DHCP servers on the network
+            {stats && stats.active > 0 && (
+              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-danger/15 text-danger">
+                {stats.active} active
+              </span>
+            )}
+          </p>
+        </div>
+        <button
+          onClick={handleScan}
+          disabled={scanning}
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
+        >
+          <Radar className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
+          {scanning ? 'Scanning...' : 'Scan Now'}
+        </button>
       </div>
 
       {status && (

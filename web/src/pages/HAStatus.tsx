@@ -59,13 +59,13 @@ export default function HAStatus() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
           label="Role"
-          value={ha.role}
+          value={ha.role || '—'}
           icon={Shield}
           color="bg-accent/15"
         />
         <StatCard
           label="State"
-          value={ha.state}
+          value={ha.state || '—'}
           icon={Server}
           color={ha.state === 'ACTIVE' ? 'bg-success/15' : 'bg-warning/15'}
         />
@@ -80,12 +80,12 @@ export default function HAStatus() {
       <Card>
         <h2 className="text-sm font-semibold mb-4">Peer Connection</h2>
         <div className="space-y-3">
-          <DetailRow label="Peer Address" value={ha.peer_address} mono />
+          <DetailRow label="Peer Address" value={ha.peer_address || '—'} mono />
           <DetailRow label="Connection" value={ha.peer_connected ? 'Connected' : 'Disconnected'}>
             <StatusBadge status={ha.peer_connected ? 'connected' : 'disconnected'} />
           </DetailRow>
-          <DetailRow label="State" value={ha.state}>
-            <StatusBadge status={ha.state.toLowerCase()} />
+          <DetailRow label="State" value={ha.state || '—'}>
+            <StatusBadge status={(ha.state || 'unknown').toLowerCase()} />
           </DetailRow>
         </div>
       </Card>

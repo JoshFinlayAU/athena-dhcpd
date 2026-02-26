@@ -26,6 +26,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/logging"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
 )
 
 func main() {
@@ -135,6 +136,14 @@ func main() {
 			shutdownCancel()
 			bus.Stop()
 			signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+
+			// Reload bootstrap from TOML — the wizard may have written HA config
+			newBootstrap, err := config.LoadBootstrap(*configPath)
+			if err != nil {
+				logger.Warn("failed to reload bootstrap after setup", "error", err)
+			} else {
+				bootstrap = newBootstrap
+			}
 			// Fall through to normal startup below
 		case sig := <-sigCh:
 			logger.Info("received shutdown signal during setup", "signal", sig.String())
@@ -206,6 +215,37 @@ func main() {
 		}
 	}
 
+	// Initialize rogue DHCP server detection with active probing
+	var rogueDetector *rogue.Detector
+	{
+		// Collect our own IPs so we don't flag ourselves
+		var ownIPs []net.IP
+		if ip := cfg.ServerIP(); ip != nil {
+			ownIPs = append(ownIPs, ip)
+		}
+		if iface, err := net.InterfaceByName(cfg.Server.Interface); err == nil {
+			if addrs, err := iface.Addrs(); err == nil {
+				for _, a := range addrs {
+					if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
+						ownIPs = append(ownIPs, ipn.IP.To4())
+					}
+				}
+			}
+		}
+		rd, err := rogue.NewDetector(store.DB(), bus, ownIPs, logger)
+		if err != nil {
+			logger.Warn("failed to initialize rogue detector", "error", err)
+		} else {
+			rogueDetector = rd
+			rogueDetector.StartProbing(ctx, rogue.ProbeConfig{
+				Interface: cfg.Server.Interface,
+				Interval:  5 * time.Minute,
+				Timeout:   3 * time.Second,
+			})
+			logger.Info("rogue DHCP detection enabled", "own_ips", len(ownIPs))
+		}
+	}
+
 	// Initialize DNS proxy
 	var dnsServer *dnsproxy.Server
 	if cfg.DNS.Enabled {
@@ -268,6 +308,9 @@ func main() {
 				}
 			})
 
+			// Wire HA state into DHCP handler so standby node drops packets
+			handler.SetHA(haFSM)
+
 			if err := peer.Start(ctx); err != nil {
 				logger.Error("failed to start HA peer", "error", err)
 			} else {
@@ -304,6 +347,10 @@ func main() {
 		}
 		if haPeer != nil {
 			apiOpts = append(apiOpts, api.WithPeer(haPeer))
+		}
+
+		if rogueDetector != nil {
+			apiOpts = append(apiOpts, api.WithRogueDetector(rogueDetector))
 		}
 
 		apiServer = api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)

@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
 )
 
 // handleRogueList returns all known rogue DHCP servers.
@@ -47,6 +49,29 @@ func (s *Server) handleRogueAcknowledge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	JSONResponse(w, http.StatusOK, map[string]string{"status": "acknowledged"})
+}
+
+// handleRogueScan triggers an immediate rogue DHCP server scan.
+// POST /api/v2/rogue/scan
+func (s *Server) handleRogueScan(w http.ResponseWriter, r *http.Request) {
+	if s.rogueDetector == nil {
+		JSONError(w, http.StatusServiceUnavailable, "rogue_disabled", "rogue detection not available")
+		return
+	}
+	found, err := s.rogueDetector.ScanNow(r.Context(), rogue.ProbeConfig{
+		Interface: s.cfg.Server.Interface,
+		Timeout:   3_000_000_000, // 3s
+	})
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "scan_failed", err.Error())
+		return
+	}
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"status":        "complete",
+		"servers_found": len(found),
+		"servers":       found,
+		"total":         s.rogueDetector.Count(),
+	})
 }
 
 // handleRogueRemove removes a rogue server entry.

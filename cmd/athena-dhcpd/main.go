@@ -29,6 +29,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "/etc/athena-dhcpd/config.toml", "path to configuration file")
+	reimport := flag.Bool("reimport", false, "force re-import of TOML config into database (overwrites DB config with TOML)")
 	flag.Parse()
 
 	// Load bootstrap configuration (server + api only from TOML)
@@ -65,20 +66,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Auto-migrate v1 TOML config on first startup
-	if !cfgStore.IsV1Imported() {
+	// Auto-migrate TOML config into database
+	if *reimport || !cfgStore.IsV1Imported() {
+		if *reimport {
+			logger.Info("forced reimport of TOML config into database")
+		}
 		// Try loading full TOML to check for dynamic config sections
 		fullCfg, fullErr := config.Load(*configPath)
 		if fullErr == nil && config.HasDynamicConfig(fullCfg) {
-			logger.Info("detected v1 TOML config with dynamic sections, importing to database")
+			logger.Info("importing TOML config sections to database")
 			if err := cfgStore.ImportFromConfig(fullCfg); err != nil {
-				logger.Error("failed to import v1 config", "error", err)
+				logger.Error("failed to import config", "error", err)
 				os.Exit(1)
 			}
-			logger.Info("v1 config imported successfully",
+			cfgStore.MarkV1Imported()
+			logger.Info("config imported successfully",
 				"subnets", len(fullCfg.Subnets))
+		} else if fullErr != nil {
+			logger.Warn("could not load full TOML for import", "error", fullErr)
+		} else {
+			logger.Debug("no dynamic config sections in TOML, skipping import")
 		}
-		cfgStore.MarkV1Imported()
 	}
 
 	// Build full config from bootstrap + DB

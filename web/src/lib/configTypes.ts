@@ -341,6 +341,62 @@ export function mergeWithDefaults(parsed: Record<string, unknown>): Config {
   return deepMerge(def, parsed) as Config
 }
 
+// Strip values that match defaults so only user-configured values appear in TOML
+export function stripDefaults(current: unknown, defaults: unknown): unknown {
+  // Arrays: always keep if non-empty, drop if empty
+  if (Array.isArray(current)) {
+    return current.length > 0 ? current : undefined
+  }
+
+  // Objects: recurse, then drop if resulting object is empty
+  if (typeof current === 'object' && current !== null && typeof defaults === 'object' && defaults !== null && !Array.isArray(defaults)) {
+    const result: Record<string, unknown> = {}
+    const cur = current as Record<string, unknown>
+    const def = defaults as Record<string, unknown>
+
+    for (const key of Object.keys(cur)) {
+      const curVal = cur[key]
+      const defVal = def[key]
+
+      // If key doesn't exist in defaults, always keep it
+      if (!(key in def)) {
+        if (curVal !== '' && curVal !== undefined) result[key] = curVal
+        continue
+      }
+
+      // Recurse into nested objects
+      if (typeof curVal === 'object' && curVal !== null && !Array.isArray(curVal) && typeof defVal === 'object' && defVal !== null && !Array.isArray(defVal)) {
+        const stripped = stripDefaults(curVal, defVal)
+        if (stripped !== undefined && typeof stripped === 'object' && Object.keys(stripped as Record<string, unknown>).length > 0) {
+          result[key] = stripped
+        }
+        continue
+      }
+
+      // Arrays
+      if (Array.isArray(curVal)) {
+        if (curVal.length > 0) result[key] = curVal
+        continue
+      }
+
+      // Primitives: skip if equal to default
+      if (curVal === defVal) continue
+
+      // Skip empty strings
+      if (curVal === '') continue
+
+      result[key] = curVal
+    }
+
+    return Object.keys(result).length > 0 ? result : undefined
+  }
+
+  // Primitives: return if different from default
+  if (current === defaults) return undefined
+  if (current === '') return undefined
+  return current
+}
+
 function deepMerge(target: unknown, source: unknown): unknown {
   if (source === null || source === undefined) return target
   if (Array.isArray(source)) return source

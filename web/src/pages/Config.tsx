@@ -5,7 +5,7 @@ import { useApi } from '@/hooks/useApi'
 import { getConfigRaw, validateConfig, updateConfig } from '@/lib/api'
 import { parse, stringify } from 'smol-toml'
 import type { Config } from '@/lib/configTypes'
-import { mergeWithDefaults } from '@/lib/configTypes'
+import { mergeWithDefaults, defaultConfig, stripDefaults } from '@/lib/configTypes'
 import { cn } from '@/lib/utils'
 
 import ServerSection from '@/components/config/ServerSection'
@@ -43,17 +43,12 @@ export default function ConfigPage() {
     }
   }, [data])
 
-  // Serialize config back to TOML
+  // Serialize config back to TOML, stripping values that match defaults
   const configToToml = (cfg: Config): string => {
     try {
-      // Clean up empty arrays and objects before serializing
-      const clean = JSON.parse(JSON.stringify(cfg, (_k, v) => {
-        if (v === '') return undefined
-        if (Array.isArray(v) && v.length === 0) return undefined
-        if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 0) return undefined
-        return v
-      }))
-      return stringify(clean)
+      const defaults = defaultConfig()
+      const stripped = stripDefaults(cfg, defaults)
+      return stringify(stripped as Record<string, unknown>)
     } catch {
       return '# Error serializing config\n'
     }

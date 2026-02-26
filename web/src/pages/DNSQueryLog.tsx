@@ -6,6 +6,29 @@ import { Card } from '@/components/Card'
 import { Activity, Pause, Play, Trash2, Search } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
+// Parse DNS record string to extract the rdata (answer portion).
+// Input: "google.com. 93 IN MX 10 smtp.google.com."
+// Output: "10 smtp.google.com."
+function parseAnswer(raw: string): string {
+  // Format: name TTL class type rdata...
+  const parts = raw.split(/\s+/)
+  // Find the type field — skip name, TTL, class (IN/CH/etc)
+  let idx = 0
+  if (parts.length > 0) idx++ // skip name
+  // skip TTL (numeric)
+  while (idx < parts.length && /^\d+$/.test(parts[idx])) idx++
+  // skip class (IN, CH, HS, etc)
+  if (idx < parts.length && /^(IN|CH|HS|NONE|ANY)$/i.test(parts[idx])) idx++
+  // next is the type
+  const recType = idx < parts.length ? parts[idx] : ''
+  idx++
+  // everything after is the rdata
+  const rdata = parts.slice(idx).join(' ')
+  if (rdata) return rdata
+  // fallback: just show the type if no rdata
+  return recType || raw
+}
+
 const statusColors: Record<string, string> = {
   allowed: 'text-success',
   forwarded: 'text-info',
@@ -214,7 +237,7 @@ export default function DNSQueryLog() {
                   {entry.status === 'blocked' ? (
                     <span className="text-xs text-danger">{entry.list_name} ({entry.action})</span>
                   ) : entry.answer ? (
-                    <span className="text-xs text-text-muted font-mono truncate max-w-[200px] block">{entry.answer}</span>
+                    <span className="text-xs text-text-muted font-mono" title={entry.answer}>{parseAnswer(entry.answer)}</span>
                   ) : (
                     <span className="text-text-muted">—</span>
                   )}

@@ -44,211 +44,211 @@ type RateLimitConfig struct {
 
 // ConflictDetectionConfig holds IP conflict detection settings.
 type ConflictDetectionConfig struct {
-	Enabled              bool   `toml:"enabled"`
-	ProbeStrategy        string `toml:"probe_strategy"`
-	ProbeTimeout         string `toml:"probe_timeout"`
-	MaxProbesPerDiscover int    `toml:"max_probes_per_discover"`
-	ParallelProbeCount   int    `toml:"parallel_probe_count"`
-	ConflictHoldTime     string `toml:"conflict_hold_time"`
-	MaxConflictCount     int    `toml:"max_conflict_count"`
-	ProbeCacheTTL        string `toml:"probe_cache_ttl"`
-	SendGratuitousARP    bool   `toml:"send_gratuitous_arp"`
-	ICMPFallback         bool   `toml:"icmp_fallback"`
-	ProbeLogLevel        string `toml:"probe_log_level"`
+	Enabled              bool   `toml:"enabled" json:"enabled"`
+	ProbeStrategy        string `toml:"probe_strategy" json:"probe_strategy"`
+	ProbeTimeout         string `toml:"probe_timeout" json:"probe_timeout"`
+	MaxProbesPerDiscover int    `toml:"max_probes_per_discover" json:"max_probes_per_discover"`
+	ParallelProbeCount   int    `toml:"parallel_probe_count" json:"parallel_probe_count"`
+	ConflictHoldTime     string `toml:"conflict_hold_time" json:"conflict_hold_time"`
+	MaxConflictCount     int    `toml:"max_conflict_count" json:"max_conflict_count"`
+	ProbeCacheTTL        string `toml:"probe_cache_ttl" json:"probe_cache_ttl"`
+	SendGratuitousARP    bool   `toml:"send_gratuitous_arp" json:"send_gratuitous_arp"`
+	ICMPFallback         bool   `toml:"icmp_fallback" json:"icmp_fallback"`
+	ProbeLogLevel        string `toml:"probe_log_level" json:"probe_log_level,omitempty"`
 }
 
 // HAConfig holds high availability settings.
 type HAConfig struct {
-	Enabled           bool        `toml:"enabled"`
-	Role              string      `toml:"role"`
-	PeerAddress       string      `toml:"peer_address"`
-	ListenAddress     string      `toml:"listen_address"`
-	HeartbeatInterval string      `toml:"heartbeat_interval"`
-	FailoverTimeout   string      `toml:"failover_timeout"`
-	SyncBatchSize     int         `toml:"sync_batch_size"`
-	TLS               HATLSConfig `toml:"tls"`
+	Enabled           bool        `toml:"enabled" json:"enabled"`
+	Role              string      `toml:"role" json:"role"`
+	PeerAddress       string      `toml:"peer_address" json:"peer_address"`
+	ListenAddress     string      `toml:"listen_address" json:"listen_address"`
+	HeartbeatInterval string      `toml:"heartbeat_interval" json:"heartbeat_interval"`
+	FailoverTimeout   string      `toml:"failover_timeout" json:"failover_timeout"`
+	SyncBatchSize     int         `toml:"sync_batch_size" json:"sync_batch_size"`
+	TLS               HATLSConfig `toml:"tls" json:"tls"`
 }
 
 // HATLSConfig holds TLS settings for HA peer communication.
 type HATLSConfig struct {
-	Enabled  bool   `toml:"enabled"`
-	CertFile string `toml:"cert_file"`
-	KeyFile  string `toml:"key_file"`
-	CAFile   string `toml:"ca_file"`
+	Enabled  bool   `toml:"enabled" json:"enabled"`
+	CertFile string `toml:"cert_file" json:"cert_file"`
+	KeyFile  string `toml:"key_file" json:"key_file"`
+	CAFile   string `toml:"ca_file" json:"ca_file"`
 }
 
 // HooksConfig holds event hook settings.
 type HooksConfig struct {
-	EventBufferSize   int           `toml:"event_buffer_size"`
-	ScriptConcurrency int           `toml:"script_concurrency"`
-	ScriptTimeout     string        `toml:"script_timeout"`
-	Scripts           []ScriptHook  `toml:"script"`
-	Webhooks          []WebhookHook `toml:"webhook"`
+	EventBufferSize   int           `toml:"event_buffer_size" json:"event_buffer_size"`
+	ScriptConcurrency int           `toml:"script_concurrency" json:"script_concurrency"`
+	ScriptTimeout     string        `toml:"script_timeout" json:"script_timeout"`
+	Scripts           []ScriptHook  `toml:"script" json:"script,omitempty"`
+	Webhooks          []WebhookHook `toml:"webhook" json:"webhook,omitempty"`
 }
 
 // ScriptHook defines a script hook.
 type ScriptHook struct {
-	Name    string   `toml:"name"`
-	Events  []string `toml:"events"`
-	Command string   `toml:"command"`
-	Timeout string   `toml:"timeout"`
-	Subnets []string `toml:"subnets"`
+	Name    string   `toml:"name" json:"name"`
+	Events  []string `toml:"events" json:"events"`
+	Command string   `toml:"command" json:"command"`
+	Timeout string   `toml:"timeout" json:"timeout"`
+	Subnets []string `toml:"subnets" json:"subnets,omitempty"`
 }
 
 // WebhookHook defines a webhook hook.
 type WebhookHook struct {
-	Name         string            `toml:"name"`
-	Events       []string          `toml:"events"`
-	URL          string            `toml:"url"`
-	Method       string            `toml:"method"`
-	Headers      map[string]string `toml:"headers"`
-	Timeout      string            `toml:"timeout"`
-	Retries      int               `toml:"retries"`
-	RetryBackoff string            `toml:"retry_backoff"`
-	Secret       string            `toml:"secret"`
-	Template     string            `toml:"template"`
+	Name         string            `toml:"name" json:"name"`
+	Events       []string          `toml:"events" json:"events"`
+	URL          string            `toml:"url" json:"url"`
+	Method       string            `toml:"method" json:"method"`
+	Headers      map[string]string `toml:"headers" json:"headers,omitempty"`
+	Timeout      string            `toml:"timeout" json:"timeout"`
+	Retries      int               `toml:"retries" json:"retries"`
+	RetryBackoff string            `toml:"retry_backoff" json:"retry_backoff"`
+	Secret       string            `toml:"secret" json:"secret,omitempty"`
+	Template     string            `toml:"template" json:"template,omitempty"`
 }
 
 // DDNSConfig holds dynamic DNS settings.
 type DDNSConfig struct {
-	Enabled         bool               `toml:"enabled"`
-	AllowClientFQDN bool               `toml:"allow_client_fqdn"`
-	FallbackToMAC   bool               `toml:"fallback_to_mac"`
-	TTL             int                `toml:"ttl"`
-	UpdateOnRenew   bool               `toml:"update_on_renew"`
-	ConflictPolicy  string             `toml:"conflict_policy"`
-	UseDHCID        bool               `toml:"use_dhcid"`
-	Forward         DDNSZoneConfig     `toml:"forward"`
-	Reverse         DDNSZoneConfig     `toml:"reverse"`
-	ZoneOverrides   []DDNSZoneOverride `toml:"zone_override"`
+	Enabled         bool               `toml:"enabled" json:"enabled"`
+	AllowClientFQDN bool               `toml:"allow_client_fqdn" json:"allow_client_fqdn"`
+	FallbackToMAC   bool               `toml:"fallback_to_mac" json:"fallback_to_mac"`
+	TTL             int                `toml:"ttl" json:"ttl"`
+	UpdateOnRenew   bool               `toml:"update_on_renew" json:"update_on_renew"`
+	ConflictPolicy  string             `toml:"conflict_policy" json:"conflict_policy"`
+	UseDHCID        bool               `toml:"use_dhcid" json:"use_dhcid"`
+	Forward         DDNSZoneConfig     `toml:"forward" json:"forward"`
+	Reverse         DDNSZoneConfig     `toml:"reverse" json:"reverse"`
+	ZoneOverrides   []DDNSZoneOverride `toml:"zone_override" json:"zone_override,omitempty"`
 }
 
 // DDNSZoneConfig holds DNS zone configuration.
 type DDNSZoneConfig struct {
-	Zone          string `toml:"zone"`
-	Method        string `toml:"method"`
-	Server        string `toml:"server"`
-	TSIGName      string `toml:"tsig_name"`
-	TSIGAlgorithm string `toml:"tsig_algorithm"`
-	TSIGSecret    string `toml:"tsig_secret"`
-	APIKey        string `toml:"api_key"`
+	Zone          string `toml:"zone" json:"zone"`
+	Method        string `toml:"method" json:"method"`
+	Server        string `toml:"server" json:"server"`
+	TSIGName      string `toml:"tsig_name" json:"tsig_name"`
+	TSIGAlgorithm string `toml:"tsig_algorithm" json:"tsig_algorithm"`
+	TSIGSecret    string `toml:"tsig_secret" json:"tsig_secret,omitempty"`
+	APIKey        string `toml:"api_key" json:"api_key,omitempty"`
 }
 
 // DDNSZoneOverride holds per-subnet DDNS zone overrides.
 type DDNSZoneOverride struct {
-	Subnet        string `toml:"subnet"`
-	ForwardZone   string `toml:"forward_zone"`
-	ReverseZone   string `toml:"reverse_zone"`
-	Method        string `toml:"method"`
-	Server        string `toml:"server"`
-	APIKey        string `toml:"api_key"`
-	TSIGName      string `toml:"tsig_name"`
-	TSIGAlgorithm string `toml:"tsig_algorithm"`
-	TSIGSecret    string `toml:"tsig_secret"`
+	Subnet        string `toml:"subnet" json:"subnet"`
+	ForwardZone   string `toml:"forward_zone" json:"forward_zone"`
+	ReverseZone   string `toml:"reverse_zone" json:"reverse_zone"`
+	Method        string `toml:"method" json:"method"`
+	Server        string `toml:"server" json:"server"`
+	APIKey        string `toml:"api_key" json:"api_key,omitempty"`
+	TSIGName      string `toml:"tsig_name" json:"tsig_name"`
+	TSIGAlgorithm string `toml:"tsig_algorithm" json:"tsig_algorithm"`
+	TSIGSecret    string `toml:"tsig_secret" json:"tsig_secret,omitempty"`
 }
 
 // DNSProxyConfig holds built-in DNS proxy settings.
 type DNSProxyConfig struct {
-	Enabled          bool              `toml:"enabled"`
-	ListenUDP        string            `toml:"listen_udp"`
-	ListenDoH        string            `toml:"listen_doh"`
-	DoHTLS           DoHTLSConfig      `toml:"doh_tls"`
-	Domain           string            `toml:"domain"`
-	TTL              int               `toml:"ttl"`
-	RegisterLeases   bool              `toml:"register_leases"`
-	ForwardLeasesPTR bool              `toml:"register_leases_ptr"`
-	Forwarders       []string          `toml:"forwarders"`
-	UseRootServers   bool              `toml:"use_root_servers"`
-	CacheSize        int               `toml:"cache_size"`
-	CacheTTL         string            `toml:"cache_ttl"`
-	ZoneOverrides    []DNSZoneOverride `toml:"zone_override"`
-	StaticRecords    []DNSStaticRecord `toml:"record"`
-	Lists            []DNSListConfig   `toml:"list"`
+	Enabled          bool              `toml:"enabled" json:"enabled"`
+	ListenUDP        string            `toml:"listen_udp" json:"listen_udp"`
+	ListenDoH        string            `toml:"listen_doh" json:"listen_doh,omitempty"`
+	DoHTLS           DoHTLSConfig      `toml:"doh_tls" json:"doh_tls,omitempty"`
+	Domain           string            `toml:"domain" json:"domain"`
+	TTL              int               `toml:"ttl" json:"ttl"`
+	RegisterLeases   bool              `toml:"register_leases" json:"register_leases"`
+	ForwardLeasesPTR bool              `toml:"register_leases_ptr" json:"register_leases_ptr"`
+	Forwarders       []string          `toml:"forwarders" json:"forwarders"`
+	UseRootServers   bool              `toml:"use_root_servers" json:"use_root_servers"`
+	CacheSize        int               `toml:"cache_size" json:"cache_size"`
+	CacheTTL         string            `toml:"cache_ttl" json:"cache_ttl"`
+	ZoneOverrides    []DNSZoneOverride `toml:"zone_override" json:"zone_override,omitempty"`
+	StaticRecords    []DNSStaticRecord `toml:"record" json:"record,omitempty"`
+	Lists            []DNSListConfig   `toml:"list" json:"list,omitempty"`
 }
 
 // DoHTLSConfig holds TLS settings for DNS-over-HTTPS.
 type DoHTLSConfig struct {
-	CertFile string `toml:"cert_file"`
-	KeyFile  string `toml:"key_file"`
+	CertFile string `toml:"cert_file" json:"cert_file,omitempty"`
+	KeyFile  string `toml:"key_file" json:"key_file,omitempty"`
 }
 
 // DNSListConfig holds a dynamic DNS filter list (blocklist or allowlist).
 type DNSListConfig struct {
-	Name            string `toml:"name"`
-	URL             string `toml:"url"`
-	Type            string `toml:"type"`   // "block" or "allow"
-	Format          string `toml:"format"` // "hosts", "domains", "adblock"
-	Action          string `toml:"action"` // "nxdomain", "zero", "refuse"
-	Enabled         bool   `toml:"enabled"`
-	RefreshInterval string `toml:"refresh_interval"` // e.g. "24h", "6h"
+	Name            string `toml:"name" json:"name"`
+	URL             string `toml:"url" json:"url"`
+	Type            string `toml:"type" json:"type"`     // "block" or "allow"
+	Format          string `toml:"format" json:"format"` // "hosts", "domains", "adblock"
+	Action          string `toml:"action" json:"action"` // "nxdomain", "zero", "refuse"
+	Enabled         bool   `toml:"enabled" json:"enabled"`
+	RefreshInterval string `toml:"refresh_interval" json:"refresh_interval"` // e.g. "24h", "6h"
 }
 
 // DNSZoneOverride routes queries for a specific domain to a specific nameserver.
 type DNSZoneOverride struct {
-	Zone       string `toml:"zone"`
-	Nameserver string `toml:"nameserver"`
-	DoH        bool   `toml:"doh"`
-	DoHURL     string `toml:"doh_url"`
+	Zone       string `toml:"zone" json:"zone"`
+	Nameserver string `toml:"nameserver" json:"nameserver"`
+	DoH        bool   `toml:"doh" json:"doh"`
+	DoHURL     string `toml:"doh_url" json:"doh_url,omitempty"`
 }
 
 // DNSStaticRecord defines a static DNS record.
 type DNSStaticRecord struct {
-	Name  string `toml:"name"`
-	Type  string `toml:"type"`
-	Value string `toml:"value"`
-	TTL   int    `toml:"ttl"`
+	Name  string `toml:"name" json:"name"`
+	Type  string `toml:"type" json:"type"`
+	Value string `toml:"value" json:"value"`
+	TTL   int    `toml:"ttl" json:"ttl"`
 }
 
 // SubnetConfig holds per-subnet configuration.
 type SubnetConfig struct {
-	Network      string              `toml:"network"`
-	Routers      []string            `toml:"routers"`
-	DNSServers   []string            `toml:"dns_servers"`
-	DomainName   string              `toml:"domain_name"`
-	LeaseTime    string              `toml:"lease_time"`
-	RenewalTime  string              `toml:"renewal_time"`
-	RebindTime   string              `toml:"rebind_time"`
-	NTPServers   []string            `toml:"ntp_servers"`
-	Pools        []PoolConfig        `toml:"pool"`
-	Reservations []ReservationConfig `toml:"reservation"`
-	Options      []OptionConfig      `toml:"option"`
+	Network      string              `toml:"network" json:"network"`
+	Routers      []string            `toml:"routers" json:"routers,omitempty"`
+	DNSServers   []string            `toml:"dns_servers" json:"dns_servers,omitempty"`
+	DomainName   string              `toml:"domain_name" json:"domain_name,omitempty"`
+	LeaseTime    string              `toml:"lease_time" json:"lease_time,omitempty"`
+	RenewalTime  string              `toml:"renewal_time" json:"renewal_time,omitempty"`
+	RebindTime   string              `toml:"rebind_time" json:"rebind_time,omitempty"`
+	NTPServers   []string            `toml:"ntp_servers" json:"ntp_servers,omitempty"`
+	Pools        []PoolConfig        `toml:"pool" json:"pool,omitempty"`
+	Reservations []ReservationConfig `toml:"reservation" json:"reservation,omitempty"`
+	Options      []OptionConfig      `toml:"option" json:"option,omitempty"`
 }
 
 // PoolConfig holds IP pool configuration.
 type PoolConfig struct {
-	RangeStart       string `toml:"range_start"`
-	RangeEnd         string `toml:"range_end"`
-	LeaseTime        string `toml:"lease_time"`
-	MatchCircuitID   string `toml:"match_circuit_id"`
-	MatchRemoteID    string `toml:"match_remote_id"`
-	MatchVendorClass string `toml:"match_vendor_class"`
-	MatchUserClass   string `toml:"match_user_class"`
+	RangeStart       string `toml:"range_start" json:"range_start"`
+	RangeEnd         string `toml:"range_end" json:"range_end"`
+	LeaseTime        string `toml:"lease_time" json:"lease_time,omitempty"`
+	MatchCircuitID   string `toml:"match_circuit_id" json:"match_circuit_id,omitempty"`
+	MatchRemoteID    string `toml:"match_remote_id" json:"match_remote_id,omitempty"`
+	MatchVendorClass string `toml:"match_vendor_class" json:"match_vendor_class,omitempty"`
+	MatchUserClass   string `toml:"match_user_class" json:"match_user_class,omitempty"`
 }
 
 // ReservationConfig holds static lease (reservation) configuration.
 type ReservationConfig struct {
-	MAC          string   `toml:"mac"`
-	Identifier   string   `toml:"identifier"`
-	IP           string   `toml:"ip"`
-	Hostname     string   `toml:"hostname"`
-	DNSServers   []string `toml:"dns_servers"`
-	DDNSHostname string   `toml:"ddns_hostname"`
+	MAC          string   `toml:"mac" json:"mac"`
+	Identifier   string   `toml:"identifier" json:"identifier,omitempty"`
+	IP           string   `toml:"ip" json:"ip"`
+	Hostname     string   `toml:"hostname" json:"hostname,omitempty"`
+	DNSServers   []string `toml:"dns_servers" json:"dns_servers,omitempty"`
+	DDNSHostname string   `toml:"ddns_hostname" json:"ddns_hostname,omitempty"`
 }
 
 // OptionConfig holds custom DHCP option configuration.
 type OptionConfig struct {
-	Code  int         `toml:"code"`
-	Type  string      `toml:"type"`
-	Value interface{} `toml:"value"`
+	Code  int         `toml:"code" json:"code"`
+	Type  string      `toml:"type" json:"type"`
+	Value interface{} `toml:"value" json:"value"`
 }
 
 // DefaultsConfig holds global default option values.
 type DefaultsConfig struct {
-	LeaseTime   string   `toml:"lease_time"`
-	RenewalTime string   `toml:"renewal_time"`
-	RebindTime  string   `toml:"rebind_time"`
-	DNSServers  []string `toml:"dns_servers"`
-	DomainName  string   `toml:"domain_name"`
+	LeaseTime   string   `toml:"lease_time" json:"lease_time"`
+	RenewalTime string   `toml:"renewal_time" json:"renewal_time"`
+	RebindTime  string   `toml:"rebind_time" json:"rebind_time"`
+	DNSServers  []string `toml:"dns_servers" json:"dns_servers"`
+	DomainName  string   `toml:"domain_name" json:"domain_name"`
 }
 
 // APIConfig holds HTTP API and web UI settings.

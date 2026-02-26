@@ -5,16 +5,26 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// toMs converts a value to milliseconds — handles Unix seconds (< 1e12) vs ms timestamps
+// toMs converts a value to milliseconds — handles ISO strings, Unix seconds, and ms timestamps
 function toMs(d: string | number | Date): number {
   if (d instanceof Date) return d.getTime()
-  const n = typeof d === 'string' ? Number(d) : d
+  if (typeof d === 'string') {
+    // Try parsing as ISO 8601 / RFC 3339 first (Go time.Time marshals to this)
+    const parsed = Date.parse(d)
+    if (!isNaN(parsed)) return parsed
+    // Fall back to numeric interpretation
+    const n = Number(d)
+    if (!isNaN(n)) return n < 1e12 ? n * 1000 : n
+    return NaN
+  }
   // Unix seconds are < ~3.2e10 (year 2970), JS ms timestamps are > 1e12
-  return n < 1e12 ? n * 1000 : n
+  return d < 1e12 ? d * 1000 : d
 }
 
 export function formatDate(d: string | number | Date): string {
-  const date = new Date(toMs(d))
+  const ms = toMs(d)
+  if (isNaN(ms)) return '—'
+  const date = new Date(ms)
   return date.toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
@@ -23,14 +33,18 @@ export function formatDate(d: string | number | Date): string {
 export function timeAgo(d: string | number | Date): string {
   const now = Date.now()
   const then = toMs(d)
-  const seconds = Math.floor((now - then) / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  if (isNaN(then)) return '—'
+  const diff = now - then
+  const seconds = Math.floor(Math.abs(diff) / 1000)
+  const future = diff < 0
+
+  let label: string
+  if (seconds < 60) label = `${seconds}s`
+  else if (seconds < 3600) label = `${Math.floor(seconds / 60)}m`
+  else if (seconds < 86400) label = `${Math.floor(seconds / 3600)}h`
+  else label = `${Math.floor(seconds / 86400)}d`
+
+  return future ? `in ${label}` : `${label} ago`
 }
 
 export function formatDuration(seconds: number): string {

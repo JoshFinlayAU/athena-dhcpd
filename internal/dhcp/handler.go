@@ -139,7 +139,15 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 	res := h.leases.FindReservation(clientID, mac, subnetIdx)
 	if res != nil {
 		ip := net.ParseIP(res.IP)
-		return h.buildOffer(ctx, pkt, ip, mac, clientID, hostname, subnetIdx, subnetCfg, "", true)
+		// Validate reservation IP is within the subnet CIDR
+		_, network, _ := net.ParseCIDR(subnetCfg.Network)
+		if ip != nil && network != nil && network.Contains(ip) {
+			return h.buildOffer(ctx, pkt, ip, mac, clientID, hostname, subnetIdx, subnetCfg, "", true)
+		}
+		h.logger.Warn("reservation IP outside subnet CIDR, skipping",
+			"mac", mac.String(),
+			"reservation_ip", res.IP,
+			"subnet", subnetCfg.Network)
 	}
 
 	// Check for existing lease
@@ -293,6 +301,16 @@ func (h *Handler) handleRequest(ctx context.Context, pkt *Packet) (*Packet, erro
 	subnetIdx, subnetCfg := h.findSubnet(pkt)
 	if subnetIdx < 0 {
 		return h.buildNAK(pkt, "no matching subnet"), nil
+	}
+
+	// Verify the requested IP is within the subnet CIDR
+	_, subnetNet, _ := net.ParseCIDR(subnetCfg.Network)
+	if subnetNet != nil && !subnetNet.Contains(ip) {
+		h.logger.Warn("DHCPREQUEST IP outside subnet CIDR",
+			"mac", mac.String(),
+			"requested_ip", ip.String(),
+			"subnet", subnetCfg.Network)
+		return h.buildNAK(pkt, "requested IP not in subnet"), nil
 	}
 
 	// Verify the IP is valid for this client

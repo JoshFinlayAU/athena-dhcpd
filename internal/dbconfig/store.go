@@ -16,7 +16,6 @@ var (
 	bucketSubnets  = []byte("config_subnets")
 	bucketDefaults = []byte("config_defaults")
 	bucketConflict = []byte("config_conflict")
-	bucketHA       = []byte("config_ha")
 	bucketHooks    = []byte("config_hooks")
 	bucketDDNS     = []byte("config_ddns")
 	bucketDNS      = []byte("config_dns")
@@ -24,7 +23,6 @@ var (
 
 	keyDefaults = []byte("defaults")
 	keyConflict = []byte("conflict_detection")
-	keyHA       = []byte("ha")
 	keyHooks    = []byte("hooks")
 	keyDDNS     = []byte("ddns")
 	keyDNS      = []byte("dns")
@@ -41,7 +39,6 @@ type Store struct {
 	subnets  []config.SubnetConfig
 	defaults config.DefaultsConfig
 	conflict config.ConflictDetectionConfig
-	ha       config.HAConfig
 	hooks    config.HooksConfig
 	ddns     config.DDNSConfig
 	dns      config.DNSProxyConfig
@@ -58,7 +55,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHA, bucketHooks, bucketDDNS, bucketDNS, bucketMeta,
+			bucketHooks, bucketDDNS, bucketDNS, bucketMeta,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -343,24 +340,6 @@ func (s *Store) SetConflictDetection(c config.ConflictDetectionConfig) error {
 	return nil
 }
 
-func (s *Store) HA() config.HAConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.ha
-}
-
-func (s *Store) SetHA(h config.HAConfig) error {
-	data, _ := json.Marshal(h)
-	if err := s.putJSON(bucketHA, keyHA, h); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.ha = h
-	s.mu.Unlock()
-	s.notifyLocalChange("ha", data)
-	return nil
-}
-
 func (s *Store) Hooks() config.HooksConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -427,7 +406,7 @@ func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
 	copy(cfg.Subnets, s.subnets)
 	cfg.Defaults = s.defaults
 	cfg.ConflictDetection = s.conflict
-	cfg.HA = s.ha
+	// HA is bootstrap config — comes from TOML, not DB
 	cfg.Hooks = s.hooks
 	cfg.DDNS = s.ddns
 	cfg.DNS = s.dns
@@ -442,9 +421,7 @@ func (s *Store) ImportFromConfig(cfg *config.Config) error {
 	if err := s.SetConflictDetection(cfg.ConflictDetection); err != nil {
 		return fmt.Errorf("importing conflict detection: %w", err)
 	}
-	if err := s.SetHA(cfg.HA); err != nil {
-		return fmt.Errorf("importing HA: %w", err)
-	}
+	// HA is bootstrap config — not imported to DB
 	if err := s.SetHooks(cfg.Hooks); err != nil {
 		return fmt.Errorf("importing hooks: %w", err)
 	}
@@ -469,7 +446,7 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sections := make(map[string][]byte, 7)
+	sections := make(map[string][]byte, 6)
 	if data, err := json.Marshal(s.subnets); err == nil {
 		sections["subnets"] = data
 	}
@@ -479,9 +456,7 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	if data, err := json.Marshal(s.conflict); err == nil {
 		sections["conflict_detection"] = data
 	}
-	if data, err := json.Marshal(s.ha); err == nil {
-		sections["ha"] = data
-	}
+	// HA is bootstrap config — not synced between peers
 	if data, err := json.Marshal(s.hooks); err == nil {
 		sections["hooks"] = data
 	}
@@ -556,18 +531,6 @@ func (s *Store) ApplyPeerConfig(section string, data []byte) error {
 		}
 		s.mu.Lock()
 		s.conflict = c
-		s.mu.Unlock()
-
-	case "ha":
-		var h config.HAConfig
-		if err := json.Unmarshal(data, &h); err != nil {
-			return fmt.Errorf("unmarshalling peer HA config: %w", err)
-		}
-		if err := s.putJSON(bucketHA, keyHA, h); err != nil {
-			return err
-		}
-		s.mu.Lock()
-		s.ha = h
 		s.mu.Unlock()
 
 	case "hooks":
@@ -645,7 +608,6 @@ func (s *Store) loadAll() error {
 		// Load singleton sections
 		loadJSON(tx, bucketDefaults, keyDefaults, &s.defaults)
 		loadJSON(tx, bucketConflict, keyConflict, &s.conflict)
-		loadJSON(tx, bucketHA, keyHA, &s.ha)
 		loadJSON(tx, bucketHooks, keyHooks, &s.hooks)
 		loadJSON(tx, bucketDDNS, keyDDNS, &s.ddns)
 		loadJSON(tx, bucketDNS, keyDNS, &s.dns)

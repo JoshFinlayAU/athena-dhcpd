@@ -272,28 +272,14 @@ func (s *Server) handleV2SetConflict(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleV2GetHA(w http.ResponseWriter, r *http.Request) {
-	if s.cfgStore == nil {
-		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
-		return
-	}
-	JSONResponse(w, http.StatusOK, s.cfgStore.HA())
+	// HA is bootstrap config from TOML, not DB-managed
+	JSONResponse(w, http.StatusOK, s.cfg.HA)
 }
 
 func (s *Server) handleV2SetHA(w http.ResponseWriter, r *http.Request) {
-	if s.cfgStore == nil {
-		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
-		return
-	}
-	var h config.HAConfig
-	if err := json.NewDecoder(r.Body).Decode(&h); err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid_json", err.Error())
-		return
-	}
-	if err := s.cfgStore.SetHA(h); err != nil {
-		JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
-		return
-	}
-	JSONResponse(w, http.StatusOK, h)
+	// HA config lives in TOML, not the database — must be edited on disk
+	JSONError(w, http.StatusBadRequest, "readonly",
+		"HA config is read from TOML, not the database. Edit the config file and send SIGHUP to reload.")
 }
 
 func (s *Server) handleV2GetHooks(w http.ResponseWriter, r *http.Request) {

@@ -339,7 +339,6 @@ func HasDynamicConfig(cfg *Config) bool {
 	return len(cfg.Subnets) > 0 ||
 		cfg.Defaults.LeaseTime != "" ||
 		cfg.ConflictDetection.Enabled ||
-		cfg.HA.Enabled ||
 		cfg.DDNS.Enabled ||
 		cfg.DNS.Enabled ||
 		len(cfg.Hooks.Scripts) > 0 ||
@@ -369,6 +368,19 @@ func applyBootstrapDefaults(cfg *Config) {
 	if cfg.API.Session.Expiry == "" {
 		cfg.API.Session.Expiry = DefaultSessionExpiry.String()
 	}
+
+	// HA defaults
+	if cfg.HA.Enabled {
+		if cfg.HA.HeartbeatInterval == "" {
+			cfg.HA.HeartbeatInterval = "1s"
+		}
+		if cfg.HA.FailoverTimeout == "" {
+			cfg.HA.FailoverTimeout = "10s"
+		}
+		if cfg.HA.SyncBatchSize == 0 {
+			cfg.HA.SyncBatchSize = 100
+		}
+	}
 }
 
 // validateBootstrap checks only the bootstrap config sections.
@@ -378,6 +390,20 @@ func validateBootstrap(cfg *Config) error {
 			return fmt.Errorf("server.server_id %q is not a valid IP address", cfg.Server.ServerID)
 		}
 	}
+
+	// Validate HA config
+	if cfg.HA.Enabled {
+		if cfg.HA.Role != "primary" && cfg.HA.Role != "secondary" {
+			return fmt.Errorf("ha.role must be \"primary\" or \"secondary\", got %q", cfg.HA.Role)
+		}
+		if cfg.HA.PeerAddress == "" {
+			return fmt.Errorf("ha.peer_address is required when HA is enabled")
+		}
+		if cfg.HA.ListenAddress == "" {
+			return fmt.Errorf("ha.listen_address is required when HA is enabled")
+		}
+	}
+
 	return nil
 }
 

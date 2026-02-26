@@ -10,7 +10,7 @@ this is NOT load balancing — only the active node serves DHCP at any given tim
 
 ## setup
 
-you need two instances of athena-dhcpd, each with its own config. the configs are identical except for the `[ha]` section
+you need two instances of athena-dhcpd, each with its own TOML config file. the `[ha]` section is bootstrap config — it's read from TOML on startup (not stored in the database). each node needs its own `[ha]` block with its own role, peer address, and listen address
 
 ### node A (primary)
 ```toml
@@ -36,7 +36,9 @@ failover_timeout = "10s"
 sync_batch_size = 100
 ```
 
-the TOML config on each node only needs `[server]` and `[api]` — everything else (subnets, pools, options, DNS, hooks, etc.) is stored in the database and automatically synced between peers. see [config sync](#config-sync) below
+the TOML config on each node needs `[server]`, `[api]`, and `[ha]` — these are bootstrap sections read from the config file on every startup. everything else (subnets, pools, options, DNS, hooks, etc.) is stored in the database and automatically synced between peers. see [config sync](#config-sync) below
+
+> **note:** `[ha]` is NOT synced between peers or stored in the database. each node keeps its own HA config in TOML because each side has a different role and peer address. to change HA settings, edit the TOML file and send SIGHUP or restart
 
 ## state machine
 
@@ -107,12 +109,11 @@ last-write-wins using millisecond timestamps. in practice this is fine because o
 | `subnets` | All subnet configs including pools, reservations, options, interface bindings |
 | `defaults` | Global default lease time, DNS servers, domain name |
 | `conflict_detection` | Probe strategy, timeouts, ARP/ICMP settings |
-| `ha` | HA settings (role, peer address, timeouts) |
 | `hooks` | Script and webhook hook configurations |
 | `ddns` | Dynamic DNS zones, TSIG keys, API keys |
 | `dns` | DNS proxy settings, forwarders, filter lists, static records |
 
-bootstrap config (`[server]` and `[api]`) is NOT synced — each node keeps its own
+bootstrap config (`[server]`, `[api]`, and `[ha]`) is NOT synced — each node keeps its own
 
 ## lease synchronisation
 
@@ -187,7 +188,93 @@ the web UI also has a big shiny failover button on the HA status page. try not t
 
 ## TLS
 
-if your HA peers communicate over an untrusted network (or you're just paranoid, which is healthy), enable TLS:
+if your HA peers communicate over an untrusted network (or you're just paranoid, which is healthy), enable TLS. both nodes use the same CA so they trust each other
+
+### generating certificates
+
+you need a CA (certificate authority), then a cert for each node signed by that CA. the nodes use the CA to verify each other
+
+**1. create the CA (do this once, on any machine)**
+
+```bash
+mkdir -p /etc/athena-dhcpd/tls && cd /etc/athena-dhcpd/tls
+
+# generate CA private key
+openssl genrsa -out ca.key 4096
+
+# generate CA certificate (valid 10 years)
+openssl req -new -x509 -key ca.key -out ca.crt -days 3650 \
+  -subj "/CN=athena-dhcpd HA CA"
+```
+
+**2. generate a cert for node A**
+
+```bash
+# private key
+openssl genrsa -out node-a.key 2048
+
+# certificate signing request — put the node's IP/hostname in SAN
+openssl req -new -key node-a.key -out node-a.csr \
+  -subj "/CN=athena-node-a" \
+  -addext "subjectAltName=IP:10.0.0.1,DNS:node-a.example.com"
+
+# sign with the CA (valid 10 years)
+openssl x509 -req -in node-a.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out node-a.crt -days 3650 \
+  -copy_extensions copyall
+```
+
+**3. generate a cert for node B**
+
+```bash
+openssl genrsa -out node-b.key 2048
+
+openssl req -new -key node-b.key -out node-b.csr \
+  -subj "/CN=athena-node-b" \
+  -addext "subjectAltName=IP:10.0.0.2,DNS:node-b.example.com"
+
+openssl x509 -req -in node-b.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out node-b.crt -days 3650 \
+  -copy_extensions copyall
+```
+
+**4. distribute the files**
+
+each node needs three files:
+
+| File | What | Same on both? |
+|------|------|---------------|
+| `ca.crt` | CA certificate | yes — copy the same file to both nodes |
+| `server.crt` | This node's certificate | no — each node gets its own |
+| `server.key` | This node's private key | no — each node gets its own |
+
+```bash
+# on node A
+scp ca.crt node-a.crt node-a.key node-a:/etc/athena-dhcpd/tls/
+ssh node-a 'mv /etc/athena-dhcpd/tls/node-a.crt /etc/athena-dhcpd/tls/server.crt'
+ssh node-a 'mv /etc/athena-dhcpd/tls/node-a.key /etc/athena-dhcpd/tls/server.key'
+ssh node-a 'chmod 600 /etc/athena-dhcpd/tls/server.key'
+
+# on node B
+scp ca.crt node-b.crt node-b.key node-b:/etc/athena-dhcpd/tls/
+ssh node-b 'mv /etc/athena-dhcpd/tls/node-b.crt /etc/athena-dhcpd/tls/server.crt'
+ssh node-b 'mv /etc/athena-dhcpd/tls/node-b.key /etc/athena-dhcpd/tls/server.key'
+ssh node-b 'chmod 600 /etc/athena-dhcpd/tls/server.key'
+```
+
+**5. lock down permissions**
+
+```bash
+chmod 600 /etc/athena-dhcpd/tls/server.key
+chmod 644 /etc/athena-dhcpd/tls/server.crt /etc/athena-dhcpd/tls/ca.crt
+chown root:root /etc/athena-dhcpd/tls/*
+```
+
+the CA private key (`ca.key`) should NOT live on either DHCP server. keep it somewhere safe offline — you only need it to sign new certs
+
+### config
+
+both nodes use the same `[ha.tls]` config (just different cert/key files on disk):
 
 ```toml
 [ha.tls]
@@ -197,7 +284,21 @@ key_file = "/etc/athena-dhcpd/tls/server.key"
 ca_file = "/etc/athena-dhcpd/tls/ca.crt"
 ```
 
-both nodes need valid certificates. the CA file is used to verify the peer's certificate
+### verifying
+
+you can test the certs before starting the server:
+
+```bash
+# verify node A's cert against the CA
+openssl verify -CAfile ca.crt server.crt
+
+# check cert details (SAN, expiry)
+openssl x509 -in server.crt -noout -text | grep -A1 "Subject Alternative\|Not After"
+```
+
+### renewing certs
+
+when certs expire, generate new ones with the same CA and replace the files. restart athena-dhcpd on both nodes (or SIGHUP — TLS certs are reloaded on restart). no need to regenerate the CA unless it's also expiring
 
 ## events
 

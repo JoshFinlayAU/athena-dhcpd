@@ -210,14 +210,7 @@ func TestSingletonConfigs(t *testing.T) {
 		t.Error("expected conflict detection enabled")
 	}
 
-	// HA
-	h := config.HAConfig{Enabled: true, Role: "primary"}
-	if err := s.SetHA(h); err != nil {
-		t.Fatalf("SetHA: %v", err)
-	}
-	if s.HA().Role != "primary" {
-		t.Errorf("role = %q, want primary", s.HA().Role)
-	}
+	// HA is bootstrap config (TOML only) — no DB getter/setter to test
 }
 
 func TestBuildConfig(t *testing.T) {

@@ -95,7 +95,7 @@ duration format: Go duration strings like `"500ms"`, `"10s"`, `"1h"`, `"24h"`, `
 
 ## [ha]
 
-High availability / failover settings. see [high-availability.md](high-availability.md) for setup
+High availability / failover settings. this is a **bootstrap section** — it lives in the TOML config file, not the database. each node needs its own `[ha]` block. see [high-availability.md](high-availability.md) for full setup guide
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

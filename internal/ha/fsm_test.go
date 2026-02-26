@@ -47,16 +47,27 @@ func TestFSMIsActive(t *testing.T) {
 }
 
 func TestFSMPeerUp(t *testing.T) {
-	fsm, bus := newTestFSM("primary")
+	// Primary stays ACTIVE when peer connects
+	primary, bus := newTestFSM("primary")
 	defer bus.Stop()
 
-	fsm.PeerUp()
+	primary.PeerUp()
 
-	if fsm.State() != dhcpv4.HAStatePartnerUp {
-		t.Errorf("state after PeerUp = %s, want PARTNER_UP", fsm.State())
+	if primary.State() != dhcpv4.HAStateActive {
+		t.Errorf("primary state after PeerUp = %s, want ACTIVE", primary.State())
 	}
-	if fsm.LastHeartbeat().IsZero() {
+	if primary.LastHeartbeat().IsZero() {
 		t.Error("LastHeartbeat should be set after PeerUp")
+	}
+
+	// Secondary transitions to PARTNER_UP when peer connects
+	secondary, bus2 := newTestFSM("secondary")
+	defer bus2.Stop()
+
+	secondary.PeerUp()
+
+	if secondary.State() != dhcpv4.HAStatePartnerUp {
+		t.Errorf("secondary state after PeerUp = %s, want PARTNER_UP", secondary.State())
 	}
 }
 
@@ -64,15 +75,17 @@ func TestFSMPeerDown(t *testing.T) {
 	fsm, bus := newTestFSM("primary")
 	defer bus.Stop()
 
-	// First go to PARTNER_UP
+	// Primary is ACTIVE, peer heartbeat sets timestamp
 	fsm.PeerUp()
 
-	// Then peer goes down
+	// Then peer goes down — primary goes ACTIVE → PARTNER_DOWN (still serving)
 	fsm.PeerDown()
 
-	// Primary should claim ACTIVE after partner down
-	if fsm.State() != dhcpv4.HAStateActive {
-		t.Errorf("primary state after PeerDown = %s, want ACTIVE", fsm.State())
+	if fsm.State() != dhcpv4.HAStatePartnerDown {
+		t.Errorf("primary state after PeerDown = %s, want PARTNER_DOWN", fsm.State())
+	}
+	if !fsm.IsActive() {
+		t.Error("primary should still be active in PARTNER_DOWN")
 	}
 }
 
@@ -98,7 +111,7 @@ func TestFSMRecovery(t *testing.T) {
 	fsm.PeerDown()
 
 	// Now in ACTIVE (primary claimed it)
-	// Simulate partner reconnecting while we're in PARTNER_DOWN... 
+	// Simulate partner reconnecting while we're in PARTNER_DOWN...
 	// First force to PARTNER_DOWN to test recovery
 	fsm.transition(dhcpv4.HAStatePartnerDown, "test")
 	fsm.PeerUp()
@@ -150,15 +163,18 @@ func TestFSMHeartbeatTimeout(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	fsm.CheckHeartbeatTimeout()
 
-	// Should transition away from PARTNER_UP
-	state := fsm.State()
-	if state == dhcpv4.HAStatePartnerUp {
-		t.Error("should not be PARTNER_UP after heartbeat timeout")
+	// Primary was ACTIVE → should now be PARTNER_DOWN (still serving)
+	if fsm.State() != dhcpv4.HAStatePartnerDown {
+		t.Errorf("state after heartbeat timeout = %s, want PARTNER_DOWN", fsm.State())
+	}
+	if !fsm.IsActive() {
+		t.Error("primary should still be active after heartbeat timeout")
 	}
 }
 
 func TestFSMOnStateChange(t *testing.T) {
-	fsm, bus := newTestFSM("primary")
+	// Use secondary — it transitions STANDBY → PARTNER_UP on PeerUp
+	fsm, bus := newTestFSM("secondary")
 	defer bus.Stop()
 
 	var oldState, newState dhcpv4.HAState
@@ -169,8 +185,8 @@ func TestFSMOnStateChange(t *testing.T) {
 
 	fsm.PeerUp()
 
-	if oldState != dhcpv4.HAStateActive {
-		t.Errorf("oldState = %s, want ACTIVE", oldState)
+	if oldState != dhcpv4.HAStateStandby {
+		t.Errorf("oldState = %s, want STANDBY", oldState)
 	}
 	if newState != dhcpv4.HAStatePartnerUp {
 		t.Errorf("newState = %s, want PARTNER_UP", newState)

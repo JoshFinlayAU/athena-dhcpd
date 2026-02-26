@@ -140,10 +140,11 @@ func (f *FSM) PeerUp() {
 		f.transition(dhcpv4.HAStateRecovery, "peer reconnected")
 	case dhcpv4.HAStateRecovery:
 		// Stay in recovery until bulk sync completes
-	case dhcpv4.HAStateActive, dhcpv4.HAStateStandby:
-		if currentState == dhcpv4.HAStateActive || currentState == dhcpv4.HAStateStandby {
-			f.transition(dhcpv4.HAStatePartnerUp, "peer heartbeat received")
-		}
+	case dhcpv4.HAStateActive:
+		// Primary stays ACTIVE when peer connects — just update heartbeat timestamp
+		f.logger.Info("peer heartbeat received while active, staying active", "role", f.role)
+	case dhcpv4.HAStateStandby:
+		f.transition(dhcpv4.HAStatePartnerUp, "peer heartbeat received")
 	}
 }
 
@@ -161,6 +162,9 @@ func (f *FSM) PeerDown() {
 		"failover_timeout", f.failoverTimeout.String())
 
 	switch currentState {
+	case dhcpv4.HAStateActive:
+		// Primary was active, peer went away — move to PARTNER_DOWN (still serving)
+		f.transition(dhcpv4.HAStatePartnerDown, "peer heartbeat timeout while active")
 	case dhcpv4.HAStatePartnerUp, dhcpv4.HAStateStandby:
 		f.transition(dhcpv4.HAStatePartnerDown, "peer heartbeat timeout")
 		if f.role == "primary" {

@@ -461,62 +461,6 @@ func TestHandleValidateConfigInvalid(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.toml")
-	os.WriteFile(cfgPath, []byte("[server]\nbind_address = \"0.0.0.0:67\"\n"), 0644)
-
-	srv := newTestServer(t)
-	srv.configPath = cfgPath
-
-	reqBody := map[string]string{"config": "[server]\nbind_address = \"0.0.0.0:6767\"\n"}
-	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest("PUT", "/api/v2/config", strings.NewReader(string(bodyBytes)))
-	w := httptest.NewRecorder()
-	srv.handleUpdateConfig(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
-	}
-
-	// Check backup was created
-	entries, _ := os.ReadDir(dir)
-	backupCount := 0
-	for _, e := range entries {
-		if strings.Contains(e.Name(), ".bak.") {
-			backupCount++
-		}
-	}
-	if backupCount != 1 {
-		t.Errorf("expected 1 backup, got %d", backupCount)
-	}
-}
-
-func TestHandleListConfigBackups(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.toml")
-	os.WriteFile(cfgPath, []byte("original"), 0644)
-	os.WriteFile(cfgPath+".bak.20250101T120000", []byte("backup1"), 0600)
-	os.WriteFile(cfgPath+".bak.20250102T120000", []byte("backup2"), 0600)
-
-	srv := newTestServer(t)
-	srv.configPath = cfgPath
-
-	req := httptest.NewRequest("GET", "/api/v2/config/backups", nil)
-	w := httptest.NewRecorder()
-	srv.handleListConfigBackups(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-
-	var backups []map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &backups)
-	if len(backups) != 2 {
-		t.Errorf("expected 2 backups, got %d", len(backups))
-	}
-}
-
 // --- Events & Hooks Tests ---
 
 func TestHandleListEvents(t *testing.T) {

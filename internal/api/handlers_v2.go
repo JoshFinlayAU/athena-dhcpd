@@ -283,14 +283,27 @@ func (s *Server) handleV2SetConflict(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleV2GetHA(w http.ResponseWriter, r *http.Request) {
-	// HA is bootstrap config from TOML, not DB-managed
 	JSONResponse(w, http.StatusOK, s.cfg.HA)
 }
 
 func (s *Server) handleV2SetHA(w http.ResponseWriter, r *http.Request) {
-	// HA config lives in TOML, not the database — must be edited on disk
-	JSONError(w, http.StatusBadRequest, "readonly",
-		"HA config is read from TOML, not the database. Edit the config file and send SIGHUP to reload.")
+	if s.configPath == "" {
+		JSONError(w, http.StatusBadRequest, "no_config_path", "config file path not set")
+		return
+	}
+	var h config.HAConfig
+	if err := json.NewDecoder(r.Body).Decode(&h); err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := config.WriteHASection(s.configPath, &h); err != nil {
+		JSONError(w, http.StatusInternalServerError, "write_error", err.Error())
+		return
+	}
+	// Update in-memory config immediately
+	s.cfg.HA = h
+	s.logger.Info("HA config updated via API", "role", h.Role, "enabled", h.Enabled)
+	JSONResponse(w, http.StatusOK, h)
 }
 
 func (s *Server) handleV2GetHooks(w http.ResponseWriter, r *http.Request) {

@@ -2,7 +2,7 @@
 
 A DHCPv4 server that actually works. Written in Go because life is too short for ISC DHCP config files
 
-ships as a single binary. no java, no python, no "install these 47 dependencies first". just a binary and a TOML config file. you could probably run it on a toaster
+ships as a single binary. no java, no python, no "install these 47 dependencies first". just a binary and a config file. you could probably run it on a toaster
 
 ## why does this exist
 
@@ -101,13 +101,15 @@ why run a separate DNS server when your DHCP server already knows every hostname
 ### web UI
 React + TypeScript + Tailwind. dark mode because we have taste
 
+- **Setup wizard** — first boot walks you through deployment mode, HA, subnets, pools, reservations, conflict detection, and DNS proxy. import reservations from CSV, JSON, ISC dhcpd, dnsmasq, Kea, or MikroTik
 - Dashboard with real-time stats, pool utilization, live event feed
-- Lease browser with search, filtering, pagination, and live updates via WebSocket
-- Reservation management - add, edit, delete
+- Lease browser with search, filtering, pagination, and live updates via SSE
+- Full configuration editor — subnets, pools, reservations, defaults, conflict detection, HA, hooks, DDNS, DNS proxy, zone overrides, static records. all stored in the database and editable live
+- Reservation management with multi-format import (CSV, JSON, ISC dhcpd, dnsmasq, Kea, MikroTik)
 - Conflict viewer with clear and permanent-exclude actions
 - Live event stream. watch packets fly by in real time
-- HA cluster status and manual failover controls  
-- Config editor with validation (its TOML, you can read it)
+- HA cluster status and manual failover controls
+- DNS proxy dashboard with query log, cache stats, filter list management
 - Role-based auth: admin gets write access, viewer gets read-only
 - Bearer token auth for API, session cookies for the web UI
 - Passwords stored as bcrypt hashes. we're not storing passwords in plaintext in 2025
@@ -118,28 +120,31 @@ the whole frontend compiles into the Go binary via go:embed. zero runtime depend
 Everything the web UI does, the API can do too
 
 ```
-GET    /api/v1/health
-GET    /api/v1/leases
-GET    /api/v1/leases/{ip}
-DELETE /api/v1/leases/{ip}
-GET    /api/v1/reservations
-POST   /api/v1/reservations
-GET    /api/v1/conflicts
-GET    /api/v1/conflicts/stats
-DELETE /api/v1/conflicts/{ip}
-POST   /api/v1/conflicts/{ip}/exclude
-GET    /api/v1/config/raw
-PUT    /api/v1/config
-POST   /api/v1/config/validate
-GET    /api/v1/ha/status
-POST   /api/v1/ha/failover
-GET    /api/v1/dns/stats
-GET    /api/v1/dns/records
-POST   /api/v1/dns/cache/flush
-GET    /api/v1/dns/lists
-POST   /api/v1/dns/lists/refresh
-POST   /api/v1/dns/lists/test
-GET    /api/v1/events/stream          (WebSocket)
+GET    /api/v2/health
+GET    /api/v2/leases
+GET    /api/v2/leases/{ip}
+DELETE /api/v2/leases/{ip}
+GET    /api/v2/reservations
+POST   /api/v2/reservations
+GET    /api/v2/conflicts
+GET    /api/v2/conflicts/stats
+DELETE /api/v2/conflicts/{ip}
+POST   /api/v2/conflicts/{ip}/exclude
+GET    /api/v2/config/subnets          (DB-backed CRUD)
+POST   /api/v2/config/subnets
+PUT    /api/v2/config/defaults
+PUT    /api/v2/config/conflict
+PUT    /api/v2/config/ha               (writes to TOML)
+PUT    /api/v2/config/hooks
+PUT    /api/v2/config/ddns
+PUT    /api/v2/config/dns
+GET    /api/v2/ha/status
+POST   /api/v2/ha/failover
+GET    /api/v2/dns/stats
+GET    /api/v2/dns/records
+POST   /api/v2/dns/cache/flush
+GET    /api/v2/dns/lists
+GET    /api/v2/events/stream           (SSE)
 GET    /metrics                        (Prometheus)
 ```
 
@@ -147,7 +152,7 @@ theres more endpoints than that but you get the idea
 
 ### monitoring
 - Prometheus metrics for everything. leases, pools, conflicts, DHCP message counts, API latency, DNS updates, HA state, the works
-- WebSocket event streaming for live dashboards
+- SSE event streaming for live dashboards
 - structured JSON logging via slog
 
 ## build dependencies
@@ -282,14 +287,21 @@ if you're running as root you dont need any of this but running a network servic
 
 ## configuration
 
-TOML. because its readable by humans and also by computers. see `configs/example.toml` for a fully annotated example
+athena-dhcpd uses a two-layer config model:
+
+1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. this is what starts the server and web UI. see `configs/example.toml`
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy. managed through the web UI or API, synced between HA peers automatically
+
+on first startup with no config in the database, the setup wizard walks you through the initial config. you can also import a full TOML config file from the web UI if you're migrating
+
+HA config (`[ha]`) stays in TOML because its node-identity — each node needs its own role and peer address. the web UI can still edit it (it writes directly to the TOML file)
 
 hot-reload via SIGHUP:
 ```bash
 kill -HUP $(cat /run/athena-dhcpd/athena-dhcpd.pid)
 ```
 
-reloads config, pools, and rate limiter settings without dropping any leases or connections. if the new config is broken it just keeps the old one and logs an error like a reasonable program
+reloads bootstrap config (server, api, ha) without dropping leases or connections. database-backed config changes take effect immediately through the API — no restart needed
 
 ## config validation
 
@@ -306,7 +318,7 @@ the config parser actually validates things, unlike some DHCP servers I could na
 ```
 cmd/athena-dhcpd/       entry point
 internal/
-  api/                  REST API + WebSocket + auth
+  api/                  REST API + SSE + auth
   config/               TOML parsing + validation  
   conflict/             ARP/ICMP probing + conflict table
   ddns/                 dynamic DNS (RFC 2136, PowerDNS, Technitium)

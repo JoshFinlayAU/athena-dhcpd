@@ -27,10 +27,11 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseA
   return { data, loading, error, refetch }
 }
 
-export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number, deps: unknown[] = []): UseApiResult<T> {
+export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number | null, deps: unknown[] = []): UseApiResult<T> {
   const result = useApi(fetcher, deps)
 
   useEffect(() => {
+    if (!intervalMs) return
     const id = setInterval(result.refetch, intervalMs)
     return () => clearInterval(id)
   }, [result.refetch, intervalMs])

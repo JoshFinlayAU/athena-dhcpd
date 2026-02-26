@@ -357,6 +357,7 @@ export interface DNSConfigType {
   use_root_servers: boolean
   cache_size: number
   cache_ttl: string
+  doh_tls?: { cert_file?: string; key_file?: string }
   zone_override?: { zone: string; nameserver: string; doh: boolean; doh_url: string }[]
   record?: { name: string; type: string; value: string; ttl: number }[]
   list?: { name: string; url: string; type: string; format: string; action: string; enabled: boolean; refresh_interval: string }[]
@@ -417,3 +418,36 @@ export const v2SetDNSConfig = (d: DNSConfigType) =>
 
 export const v2ImportTOML = (toml: string) =>
   request<{ status: string; subnets: number }>('/config/import', { method: 'POST', body: JSON.stringify({ toml }) })
+
+// --- Setup Wizard API ---
+
+export interface SetupStatus {
+  needs_setup: boolean
+}
+
+export interface SetupHARequest {
+  mode: 'standalone' | 'ha'
+  role?: 'primary' | 'secondary'
+  peer_address?: string
+  listen_address?: string
+  tls_enabled?: boolean
+  tls_ca?: string
+  tls_cert?: string
+  tls_key?: string
+}
+
+export interface SetupConfigRequest {
+  defaults?: DefaultsConfig
+  subnets?: SubnetConfig[]
+  conflict_detection?: ConflictDetectionConfig
+  dns?: DNSConfigType
+  ddns?: DDNSConfigType
+}
+
+export const getSetupStatus = () => request<SetupStatus>('/setup/status')
+export const setupHA = (req: SetupHARequest) =>
+  request<{ status: string; mode: string; role?: string }>('/setup/ha', { method: 'POST', body: JSON.stringify(req) })
+export const setupConfig = (req: SetupConfigRequest) =>
+  request<{ status: string }>('/setup/config', { method: 'POST', body: JSON.stringify(req) })
+export const setupComplete = () =>
+  request<{ status: string; message: string }>('/setup/complete', { method: 'POST' })

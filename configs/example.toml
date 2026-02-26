@@ -35,32 +35,3 @@ web_ui = true
 #   cert_file = "/etc/athena-dhcpd/tls/server.crt"
 #   key_file = "/etc/athena-dhcpd/tls/server.key"
 #   ca_file = "/etc/athena-dhcpd/tls/ca.crt"
-
-# ─── Imported into DB on first run ──────────────────────────────────
-
-[defaults]
-lease_time = "1h"
-dns_servers = ["1.1.1.1", "8.8.8.8"]
-
-[conflict_detection]
-enabled = true
-probe_timeout = "500ms"
-send_gratuitous_arp = true
-icmp_fallback = true
-
-[dns]
-enabled = true
-listen_udp = "0.0.0.0:53"
-forwarders = ["1.1.1.1", "8.8.8.8"]
-cache_size = 10000
-cache_ttl = "5m"
-
-[[subnet]]
-network = "192.168.1.0/24"
-interface = "eth0"
-routers = ["192.168.1.1"]
-lease_time = "1h"
-
-  [[subnet.pool]]
-  range_start = "192.168.1.100"
-  range_end = "192.168.1.250"

@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -388,30 +387,6 @@ func (s *Server) handleConflictStats(w http.ResponseWriter, r *http.Request) {
 		"by_method":       byMethod,
 		"by_subnet":       bySubnet,
 	})
-}
-
-// handleGetConfig returns the current configuration (with secrets redacted).
-func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	// Deep copy and redact secrets
-	type redactedConfig struct {
-		Server   interface{} `json:"server"`
-		Subnets  interface{} `json:"subnets"`
-		Defaults interface{} `json:"defaults"`
-		DDNS     interface{} `json:"ddns"`
-		HA       interface{} `json:"ha"`
-		Hooks    interface{} `json:"hooks"`
-		API      interface{} `json:"api"`
-	}
-
-	// Marshal/unmarshal to get a generic map we can redact
-	raw, _ := json.Marshal(s.cfg)
-	var cfgMap map[string]interface{}
-	json.Unmarshal(raw, &cfgMap)
-
-	// Redact sensitive fields
-	redactSecrets(cfgMap)
-
-	JSONResponse(w, http.StatusOK, cfgMap)
 }
 
 // handleGetStats returns server statistics.

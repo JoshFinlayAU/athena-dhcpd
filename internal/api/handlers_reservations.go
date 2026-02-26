@@ -82,9 +82,17 @@ func (s *Server) handleCreateReservation(w http.ResponseWriter, r *http.Request)
 		DDNSHostname: req.DDNSHostname,
 	}
 
-	s.cfg.Subnets[req.SubnetIndex].Reservations = append(
-		s.cfg.Subnets[req.SubnetIndex].Reservations, res,
-	)
+	network := s.cfg.Subnets[req.SubnetIndex].Network
+	if s.cfgStore != nil {
+		if err := s.cfgStore.PutReservation(network, res); err != nil {
+			JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
+			return
+		}
+	} else {
+		s.cfg.Subnets[req.SubnetIndex].Reservations = append(
+			s.cfg.Subnets[req.SubnetIndex].Reservations, res,
+		)
+	}
 
 	JSONResponse(w, http.StatusCreated, map[string]string{"status": "created"})
 }
@@ -109,7 +117,7 @@ func (s *Server) handleUpdateReservation(w http.ResponseWriter, r *http.Request)
 	for si := range s.cfg.Subnets {
 		for ri := range s.cfg.Subnets[si].Reservations {
 			if id == targetID {
-				res := &s.cfg.Subnets[si].Reservations[ri]
+				res := s.cfg.Subnets[si].Reservations[ri]
 				if req.MAC != "" {
 					res.MAC = req.MAC
 				}
@@ -132,6 +140,15 @@ func (s *Server) handleUpdateReservation(w http.ResponseWriter, r *http.Request)
 				}
 				if req.DDNSHostname != "" {
 					res.DDNSHostname = req.DDNSHostname
+				}
+				network := s.cfg.Subnets[si].Network
+				if s.cfgStore != nil {
+					if err := s.cfgStore.PutReservation(network, res); err != nil {
+						JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
+						return
+					}
+				} else {
+					s.cfg.Subnets[si].Reservations[ri] = res
 				}
 				JSONResponse(w, http.StatusOK, map[string]string{"status": "updated"})
 				return
@@ -156,10 +173,19 @@ func (s *Server) handleDeleteReservation(w http.ResponseWriter, r *http.Request)
 	for si := range s.cfg.Subnets {
 		for ri := range s.cfg.Subnets[si].Reservations {
 			if id == targetID {
-				s.cfg.Subnets[si].Reservations = append(
-					s.cfg.Subnets[si].Reservations[:ri],
-					s.cfg.Subnets[si].Reservations[ri+1:]...,
-				)
+				mac := s.cfg.Subnets[si].Reservations[ri].MAC
+				network := s.cfg.Subnets[si].Network
+				if s.cfgStore != nil {
+					if err := s.cfgStore.DeleteReservation(network, mac); err != nil {
+						JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
+						return
+					}
+				} else {
+					s.cfg.Subnets[si].Reservations = append(
+						s.cfg.Subnets[si].Reservations[:ri],
+						s.cfg.Subnets[si].Reservations[ri+1:]...,
+					)
+				}
 				JSONResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 				return
 			}
@@ -222,9 +248,17 @@ func (s *Server) handleImportReservations(w http.ResponseWriter, r *http.Request
 			res.Hostname = record[4]
 		}
 
-		s.cfg.Subnets[subnetIdx].Reservations = append(
-			s.cfg.Subnets[subnetIdx].Reservations, res,
-		)
+		network := s.cfg.Subnets[subnetIdx].Network
+		if s.cfgStore != nil {
+			if err := s.cfgStore.PutReservation(network, res); err != nil {
+				errors = append(errors, fmt.Sprintf("row %d: store error: %v", imported+1, err))
+				continue
+			}
+		} else {
+			s.cfg.Subnets[subnetIdx].Reservations = append(
+				s.cfg.Subnets[subnetIdx].Reservations, res,
+			)
+		}
 		imported++
 	}
 

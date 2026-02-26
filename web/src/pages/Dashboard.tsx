@@ -105,7 +105,7 @@ export default function Dashboard() {
                 <MiniStat label="Permanent" value={conflicts.total_permanent} color="text-warning" />
                 <MiniStat label="Resolved" value={conflicts.total_resolved} color="text-success" />
               </div>
-              {Object.keys(conflicts.by_subnet).length > 0 && (
+              {conflicts.by_subnet && Object.keys(conflicts.by_subnet).length > 0 && (
                 <div>
                   <p className="text-xs text-text-muted mb-2">By Subnet</p>
                   <div className="space-y-1.5">
@@ -118,7 +118,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              {Object.keys(conflicts.by_method).length > 0 && (
+              {conflicts.by_method && Object.keys(conflicts.by_method).length > 0 && (
                 <div>
                   <p className="text-xs text-text-muted mb-2">By Method</p>
                   <div className="flex gap-3">

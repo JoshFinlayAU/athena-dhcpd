@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { WSProvider } from '@/lib/websocket'
 import { AuthProvider, useAuth } from '@/lib/auth'
@@ -12,6 +13,32 @@ import Config from '@/pages/ConfigV2'
 import DNSFiltering from '@/pages/DNSFiltering'
 import DNSQueryLog from '@/pages/DNSQueryLog'
 import Login from '@/pages/Login'
+import SetupWizard from '@/pages/SetupWizard'
+import { getSetupStatus } from '@/lib/api'
+
+function SetupGate({ children }: { children: React.ReactNode }) {
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    getSetupStatus()
+      .then(s => setNeedsSetup(s.needs_setup))
+      .catch(() => setNeedsSetup(false))
+  }, [])
+
+  if (needsSetup === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-base">
+        <div className="text-text-muted text-sm">Loading...</div>
+      </div>
+    )
+  }
+
+  if (needsSetup) {
+    return <SetupWizard />
+  }
+
+  return <>{children}</>
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -33,26 +60,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AuthGate>
-        <WSProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/leases" element={<Leases />} />
-                <Route path="/reservations" element={<Reservations />} />
-                <Route path="/conflicts" element={<Conflicts />} />
-                <Route path="/events" element={<Events />} />
-                <Route path="/ha" element={<HAStatus />} />
-                <Route path="/dns" element={<DNSFiltering />} />
-                <Route path="/dns/querylog" element={<DNSQueryLog />} />
-                <Route path="/config" element={<Config />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </WSProvider>
-      </AuthGate>
-    </AuthProvider>
+    <SetupGate>
+      <AuthProvider>
+        <AuthGate>
+          <WSProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/leases" element={<Leases />} />
+                  <Route path="/reservations" element={<Reservations />} />
+                  <Route path="/conflicts" element={<Conflicts />} />
+                  <Route path="/events" element={<Events />} />
+                  <Route path="/ha" element={<HAStatus />} />
+                  <Route path="/dns" element={<DNSFiltering />} />
+                  <Route path="/dns/querylog" element={<DNSQueryLog />} />
+                  <Route path="/config" element={<Config />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </WSProvider>
+        </AuthGate>
+      </AuthProvider>
+    </SetupGate>
   )
 }

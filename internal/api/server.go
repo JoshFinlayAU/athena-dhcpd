@@ -24,23 +24,25 @@ import (
 
 // Server is the HTTP API server for athena-dhcpd.
 type Server struct {
-	cfg           *config.Config
-	configPath    string
-	leaseStore    *lease.Store
-	leaseManager  *lease.Manager
-	conflictTable *conflict.Table
-	pools         []*pool.Pool
-	bus           *events.Bus
-	fsm           *ha.FSM
-	peer          *ha.Peer
-	dns           *dnsproxy.Server
-	logger        *slog.Logger
-	httpServer    *http.Server
-	auth          *AuthMiddleware
-	sseHub        *SSEHub
-	cfgStore      *dbconfig.Store
-	startTime     time.Time
-	version       string
+	cfg             *config.Config
+	configPath      string
+	leaseStore      *lease.Store
+	leaseManager    *lease.Manager
+	conflictTable   *conflict.Table
+	pools           []*pool.Pool
+	bus             *events.Bus
+	fsm             *ha.FSM
+	peer            *ha.Peer
+	dns             *dnsproxy.Server
+	logger          *slog.Logger
+	httpServer      *http.Server
+	auth            *AuthMiddleware
+	sseHub          *SSEHub
+	cfgStore        *dbconfig.Store
+	startTime       time.Time
+	version         string
+	setupMode       bool
+	onSetupComplete func()
 }
 
 // NewServer creates a new API server.
@@ -107,6 +109,14 @@ func WithVersion(v string) ServerOption {
 // WithConfigStore sets the database-backed config store.
 func WithConfigStore(cs *dbconfig.Store) ServerOption {
 	return func(s *Server) { s.cfgStore = cs }
+}
+
+// WithSetupMode marks this server as running in setup wizard mode.
+func WithSetupMode(cb func()) ServerOption {
+	return func(s *Server) {
+		s.setupMode = true
+		s.onSetupComplete = cb
+	}
 }
 
 // Start begins serving the HTTP API.
@@ -204,10 +214,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v2/config/dns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDNS)))
 	mux.HandleFunc("POST /api/v2/config/import", s.auth.RequireAdmin(s.standbyGuard(s.handleV2ImportTOML)))
 	mux.HandleFunc("GET /api/v2/config/raw", s.auth.RequireAuth(s.handleGetConfigRaw))
-	mux.HandleFunc("PUT /api/v2/config", s.auth.RequireAdmin(s.standbyGuard(s.handleUpdateConfig)))
 	mux.HandleFunc("POST /api/v2/config/validate", s.auth.RequireAuth(s.handleValidateConfig))
-	mux.HandleFunc("GET /api/v2/config/backups", s.auth.RequireAuth(s.handleListConfigBackups))
-	mux.HandleFunc("GET /api/v2/config/backups/{timestamp}", s.auth.RequireAuth(s.handleGetConfigBackup))
 
 	// Events & Hooks
 	mux.HandleFunc("GET /api/v2/events", s.auth.RequireAuth(s.handleListEvents))
@@ -231,6 +238,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Stats
 	mux.HandleFunc("GET /api/v2/stats", s.auth.RequireAuth(s.handleGetStats))
+
+	// Setup wizard (no auth — wizard runs before users are configured)
+	mux.HandleFunc("GET /api/v2/setup/status", s.handleSetupStatus)
+	mux.HandleFunc("POST /api/v2/setup/ha", s.handleSetupHA)
+	mux.HandleFunc("POST /api/v2/setup/config", s.handleSetupConfig)
+	mux.HandleFunc("POST /api/v2/setup/complete", s.handleSetupComplete)
 
 	// SPA fallback — serve index.html for all non-API paths
 	if s.cfg.API.WebUI {

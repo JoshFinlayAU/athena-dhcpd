@@ -1,20 +1,31 @@
 # Configuration Reference
 
-athena-dhcpd uses TOML because its readable by humans. no YAML, no JSON with 47 levels of nesting. just TOML
+athena-dhcpd uses a **two-layer configuration model**:
+
+1. **Bootstrap TOML** (`config.toml`) — loaded at startup. contains `[server]`, `[api]`, and optionally `[ha]`. this is the only file you need to create manually
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy. managed through the web UI or REST API. synced automatically between HA peers
 
 the config file is passed via `-config` flag:
 ```bash
 ./athena-dhcpd -config /etc/athena-dhcpd/config.toml
 ```
 
-hot-reload via SIGHUP — no restart needed for most changes:
+on first startup with an empty database, the **setup wizard** walks you through initial configuration. you can also import a full legacy TOML config via the web UI
+
+hot-reload via SIGHUP reloads bootstrap config (server, api, ha):
 ```bash
 kill -HUP $(cat /var/run/athena-dhcpd.pid)
 ```
 
-see `configs/example.toml` for a fully annotated working example
+database-backed config changes take effect immediately through the API — no restart or SIGHUP needed
+
+see `configs/example.toml` for the minimal bootstrap config
 
 ---
+
+## Bootstrap Sections
+
+These sections live in the TOML file only and are NOT stored in the database.
 
 ## [server]
 
@@ -57,6 +68,10 @@ max_per_mac_per_second = 10
 ```
 
 ---
+
+## Database-Backed Sections
+
+These sections are stored in the database and managed through the web UI or API. they can also be set via the TOML file for initial import or v1 migration, but once imported, the database copy takes precedence
 
 ## [conflict_detection]
 
@@ -573,7 +588,7 @@ the config parser validates a bunch of stuff at load time so you dont find out a
 - overlapping subnets (two subnets covering the same IP space)
 - overlapping pool ranges within a subnet
 - pool range ordering (start must be <= end, yes this has happened)
-- required fields (server_id, at least one subnet, etc)
+- required fields (server_id when set, etc)
 - sane defaults for anything you don't specify
 
-if validation fails, the server won't start. if validation fails during a SIGHUP reload, it keeps the old config and logs the error
+bootstrap validation fails → server won't start. SIGHUP reload fails → keeps old config, logs the error. API config changes are validated before saving to the database

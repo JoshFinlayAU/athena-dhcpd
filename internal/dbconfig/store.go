@@ -21,12 +21,13 @@ var (
 	bucketDNS      = []byte("config_dns")
 	bucketMeta     = []byte("config_meta")
 
-	keyDefaults = []byte("defaults")
-	keyConflict = []byte("conflict_detection")
-	keyHooks    = []byte("hooks")
-	keyDDNS     = []byte("ddns")
-	keyDNS      = []byte("dns")
-	keyImported = []byte("v1_imported")
+	keyDefaults      = []byte("defaults")
+	keyConflict      = []byte("conflict_detection")
+	keyHooks         = []byte("hooks")
+	keyDDNS          = []byte("ddns")
+	keyDNS           = []byte("dns")
+	keyImported      = []byte("v1_imported")
+	keySetupComplete = []byte("setup_complete")
 )
 
 // Store provides CRUD access to dynamic configuration stored in BoltDB.
@@ -100,6 +101,28 @@ func (s *Store) OnLocalChange(fn func(section string, data []byte)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onLocalChange = append(s.onLocalChange, fn)
+}
+
+// IsSetupComplete returns true if the initial setup wizard has been completed.
+func (s *Store) IsSetupComplete() bool {
+	var complete bool
+	s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMeta)
+		if b == nil {
+			return nil
+		}
+		complete = b.Get(keySetupComplete) != nil
+		return nil
+	})
+	return complete
+}
+
+// MarkSetupComplete marks the initial setup wizard as done.
+func (s *Store) MarkSetupComplete() error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMeta)
+		return b.Put(keySetupComplete, []byte("1"))
+	})
 }
 
 // IsV1Imported returns true if a v1 TOML config has already been imported.
@@ -394,6 +417,8 @@ func (s *Store) SetDNS(d config.DNSProxyConfig) error {
 	return nil
 }
 
+// HA config lives in TOML, not the database — see config.WriteHASection().
+
 // --- Build full config ---
 
 // BuildConfig merges bootstrap TOML config with DB-stored dynamic config.
@@ -406,7 +431,7 @@ func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
 	copy(cfg.Subnets, s.subnets)
 	cfg.Defaults = s.defaults
 	cfg.ConflictDetection = s.conflict
-	// HA is bootstrap config — comes from TOML, not DB
+	// HA stays in TOML — it's node-identity config outside the DB sync
 	cfg.Hooks = s.hooks
 	cfg.DDNS = s.ddns
 	cfg.DNS = s.dns
@@ -611,6 +636,8 @@ func (s *Store) loadAll() error {
 		loadJSON(tx, bucketHooks, keyHooks, &s.hooks)
 		loadJSON(tx, bucketDDNS, keyDDNS, &s.ddns)
 		loadJSON(tx, bucketDNS, keyDNS, &s.dns)
+
+		// HA config lives in TOML, not the database — see config.WriteHASection()
 
 		return nil
 	})

@@ -211,6 +211,12 @@ function SubnetEditor({ subnet, isNew, onSave, onCancel }: {
         <Field label="Lease Time">
           <TextInput value={s.lease_time || ''} onChange={v => setS({ ...s, lease_time: v })} placeholder="12h0m0s" mono />
         </Field>
+        <Field label="Renewal Time (T1)">
+          <TextInput value={s.renewal_time || ''} onChange={v => setS({ ...s, renewal_time: v })} placeholder="6h0m0s" mono />
+        </Field>
+        <Field label="Rebind Time (T2)">
+          <TextInput value={s.rebind_time || ''} onChange={v => setS({ ...s, rebind_time: v })} placeholder="10h30m0s" mono />
+        </Field>
         <Field label="Routers">
           <StringArrayInput value={s.routers || []} onChange={v => setS({ ...s, routers: v })} placeholder="192.168.1.1" mono />
         </Field>
@@ -224,13 +230,59 @@ function SubnetEditor({ subnet, isNew, onSave, onCancel }: {
 
       <Section title="IP Pools" defaultOpen>
         {(s.pool || []).map((p, i) => (
-          <div key={i} className="flex items-end gap-2">
-            <Field label="Start"><TextInput value={p.range_start} onChange={v => updatePool(i, 'range_start', v)} placeholder="192.168.1.10" mono /></Field>
-            <Field label="End"><TextInput value={p.range_end} onChange={v => updatePool(i, 'range_end', v)} placeholder="192.168.1.200" mono /></Field>
-            <button onClick={() => removePool(i)} className="p-2 mb-0.5 text-text-muted hover:text-danger"><Trash2 className="w-4 h-4" /></button>
+          <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-text-muted">Pool {i + 1}</span>
+              <button onClick={() => removePool(i)} className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+            <FieldGrid>
+              <Field label="Range Start"><TextInput value={p.range_start} onChange={v => updatePool(i, 'range_start', v)} placeholder="192.168.1.10" mono /></Field>
+              <Field label="Range End"><TextInput value={p.range_end} onChange={v => updatePool(i, 'range_end', v)} placeholder="192.168.1.200" mono /></Field>
+              <Field label="Lease Time" hint="Override subnet default">
+                <TextInput value={p.lease_time || ''} onChange={v => updatePool(i, 'lease_time', v)} placeholder="" mono />
+              </Field>
+              <Field label="Match Circuit ID" hint="Option 82 circuit-id glob">
+                <TextInput value={p.match_circuit_id || ''} onChange={v => updatePool(i, 'match_circuit_id', v)} placeholder="*" mono />
+              </Field>
+              <Field label="Match Remote ID" hint="Option 82 remote-id glob">
+                <TextInput value={p.match_remote_id || ''} onChange={v => updatePool(i, 'match_remote_id', v)} placeholder="" mono />
+              </Field>
+              <Field label="Match Vendor Class" hint="Option 60 glob">
+                <TextInput value={p.match_vendor_class || ''} onChange={v => updatePool(i, 'match_vendor_class', v)} placeholder="" mono />
+              </Field>
+              <Field label="Match User Class" hint="Option 77 glob">
+                <TextInput value={p.match_user_class || ''} onChange={v => updatePool(i, 'match_user_class', v)} placeholder="" mono />
+              </Field>
+            </FieldGrid>
           </div>
         ))}
         <button onClick={addPool} className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Pool</button>
+      </Section>
+
+      <Section title={`Custom DHCP Options (${(s.option || []).length})`}>
+        {(s.option || []).map((opt, i) => (
+          <div key={i} className="flex items-end gap-2 mb-1">
+            <Field label="Code"><NumberInput value={opt.code} onChange={v => {
+              const opts = [...(s.option || [])]; opts[i] = { ...opts[i], code: v }; setS({ ...s, option: opts })
+            }} min={1} /></Field>
+            <Field label="Type">
+              <Select value={opt.type || 'string'} onChange={v => {
+                const opts = [...(s.option || [])]; opts[i] = { ...opts[i], type: v }; setS({ ...s, option: opts })
+              }} options={[
+                { value: 'ip', label: 'IP' }, { value: 'ip_list', label: 'IP List' }, { value: 'string', label: 'String' },
+                { value: 'uint8', label: 'UInt8' }, { value: 'uint16', label: 'UInt16' }, { value: 'uint32', label: 'UInt32' },
+                { value: 'bool', label: 'Bool' }, { value: 'bytes', label: 'Bytes (hex)' },
+              ]} />
+            </Field>
+            <Field label="Value"><TextInput value={String(opt.value ?? '')} onChange={v => {
+              const opts = [...(s.option || [])]; opts[i] = { ...opts[i], value: v }; setS({ ...s, option: opts })
+            }} mono /></Field>
+            <button onClick={() => setS({ ...s, option: (s.option || []).filter((_, idx) => idx !== i) })}
+              className="p-2 mb-0.5 text-text-muted hover:text-danger"><Trash2 className="w-4 h-4" /></button>
+          </div>
+        ))}
+        <button onClick={() => setS({ ...s, option: [...(s.option || []), { code: 0, type: 'string', value: '' }] })}
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Option</button>
       </Section>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -307,12 +359,22 @@ function ReservationsPanel({ network, onStatus }: { network: string; onStatus: S
       </div>
 
       {showAdd && (
-        <div className="flex items-end gap-2 p-3 bg-surface-overlay/30 rounded-lg">
-          <Field label="MAC"><TextInput value={newRes.mac} onChange={v => setNewRes({ ...newRes, mac: v })} placeholder="00:11:22:33:44:55" mono /></Field>
-          <Field label="IP"><TextInput value={newRes.ip} onChange={v => setNewRes({ ...newRes, ip: v })} placeholder="192.168.1.100" mono /></Field>
-          <Field label="Hostname"><TextInput value={newRes.hostname || ''} onChange={v => setNewRes({ ...newRes, hostname: v })} placeholder="server1" /></Field>
-          <button onClick={handleAdd} className="px-3 py-2 mb-0.5 text-xs font-medium rounded bg-accent text-white hover:bg-accent-hover">Save</button>
-          <button onClick={() => setShowAdd(false)} className="px-3 py-2 mb-0.5 text-xs rounded border border-border hover:bg-surface-overlay">Cancel</button>
+        <div className="p-3 bg-surface-overlay/30 rounded-lg space-y-2">
+          <FieldGrid>
+            <Field label="MAC"><TextInput value={newRes.mac} onChange={v => setNewRes({ ...newRes, mac: v })} placeholder="00:11:22:33:44:55" mono /></Field>
+            <Field label="IP"><TextInput value={newRes.ip} onChange={v => setNewRes({ ...newRes, ip: v })} placeholder="192.168.1.100" mono /></Field>
+            <Field label="Hostname"><TextInput value={newRes.hostname || ''} onChange={v => setNewRes({ ...newRes, hostname: v })} placeholder="server1" /></Field>
+            <Field label="DDNS Hostname" hint="Override FQDN for DNS registration">
+              <TextInput value={newRes.ddns_hostname || ''} onChange={v => setNewRes({ ...newRes, ddns_hostname: v })} placeholder="server1.example.com" mono />
+            </Field>
+          </FieldGrid>
+          <Field label="DNS Servers" hint="Per-reservation override (optional)">
+            <StringArrayInput value={newRes.dns_servers || []} onChange={v => setNewRes({ ...newRes, dns_servers: v })} placeholder="8.8.8.8" mono />
+          </Field>
+          <div className="flex gap-2 pt-1">
+            <button onClick={handleAdd} className="px-3 py-2 text-xs font-medium rounded bg-accent text-white hover:bg-accent-hover">Save</button>
+            <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-xs rounded border border-border hover:bg-surface-overlay">Cancel</button>
+          </div>
         </div>
       )}
 
@@ -421,6 +483,10 @@ function ConflictTab({ onStatus }: { onStatus: StatusFn }) {
       </FieldGrid>
       <Toggle checked={current.send_gratuitous_arp} onChange={v => setC({ ...current, send_gratuitous_arp: v })} label="Send Gratuitous ARP" description="Send gratuitous ARP after DHCPACK on local subnets" />
       <Toggle checked={current.icmp_fallback} onChange={v => setC({ ...current, icmp_fallback: v })} label="ICMP Fallback" description="Use ICMP ping for relayed/remote subnets" />
+      <Field label="Probe Log Level">
+        <Select value={current.probe_log_level || 'debug'} onChange={v => setC({ ...current, probe_log_level: v })}
+          options={[{ value: 'debug', label: 'Debug' }, { value: 'info', label: 'Info' }, { value: 'warn', label: 'Warn' }]} />
+      </Field>
       <div className="flex justify-end pt-2">
         <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
           <Save className="w-3.5 h-3.5" /> Save
@@ -515,46 +581,87 @@ function HooksTab({ onStatus }: { onStatus: StatusFn }) {
       </FieldGrid>
 
       <Section title={`Script Hooks (${current.script?.length || 0})`}>
-        {(current.script || []).map((s, i) => (
-          <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">{s.name || `Script ${i + 1}`}</span>
-              <button onClick={() => setH({ ...current, script: (current.script || []).filter((_, idx) => idx !== i) })}
-                className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+        {(current.script || []).map((s, i) => {
+          const updateScript = (patch: Record<string, unknown>) => {
+            const scripts = [...(current.script || [])]; scripts[i] = { ...scripts[i], ...patch }; setH({ ...current, script: scripts })
+          }
+          return (
+            <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">{s.name || `Script ${i + 1}`}</span>
+                <button onClick={() => setH({ ...current, script: (current.script || []).filter((_, idx) => idx !== i) })}
+                  className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              <FieldGrid>
+                <Field label="Name"><TextInput value={s.name} onChange={v => updateScript({ name: v })} /></Field>
+                <Field label="Command"><TextInput value={s.command} onChange={v => updateScript({ command: v })} mono /></Field>
+                <Field label="Timeout"><TextInput value={s.timeout || ''} onChange={v => updateScript({ timeout: v })} placeholder="10s" mono /></Field>
+              </FieldGrid>
+              <Field label="Events" hint="Comma-separated: lease.ack, lease.release, conflict.detected, etc.">
+                <TextInput value={(s.events || []).join(', ')} onChange={v => updateScript({ events: v.split(',').map(e => e.trim()).filter(Boolean) })} placeholder="lease.ack, lease.release" />
+              </Field>
+              <Field label="Subnet Filter" hint="Only fire for these subnets (empty = all)">
+                <StringArrayInput value={s.subnets || []} onChange={v => updateScript({ subnets: v })} placeholder="192.168.1.0/24" mono />
+              </Field>
             </div>
-            <FieldGrid>
-              <Field label="Name"><TextInput value={s.name} onChange={v => {
-                const scripts = [...(current.script || [])]; scripts[i] = { ...scripts[i], name: v }; setH({ ...current, script: scripts })
-              }} /></Field>
-              <Field label="Command"><TextInput value={s.command} onChange={v => {
-                const scripts = [...(current.script || [])]; scripts[i] = { ...scripts[i], command: v }; setH({ ...current, script: scripts })
-              }} mono /></Field>
-            </FieldGrid>
-          </div>
-        ))}
-        <button onClick={() => setH({ ...current, script: [...(current.script || []), { name: '', events: [], command: '', timeout: '10s' }] })}
+          )
+        })}
+        <button onClick={() => setH({ ...current, script: [...(current.script || []), { name: '', events: [], command: '', timeout: '10s', subnets: [] }] })}
           className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Script Hook</button>
       </Section>
 
       <Section title={`Webhooks (${current.webhook?.length || 0})`}>
-        {(current.webhook || []).map((wh, i) => (
-          <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">{wh.name || `Webhook ${i + 1}`}</span>
-              <button onClick={() => setH({ ...current, webhook: (current.webhook || []).filter((_, idx) => idx !== i) })}
-                className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+        {(current.webhook || []).map((wh, i) => {
+          const updateWH = (patch: Record<string, unknown>) => {
+            const hooks = [...(current.webhook || [])]; hooks[i] = { ...hooks[i], ...patch }; setH({ ...current, webhook: hooks })
+          }
+          return (
+            <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">{wh.name || `Webhook ${i + 1}`}</span>
+                <button onClick={() => setH({ ...current, webhook: (current.webhook || []).filter((_, idx) => idx !== i) })}
+                  className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              <FieldGrid>
+                <Field label="Name"><TextInput value={wh.name} onChange={v => updateWH({ name: v })} /></Field>
+                <Field label="URL"><TextInput value={wh.url} onChange={v => updateWH({ url: v })} mono /></Field>
+                <Field label="Method">
+                  <Select value={wh.method || 'POST'} onChange={v => updateWH({ method: v })}
+                    options={[{ value: 'POST', label: 'POST' }, { value: 'PUT', label: 'PUT' }, { value: 'PATCH', label: 'PATCH' }]} />
+                </Field>
+                <Field label="Timeout"><TextInput value={wh.timeout || ''} onChange={v => updateWH({ timeout: v })} placeholder="10s" mono /></Field>
+                <Field label="Retries"><NumberInput value={wh.retries} onChange={v => updateWH({ retries: v })} min={0} /></Field>
+                <Field label="Retry Backoff"><TextInput value={wh.retry_backoff || ''} onChange={v => updateWH({ retry_backoff: v })} placeholder="2s" mono /></Field>
+                <Field label="HMAC Secret" hint="For X-Athena-Signature header">
+                  <TextInput value={wh.secret || ''} onChange={v => updateWH({ secret: v })} placeholder="optional" />
+                </Field>
+                <Field label="Template" hint="slack, teams, or empty for raw JSON">
+                  <TextInput value={wh.template || ''} onChange={v => updateWH({ template: v })} placeholder="" />
+                </Field>
+              </FieldGrid>
+              <Field label="Events" hint="Comma-separated: lease.ack, lease.release, conflict.detected, etc.">
+                <TextInput value={(wh.events || []).join(', ')} onChange={v => updateWH({ events: v.split(',').map(e => e.trim()).filter(Boolean) })} placeholder="lease.ack, lease.release" />
+              </Field>
+              <Field label="Custom Headers" hint="key: value, one per line">
+                <textarea
+                  value={Object.entries(wh.headers || {}).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                  onChange={e => {
+                    const h: Record<string, string> = {}
+                    e.target.value.split('\n').forEach(line => {
+                      const idx = line.indexOf(':')
+                      if (idx > 0) h[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
+                    })
+                    updateWH({ headers: h })
+                  }}
+                  rows={2}
+                  placeholder="X-Custom-Header: value"
+                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-surface focus:outline-none focus:border-accent"
+                />
+              </Field>
             </div>
-            <FieldGrid>
-              <Field label="Name"><TextInput value={wh.name} onChange={v => {
-                const hooks = [...(current.webhook || [])]; hooks[i] = { ...hooks[i], name: v }; setH({ ...current, webhook: hooks })
-              }} /></Field>
-              <Field label="URL"><TextInput value={wh.url} onChange={v => {
-                const hooks = [...(current.webhook || [])]; hooks[i] = { ...hooks[i], url: v }; setH({ ...current, webhook: hooks })
-              }} mono /></Field>
-            </FieldGrid>
-          </div>
-        ))}
-        <button onClick={() => setH({ ...current, webhook: [...(current.webhook || []), { name: '', events: [], url: '', method: 'POST', timeout: '10s', retries: 3, retry_backoff: '2s' }] })}
+          )
+        })}
+        <button onClick={() => setH({ ...current, webhook: [...(current.webhook || []), { name: '', events: [], url: '', method: 'POST', timeout: '10s', retries: 3, retry_backoff: '2s', secret: '', template: '', headers: {} }] })}
           className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Webhook</button>
       </Section>
 
@@ -751,6 +858,120 @@ function DNSTab({ onStatus }: { onStatus: StatusFn }) {
       <Field label="Forwarders">
         <StringArrayInput value={current.forwarders || []} onChange={v => setD({ ...current, forwarders: v })} placeholder="8.8.8.8:53" mono />
       </Field>
+      <Field label="Listen DoH" hint="DNS-over-HTTPS listen address (leave empty to disable)">
+        <TextInput value={current.listen_doh || ''} onChange={v => setD({ ...current, listen_doh: v })} placeholder="0.0.0.0:443" mono />
+      </Field>
+
+      {/* Zone Overrides */}
+      <Section title={`Zone Overrides (${(current.zone_override || []).length})`}>
+        <p className="text-xs text-text-muted mb-2">Route queries for specific domains to dedicated nameservers (split-horizon DNS)</p>
+        {(current.zone_override || []).map((zo, i) => {
+          const updateZO = (patch: Record<string, unknown>) => {
+            const n = [...(current.zone_override || [])]; n[i] = { ...n[i], ...patch }; setD({ ...current, zone_override: n })
+          }
+          return (
+            <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-text-muted">{zo.zone || 'New Override'}</span>
+                <button onClick={() => setD({ ...current, zone_override: (current.zone_override || []).filter((_, idx) => idx !== i) })}
+                  className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              <FieldGrid>
+                <Field label="Zone"><TextInput value={zo.zone || ''} onChange={v => updateZO({ zone: v })} placeholder="corp.internal." mono /></Field>
+                <Field label="Nameserver"><TextInput value={zo.nameserver || ''} onChange={v => updateZO({ nameserver: v })} placeholder="10.0.0.1:53" mono /></Field>
+              </FieldGrid>
+            </div>
+          )
+        })}
+        <button onClick={() => setD({ ...current, zone_override: [...(current.zone_override || []), { zone: '', nameserver: '', doh: false, doh_url: '' }] })}
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Zone Override</button>
+      </Section>
+
+      {/* Static Records */}
+      <Section title={`Static Records (${(current.record || []).length})`}>
+        <p className="text-xs text-text-muted mb-2">Manual DNS records for hosts not managed by DHCP</p>
+        {(current.record || []).map((rec, i) => {
+          const updateRec = (patch: Record<string, unknown>) => {
+            const n = [...(current.record || [])]; n[i] = { ...n[i], ...patch }; setD({ ...current, record: n })
+          }
+          return (
+            <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono text-text-muted">{rec.name || 'new'} {rec.type || 'A'} {rec.value || ''}</span>
+                <button onClick={() => setD({ ...current, record: (current.record || []).filter((_, idx) => idx !== i) })}
+                  className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              <FieldGrid>
+                <Field label="Name"><TextInput value={rec.name || ''} onChange={v => updateRec({ name: v })} placeholder="server1.local" mono /></Field>
+                <Field label="Type">
+                  <Select value={rec.type || 'A'} onChange={v => updateRec({ type: v })}
+                    options={[{ value: 'A', label: 'A' }, { value: 'AAAA', label: 'AAAA' }, { value: 'CNAME', label: 'CNAME' }, { value: 'MX', label: 'MX' }, { value: 'TXT', label: 'TXT' }, { value: 'SRV', label: 'SRV' }]} />
+                </Field>
+                <Field label="Value"><TextInput value={rec.value || ''} onChange={v => updateRec({ value: v })} placeholder="192.168.1.100" mono /></Field>
+                <Field label="TTL"><NumberInput value={rec.ttl} onChange={v => updateRec({ ttl: v })} min={0} /></Field>
+              </FieldGrid>
+            </div>
+          )
+        })}
+        <button onClick={() => setD({ ...current, record: [...(current.record || []), { name: '', type: 'A', value: '', ttl: 300 }] })}
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Static Record</button>
+      </Section>
+
+      {/* Filter Lists */}
+      <Section title={`Filter Lists (${(current.list || []).length})`}>
+        <p className="text-xs text-text-muted mb-2">Block or allow domains using external filter lists (hosts files, domain lists, adblock format)</p>
+        {(current.list || []).map((lst, i) => {
+          const updateLst = (patch: Record<string, unknown>) => {
+            const n = [...(current.list || [])]; n[i] = { ...n[i], ...patch }; setD({ ...current, list: n })
+          }
+          return (
+            <div key={i} className="p-3 bg-surface-overlay/30 rounded-lg space-y-2 mb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-text-muted">{lst.name || 'New List'}</span>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="checkbox" checked={lst.enabled !== false} onChange={e => updateLst({ enabled: e.target.checked })}
+                      className="rounded border-border accent-accent" />
+                    Enabled
+                  </label>
+                  <button onClick={() => setD({ ...current, list: (current.list || []).filter((_, idx) => idx !== i) })}
+                    className="p-1 text-text-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              </div>
+              <FieldGrid>
+                <Field label="Name"><TextInput value={lst.name || ''} onChange={v => updateLst({ name: v })} placeholder="steven-black" /></Field>
+                <Field label="URL"><TextInput value={lst.url || ''} onChange={v => updateLst({ url: v })} placeholder="https://..." mono /></Field>
+                <Field label="Type">
+                  <Select value={lst.type || 'block'} onChange={v => updateLst({ type: v })}
+                    options={[{ value: 'block', label: 'Block' }, { value: 'allow', label: 'Allow' }]} />
+                </Field>
+                <Field label="Format">
+                  <Select value={lst.format || 'hosts'} onChange={v => updateLst({ format: v })}
+                    options={[{ value: 'hosts', label: 'Hosts file' }, { value: 'domains', label: 'Domain list' }, { value: 'adblock', label: 'Adblock' }]} />
+                </Field>
+                <Field label="Action">
+                  <Select value={lst.action || 'nxdomain'} onChange={v => updateLst({ action: v })}
+                    options={[{ value: 'nxdomain', label: 'NXDOMAIN' }, { value: 'zero', label: '0.0.0.0' }, { value: 'refuse', label: 'REFUSED' }]} />
+                </Field>
+                <Field label="Refresh Interval"><TextInput value={lst.refresh_interval || ''} onChange={v => updateLst({ refresh_interval: v })} placeholder="24h" mono /></Field>
+              </FieldGrid>
+            </div>
+          )
+        })}
+        <button onClick={() => setD({ ...current, list: [...(current.list || []), { name: '', url: '', type: 'block', format: 'hosts', action: 'nxdomain', enabled: true, refresh_interval: '24h' }] })}
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover"><Plus className="w-3 h-3" /> Add Filter List</button>
+      </Section>
+
+      {/* DoH TLS */}
+      {current.listen_doh && (
+        <Section title="DoH TLS Settings">
+          <FieldGrid>
+            <Field label="TLS Certificate"><TextInput value={current.doh_tls?.cert_file || ''} onChange={v => setD({ ...current, doh_tls: { ...(current.doh_tls || {}), cert_file: v } })} placeholder="/path/to/cert.pem" mono /></Field>
+            <Field label="TLS Key"><TextInput value={current.doh_tls?.key_file || ''} onChange={v => setD({ ...current, doh_tls: { ...(current.doh_tls || {}), key_file: v } })} placeholder="/path/to/key.pem" mono /></Field>
+          </FieldGrid>
+        </Section>
+      )}
+
       <div className="flex justify-end pt-2">
         <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
           <Save className="w-3.5 h-3.5" /> Save

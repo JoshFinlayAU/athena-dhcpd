@@ -241,18 +241,6 @@ func TestHandleGetStats(t *testing.T) {
 	}
 }
 
-func TestHandleGetConfig(t *testing.T) {
-	srv := newTestServer(t)
-
-	req := httptest.NewRequest("GET", "/api/v2/config", nil)
-	w := httptest.NewRecorder()
-	srv.handleGetConfig(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-}
-
 func TestHandleSPA(t *testing.T) {
 	srv := newTestServer(t)
 

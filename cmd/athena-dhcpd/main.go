@@ -81,6 +81,10 @@ func main() {
 				os.Exit(1)
 			}
 			cfgStore.MarkV1Imported()
+			// If we imported a TOML config, mark setup as complete automatically
+			if !cfgStore.IsSetupComplete() {
+				cfgStore.MarkSetupComplete()
+			}
 			logger.Info("config imported successfully",
 				"subnets", len(fullCfg.Subnets))
 		} else if fullErr != nil {
@@ -89,6 +93,63 @@ func main() {
 			logger.Debug("no dynamic config sections in TOML, skipping import")
 		}
 	}
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Setup wizard gate — if no config has been set up yet, only start the
+	// web UI and block until the wizard completes.
+	// ──────────────────────────────────────────────────────────────────────
+	if !cfgStore.IsSetupComplete() {
+		logger.Info("no configuration found — starting setup wizard")
+
+		setupDone := make(chan struct{}, 1)
+
+		cfg := cfgStore.BuildConfig(bootstrap)
+		config.ApplyDynamicDefaults(cfg)
+		bus := events.NewBus(cfg.Hooks.EventBufferSize, logger)
+		go bus.Start()
+
+		setupOpts := []api.ServerOption{
+			api.WithConfigPath(*configPath),
+			api.WithConfigStore(cfgStore),
+			api.WithSetupMode(func() { setupDone <- struct{}{} }),
+		}
+
+		setupServer := api.NewServer(cfg, store, nil, nil, nil, bus, logger, setupOpts...)
+		go func() {
+			if err := setupServer.Start(); err != nil {
+				logger.Error("setup API server failed", "error", err)
+			}
+		}()
+
+		logger.Info("setup wizard available", "listen", cfg.API.Listen)
+
+		// Block until setup completes or a shutdown signal arrives
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+		select {
+		case <-setupDone:
+			logger.Info("setup wizard completed — starting full services")
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			setupServer.Stop(shutdownCtx)
+			shutdownCancel()
+			bus.Stop()
+			signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+			// Fall through to normal startup below
+		case sig := <-sigCh:
+			logger.Info("received shutdown signal during setup", "signal", sig.String())
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			setupServer.Stop(shutdownCtx)
+			shutdownCancel()
+			bus.Stop()
+			store.Close()
+			return
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Normal startup — full service initialization
+	// ──────────────────────────────────────────────────────────────────────
 
 	// Build full config from bootstrap + DB
 	cfg := cfgStore.BuildConfig(bootstrap)

@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	nethttp "net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -32,7 +35,21 @@ import (
 func main() {
 	configPath := flag.String("config", "/etc/athena-dhcpd/config.toml", "path to configuration file")
 	reimport := flag.Bool("reimport", false, "force re-import of TOML config into database (overwrites DB config with TOML)")
+	debugPort := flag.String("debug-port", "", "enable pprof debug server on this port (e.g. 6060)")
 	flag.Parse()
+
+	// Start pprof debug server if requested
+	if *debugPort != "" {
+		runtime.SetMutexProfileFraction(5)
+		runtime.SetBlockProfileRate(1)
+		go func() {
+			addr := "0.0.0.0:" + *debugPort
+			fmt.Fprintf(os.Stderr, "pprof debug server on http://%s/debug/pprof/\n", addr)
+			if err := nethttp.ListenAndServe(addr, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "pprof server failed: %v\n", err)
+			}
+		}()
+	}
 
 	// Load bootstrap configuration (server + api only from TOML)
 	bootstrap, err := config.LoadBootstrap(*configPath)

@@ -36,7 +36,9 @@ export function WSProvider({ children }: { children: ReactNode }) {
     }
     es.onmessage = (msg) => {
       try {
-        const evt: DhcpEvent = JSON.parse(msg.data)
+        const raw = JSON.parse(msg.data)
+        // Normalize: backend may send "event" (old) or "type" (new)
+        const evt: DhcpEvent = { ...raw, type: raw.type || raw.event || 'unknown' }
         setLastEvent(evt)
         setEvents((prev) => [evt, ...prev].slice(0, MAX_EVENTS))
         handlersRef.current.forEach((h) => h(evt))

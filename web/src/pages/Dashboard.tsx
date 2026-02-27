@@ -151,8 +151,9 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
 }
 
 function EventIcon({ type }: { type: string }) {
-  const isConflict = type.includes('conflict')
-  const isError = type.includes('nak') || type.includes('decline')
+  const t = type || ''
+  const isConflict = t.includes('conflict')
+  const isError = t.includes('nak') || t.includes('decline')
   return (
     <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
       isConflict ? 'bg-danger' : isError ? 'bg-warning' : 'bg-accent'
@@ -161,5 +162,5 @@ function EventIcon({ type }: { type: string }) {
 }
 
 function eventLabel(type: string): string {
-  return type.replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return (type || 'unknown').replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }

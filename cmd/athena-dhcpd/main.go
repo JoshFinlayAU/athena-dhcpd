@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
+	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
 
 func main() {
@@ -191,6 +193,341 @@ func main() {
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
+	// HA Secondary gate — if we are a secondary node, connect to primary
+	// and wait for config sync BEFORE starting any services.
+	// The secondary must not serve DHCP or run detection with empty config.
+	// ──────────────────────────────────────────────────────────────────────
+	var earlyHAPeer *ha.Peer
+	var earlyHAFSM *ha.FSM
+	var earlyBus *events.Bus
+
+	if bootstrap.HA.Enabled && bootstrap.HA.Role == "secondary" {
+		logger.Info("secondary node — connecting to primary before starting services",
+			"peer", bootstrap.HA.PeerAddress,
+			"listen", bootstrap.HA.ListenAddress)
+
+		earlyBus = events.NewBus(10000, logger)
+		go earlyBus.Start()
+
+		failoverTimeout, _ := time.ParseDuration(bootstrap.HA.FailoverTimeout)
+		if failoverTimeout == 0 {
+			failoverTimeout = 10 * time.Second
+		}
+		earlyHAFSM = ha.NewFSM(bootstrap.HA.Role, failoverTimeout, earlyBus, logger)
+		peer, err := ha.NewPeer(&bootstrap.HA, earlyHAFSM, store, earlyBus, logger)
+		if err != nil {
+			logger.Error("failed to create HA peer", "error", err)
+			os.Exit(1)
+		}
+
+		configReady := make(chan struct{}, 1)
+
+		peer.OnConfigSync(func(cs ha.ConfigSyncPayload) {
+			if err := cfgStore.ApplyPeerConfig(cs.Section, cs.Data); err != nil {
+				logger.Error("failed to apply config from peer",
+					"section", cs.Section, "error", err)
+			} else {
+				logger.Info("applied config from peer", "section", cs.Section)
+				select {
+				case configReady <- struct{}{}:
+				default:
+				}
+			}
+		})
+
+		peer.OnAdjacencyFormed(func() {
+			if !peer.FSM().IsActive() {
+				logger.Info("HA adjacency formed — waiting for config from primary")
+				return
+			}
+			logger.Info("HA adjacency formed, we are active — pushing config to peer")
+			sections := cfgStore.ExportAllSections()
+			if err := peer.SendFullConfigSync(sections); err != nil {
+				logger.Error("failed to push config to peer", "error", err)
+			}
+		})
+
+		if err := peer.Start(ctx); err != nil {
+			logger.Error("failed to start HA peer", "error", err)
+			os.Exit(1)
+		}
+		earlyHAPeer = peer
+
+		// Start minimal API for monitoring while waiting
+		minCfg := cfgStore.BuildConfig(bootstrap)
+		config.ApplyDynamicDefaults(minCfg)
+		apiOpts := []api.ServerOption{
+			api.WithConfigPath(*configPath),
+			api.WithConfigStore(cfgStore),
+			api.WithFSM(earlyHAFSM),
+			api.WithPeer(earlyHAPeer),
+		}
+		minAPI := api.NewServer(minCfg, store, nil, nil, nil, earlyBus, logger, apiOpts...)
+		go func() {
+			if err := minAPI.Start(); err != nil {
+				logger.Error("API server failed", "error", err)
+			}
+		}()
+
+		logger.Info("secondary waiting for config from primary...",
+			"api", minCfg.API.Listen)
+
+		// Block until config sync or shutdown
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+		select {
+		case <-configReady:
+			// Brief pause to let debounced config sections finish arriving
+			time.Sleep(500 * time.Millisecond)
+			logger.Info("config received from primary — initializing standby")
+			signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+
+			// Stop minimal API — full API starts below
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			minAPI.Stop(shutdownCtx)
+			shutdownCancel()
+
+			if !cfgStore.IsSetupComplete() {
+				cfgStore.MarkSetupComplete()
+			}
+
+		case sig := <-sigCh:
+			logger.Info("shutdown during config wait", "signal", sig.String())
+			earlyHAPeer.Stop()
+			earlyBus.Stop()
+			store.Close()
+			return
+		}
+
+		// ──────────────────────────────────────────────────────────────
+		// Secondary lifecycle — standby until failover
+		// Services (DHCP, conflict, rogue, DNS) start ONLY when FSM
+		// transitions to ACTIVE. Until then we just sync leases/config.
+		// ──────────────────────────────────────────────────────────────
+
+		cfg := cfgStore.BuildConfig(bootstrap)
+		config.ApplyDynamicDefaults(cfg)
+
+		// Lease manager needed for receiving lease syncs from primary
+		leaseMgr := lease.NewManager(store, cfg, earlyBus, logger)
+		leaseMgr.StartGC(ctx, 60*time.Second)
+
+		// Pools + handler ready but NOT serving yet
+		pools, err := initPools(cfg, store)
+		if err != nil {
+			logger.Error("failed to initialize pools", "error", err)
+			os.Exit(1)
+		}
+		handler := dhcp.NewHandler(cfg, leaseMgr, pools, nil, earlyBus, logger)
+		handler.SetHA(earlyHAFSM)
+
+		// Server group created but NOT started — waits for failover
+		serverGroup := dhcp.NewServerGroup(handler, logger)
+
+		// Mutable service state protected by mutex — started/stopped on failover
+		var (
+			svcMu      sync.Mutex
+			svcRunning bool
+			svcDNS     *dnsproxy.Server
+			svcRogue   *rogue.Detector
+		)
+
+		startActiveServices := func() {
+			svcMu.Lock()
+			defer svcMu.Unlock()
+			if svcRunning {
+				return
+			}
+			svcRunning = true
+			logger.Warn("FAILOVER: secondary becoming ACTIVE — starting services")
+
+			if err := serverGroup.Start(ctx, cfg); err != nil {
+				logger.Error("failed to start DHCP server on failover", "error", err)
+			}
+
+			if cfg.ConflictDetection.Enabled {
+				det, detErr := initConflictDetection(cfg, store, earlyBus, logger)
+				if detErr != nil {
+					logger.Error("failed to start conflict detection", "error", detErr)
+				} else {
+					handler.UpdateDetector(det)
+				}
+			}
+
+			var ownIPs []net.IP
+			if ip := cfg.ServerIP(); ip != nil {
+				ownIPs = append(ownIPs, ip)
+			}
+			if iface, ifErr := net.InterfaceByName(cfg.Server.Interface); ifErr == nil {
+				if addrs, aErr := iface.Addrs(); aErr == nil {
+					for _, a := range addrs {
+						if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
+							ownIPs = append(ownIPs, ipn.IP.To4())
+						}
+					}
+				}
+			}
+			rd, rdErr := rogue.NewDetector(store.DB(), earlyBus, ownIPs, logger)
+			if rdErr != nil {
+				logger.Warn("failed to start rogue detector", "error", rdErr)
+			} else {
+				svcRogue = rd
+				svcRogue.StartProbing(ctx, rogue.ProbeConfig{
+					Interface: cfg.Server.Interface,
+					Interval:  5 * time.Minute,
+					Timeout:   3 * time.Second,
+				})
+			}
+
+			if cfg.DNS.Enabled {
+				svcDNS = dnsproxy.NewServer(&cfg.DNS, logger)
+				if dnsErr := svcDNS.Start(ctx); dnsErr != nil {
+					logger.Error("failed to start DNS proxy on failover", "error", dnsErr)
+					svcDNS = nil
+				}
+			}
+
+			metrics.ServerStartTime.SetToCurrentTime()
+			logger.Warn("secondary now ACTIVE — all services running")
+		}
+
+		stopActiveServices := func() {
+			svcMu.Lock()
+			defer svcMu.Unlock()
+			if !svcRunning {
+				return
+			}
+			svcRunning = false
+			logger.Warn("returning to STANDBY — stopping active services")
+			serverGroup.Stop()
+			if svcDNS != nil {
+				svcDNS.Stop()
+				svcDNS = nil
+			}
+			if svcRogue != nil {
+				svcRogue.Stop()
+				svcRogue = nil
+			}
+			handler.UpdateDetector(nil)
+		}
+
+		// FSM callback — start/stop services on failover transitions
+		earlyHAFSM.OnStateChange(func(oldState, newState dhcpv4.HAState) {
+			isNowActive := newState == dhcpv4.HAStateActive || newState == dhcpv4.HAStatePartnerDown
+			wasActive := oldState == dhcpv4.HAStateActive || oldState == dhcpv4.HAStatePartnerDown
+			if isNowActive && !wasActive {
+				go startActiveServices()
+			} else if !isNowActive && wasActive {
+				go stopActiveServices()
+			}
+		})
+
+		// Start full API server for monitoring
+		var allPools []*pool.Pool
+		for _, subPools := range pools {
+			allPools = append(allPools, subPools...)
+		}
+		apiOpts = []api.ServerOption{
+			api.WithConfigPath(*configPath),
+			api.WithConfigStore(cfgStore),
+			api.WithFSM(earlyHAFSM),
+			api.WithPeer(earlyHAPeer),
+		}
+		apiServer := api.NewServer(cfg, store, leaseMgr, nil, allPools, earlyBus, logger, apiOpts...)
+		go func() {
+			if err := apiServer.Start(); err != nil {
+				logger.Error("API server failed", "error", err)
+			}
+		}()
+
+		// Wire config change callbacks
+		cfgStore.OnLocalChange(func(section string, data []byte) {
+			if err := earlyHAPeer.SendConfigSync(section, data); err != nil {
+				logger.Warn("failed to sync config to HA peer",
+					"section", section, "error", err)
+			}
+		})
+
+		cfgStore.OnChange(func() {
+			logger.Info("config changed in database, rebuilding")
+			newCfg := cfgStore.BuildConfig(bootstrap)
+			config.ApplyDynamicDefaults(newCfg)
+			cfg = newCfg
+			leaseMgr.UpdateConfig(cfg)
+			handler.UpdateConfig(cfg)
+			newPools, poolErr := initPools(cfg, store)
+			if poolErr != nil {
+				logger.Error("failed to reinitialize pools", "error", poolErr)
+				return
+			}
+			handler.UpdatePools(newPools)
+			if apiServer != nil {
+				apiServer.UpdateConfig(cfg)
+				var ap []*pool.Pool
+				for _, sp := range newPools {
+					ap = append(ap, sp...)
+				}
+				apiServer.UpdatePools(ap)
+			}
+		})
+
+		if cfg.Server.PIDFile != "" {
+			if err := writePIDFile(cfg.Server.PIDFile); err != nil {
+				logger.Warn("failed to write PID file", "error", err)
+			} else {
+				defer removePIDFile(cfg.Server.PIDFile)
+			}
+		}
+
+		logger.Info("athena-dhcpd secondary ready (standby)",
+			"subnets", len(cfg.Subnets),
+			"ha_state", string(earlyHAFSM.State()))
+
+		// Secondary signal handling loop
+		sigCh2 := make(chan os.Signal, 1)
+		signal.Notify(sigCh2, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+		for {
+			sig := <-sigCh2
+			switch sig {
+			case syscall.SIGHUP:
+				logger.Info("received SIGHUP, reloading bootstrap config")
+				newBootstrap, hupErr := config.LoadBootstrap(*configPath)
+				if hupErr != nil {
+					logger.Error("failed to reload bootstrap config", "error", hupErr)
+					continue
+				}
+				bootstrap = newBootstrap
+				cfg = cfgStore.BuildConfig(bootstrap)
+				config.ApplyDynamicDefaults(cfg)
+				leaseMgr.UpdateConfig(cfg)
+				handler.UpdateConfig(cfg)
+				newPools, poolErr := initPools(cfg, store)
+				if poolErr != nil {
+					logger.Error("failed to reinitialize pools", "error", poolErr)
+					continue
+				}
+				handler.UpdatePools(newPools)
+				logger.Info("configuration reloaded successfully")
+
+			case syscall.SIGINT, syscall.SIGTERM:
+				logger.Info("received shutdown signal", "signal", sig.String())
+				cancel()
+				stopActiveServices()
+				sdCtx, sdCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				apiServer.Stop(sdCtx)
+				sdCancel()
+				earlyHAPeer.Stop()
+				earlyBus.Stop()
+				store.Close()
+				logger.Info("athena-dhcpd stopped")
+				return
+			}
+		}
+	}
+
+	// ──────────────────────────────────────────────────────────────────────
 	// Normal startup — full service initialization
 	// ──────────────────────────────────────────────────────────────────────
 
@@ -308,6 +645,7 @@ func main() {
 	var haPeer *ha.Peer
 	var haFSM *ha.FSM
 	if cfg.HA.Enabled {
+		// Primary / standalone path — start HA now
 		failoverTimeout, _ := time.ParseDuration(cfg.HA.FailoverTimeout)
 		if failoverTimeout == 0 {
 			failoverTimeout = 10 * time.Second

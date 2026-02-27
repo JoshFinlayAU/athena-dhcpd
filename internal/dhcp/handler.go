@@ -83,6 +83,11 @@ func (h *Handler) SetHA(ha HAChecker) {
 	h.ha = ha
 }
 
+// UpdateDetector sets or replaces the conflict detector (used by secondary on failover).
+func (h *Handler) UpdateDetector(d *conflict.Detector) {
+	h.detector = d
+}
+
 // HandlePacket dispatches a DHCP packet to the appropriate handler based on message type.
 func (h *Handler) HandlePacket(ctx context.Context, pkt *Packet, src net.Addr) (*Packet, error) {
 	// HA guard: if we have an FSM and we are NOT the active node, silently drop.

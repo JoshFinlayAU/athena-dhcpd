@@ -51,6 +51,23 @@ func main() {
 		}()
 	}
 
+	// SIGUSR1 dumps all goroutine stacks to /tmp/athena-goroutines.txt
+	// Works even under 100% CPU since signals are kernel-delivered
+	go func() {
+		sigUsr1 := make(chan os.Signal, 1)
+		signal.Notify(sigUsr1, syscall.SIGUSR1)
+		for range sigUsr1 {
+			buf := make([]byte, 64*1024*1024) // 64MB
+			n := runtime.Stack(buf, true)     // true = all goroutines
+			path := "/tmp/athena-goroutines.txt"
+			if err := os.WriteFile(path, buf[:n], 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to write goroutine dump: %v\n", err)
+			} else {
+				fmt.Fprintf(os.Stderr, "goroutine dump written to %s (%d bytes)\n", path, n)
+			}
+		}
+	}()
+
 	// Load bootstrap configuration (server + api only from TOML)
 	bootstrap, err := config.LoadBootstrap(*configPath)
 	if err != nil {

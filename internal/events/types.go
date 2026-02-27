@@ -33,7 +33,7 @@ const (
 
 // Event is the core event payload passed through the event bus.
 type Event struct {
-	Type      EventType     `json:"event"`
+	Type      EventType     `json:"type"`
 	Timestamp time.Time     `json:"timestamp"`
 	Lease     *LeaseData    `json:"lease,omitempty"`
 	Conflict  *ConflictData `json:"conflict,omitempty"`

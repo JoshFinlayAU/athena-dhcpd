@@ -1,11 +1,14 @@
 package rogue
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
@@ -145,9 +148,11 @@ func (d *Detector) runProbe(ctx context.Context, cfg ProbeConfig) ([]ServerEntry
 			continue
 		}
 
-		var srcMAC net.HardwareAddr
+		// Resolve server MAC from OS ARP cache (populated by the UDP exchange)
+		srcMAC := lookupARPCache(serverIP)
 		d.logger.Warn("rogue probe detected DHCP server",
 			"server_ip", sip,
+			"server_mac", srcMAC,
 			"offered_ip", offeredIP,
 			"msg_type", msgType,
 			"src", src.String())
@@ -297,6 +302,35 @@ func parseOffer(data []byte, expectedXID []byte) (serverIP, offeredIP net.IP, ms
 	}
 
 	return srvIP, offeredIP, msgType
+}
+
+// lookupARPCache reads the OS ARP cache to find the MAC address for an IP.
+// On Linux this reads /proc/net/arp. Returns nil if not found.
+func lookupARPCache(ip net.IP) net.HardwareAddr {
+	f, err := os.Open("/proc/net/arp")
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	target := ip.String()
+	scanner := bufio.NewScanner(f)
+	scanner.Scan() // skip header line
+
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 4 {
+			continue
+		}
+		// fields: IP, HWtype, Flags, HWaddress, Mask, Device
+		if fields[0] == target && fields[3] != "00:00:00:00:00:00" {
+			mac, err := net.ParseMAC(fields[3])
+			if err == nil {
+				return mac
+			}
+		}
+	}
+	return nil
 }
 
 // Stop signals the probe loop to exit.

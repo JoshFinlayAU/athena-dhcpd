@@ -56,7 +56,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (user?.auth_required && !user?.authenticated) {
+  // API unreachable or auth required but not authenticated
+  if (!user || (user.auth_required && !user.authenticated)) {
     return <Login />
   }
 

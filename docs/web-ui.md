@@ -142,7 +142,7 @@ built-in DNS blocklist/allowlist management
 DB-backed config editor with per-section pages
 
 - subnets, pools, reservations — full CRUD
-- defaults, conflict detection, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation, HA — each editable via forms
+- defaults, conflict detection, hooks, DDNS, DNS proxy, SIEM forwarding (CEF/JSON/syslog + HTTP/file outputs), fingerprinting, hostname sanitisation, HA — each editable via forms
 - all changes go through the API and take effect immediately
 - TOML import for migration from other DHCP servers
 - raw config view

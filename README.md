@@ -178,13 +178,17 @@ who did what and when
 - export as CSV
 - stats endpoint for audit activity breakdown
 
-### remote syslog forwarding
-forward events to your existing log infrastructure
+### SIEM event forwarding
+forward events to your SIEM, log aggregator, or file in real-time
 
-- RFC 5424 syslog messages over UDP or TCP
-- configurable facility, tag, and protocol
-- auto-reconnect on connection failure
-- all DHCP events, conflicts, HA failovers, and rogue detections forwarded
+- three output formats: RFC 5424 (key=value), CEF (ArcSight/Sentinel/QRadar), JSON (Splunk/Elasticsearch/Loki)
+- remote syslog output over UDP or TCP with auto-reconnect
+- HTTP output with native Splunk HEC support, or generic HTTPS POST with Bearer token and custom headers
+- file output with automatic size-based rotation and gzip compression
+- all outputs can run simultaneously — syslog + HTTP + file at the same time
+- CEF messages include proper signature IDs, severity mapping (0-10), and standard extension fields (dst, dmac, dhost, smac, etc.)
+- Splunk HEC auto-detection: wraps events in HEC envelope, uses `Splunk` auth header
+- all DHCP events, conflicts, HA failovers, rogue detections, and anomalies forwarded
 
 ### event hooks
 Things happen, you probably want to know about them
@@ -259,7 +263,7 @@ React + TypeScript + Tailwind. dark mode because we have taste
 - **Setup wizard** — first boot walks you through deployment mode, HA, subnets, pools, reservations, conflict detection, and DNS proxy. import reservations from CSV, JSON, ISC dhcpd, dnsmasq, Kea, or MikroTik
 - Dashboard with real-time stats, pool utilization, live event feed
 - Lease browser with search, filtering, pagination, and live updates via SSE
-- Full configuration editor — subnets, pools, reservations, defaults, conflict detection, HA, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation. all stored in the database and editable live
+- Full configuration editor — subnets, pools, reservations, defaults, conflict detection, HA, hooks, DDNS, DNS proxy, SIEM forwarding, fingerprinting, hostname sanitisation. all stored in the database and editable live
 - Reservation management with multi-format import (CSV, JSON, ISC dhcpd, dnsmasq, Kea, MikroTik)
 - Conflict viewer with clear and permanent-exclude actions
 - Device fingerprints page with type/OS breakdown and Fingerbank API key setup
@@ -506,7 +510,7 @@ if you're running as root you dont need any of this but running a network servic
 athena-dhcpd uses a two-layer config model:
 
 1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. the only file you create manually. see `configs/example.toml`
-2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, VIPs, syslog, fingerprinting, hostname sanitisation. configured through the **setup wizard** on first boot and managed ongoing through the **web UI** Configuration page or REST API. synced between HA peers automatically
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, VIPs, SIEM forwarding, fingerprinting, hostname sanitisation. configured through the **setup wizard** on first boot and managed ongoing through the **web UI** Configuration page or REST API. synced between HA peers automatically
 
 on first startup with no config in the database, the setup wizard walks you through everything — deployment mode, HA, subnets, pools, reservations, conflict detection, DNS proxy, and floating VIPs. after that, all database-backed config is managed through the web UI or API. no config files to edit, no restarts needed
 
@@ -556,7 +560,7 @@ internal/
   portauto/             port automation engine
   radius/               RADIUS client for DHCP auth
   rogue/                rogue DHCP server detector
-  syslog/               remote syslog forwarder (RFC 5424)
+  syslog/               SIEM forwarder (RFC 5424, CEF, JSON → syslog/HTTP/file)
   topology/             network topology map from relay data
   webui/                embedded frontend (go:embed)
 pkg/dhcpv4/             constants + encoding helpers

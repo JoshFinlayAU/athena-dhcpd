@@ -25,6 +25,8 @@ const (
 	EventConflictResolved  EventType = "conflict.resolved"
 	EventConflictPermanent EventType = "conflict.permanent"
 	EventHAFailover        EventType = "ha.failover"
+	EventHAPeerUp          EventType = "ha.peer_up"
+	EventHAPeerDown        EventType = "ha.peer_down"
 	EventHASyncComplete    EventType = "ha.sync_complete"
 	EventRogueDetected     EventType = "rogue.detected"
 	EventRogueResolved     EventType = "rogue.resolved"

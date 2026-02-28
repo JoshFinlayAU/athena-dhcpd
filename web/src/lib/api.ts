@@ -90,12 +90,26 @@ export interface DhcpEvent {
     hostname: string
     subnet: string
     fqdn?: string
+    pool?: string
+    state?: string
   }
   conflict?: {
     ip: string
     subnet: string
     detection_method: string
     responder_mac: string
+  }
+  ha?: {
+    old_role: string
+    new_role: string
+    peer_state?: string
+  }
+  rogue?: {
+    server_ip: string
+    server_mac?: string
+    offered_ip?: string
+    interface?: string
+    count: number
   }
   reason?: string
 }

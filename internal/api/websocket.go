@@ -125,6 +125,10 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Debug("SSE client connected", "remote", r.RemoteAddr)
 
+	// Send hello so the client knows the stream is live immediately
+	fmt.Fprintf(w, "data: {\"type\":\"stream.hello\",\"timestamp\":\"%s\"}\n\n", time.Now().UTC().Format(time.RFC3339))
+	flusher.Flush()
+
 	// Keep-alive ticker sends a comment line every 30s to prevent proxy timeouts
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()

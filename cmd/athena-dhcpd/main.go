@@ -18,19 +18,24 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/anomaly"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/api"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/audit"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dbconfig"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dhcp"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/dnsproxy"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/fingerprint"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/ha"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/logging"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/macvendor"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
 
@@ -692,6 +697,35 @@ func main() {
 		}
 	}
 
+	// Initialize audit log
+	auditLog, err := audit.NewLog(store.DB(), bus, cfg.Server.ServerID, logger)
+	if err != nil {
+		logger.Warn("failed to initialize audit log", "error", err)
+	} else {
+		auditLog.Start()
+		defer auditLog.Stop()
+	}
+
+	// Initialize anomaly detector
+	anomalyDet := anomaly.NewDetector(bus, anomaly.DefaultConfig(), logger)
+	anomalyDet.Start()
+	defer anomalyDet.Stop()
+
+	// Initialize fingerprint store
+	fpStore, err := fingerprint.NewStore(store.DB(), logger)
+	if err != nil {
+		logger.Warn("failed to initialize fingerprint store", "error", err)
+	}
+
+	// Initialize topology map
+	topoMap, err := topology.NewMap(store.DB(), logger)
+	if err != nil {
+		logger.Warn("failed to initialize topology map", "error", err)
+	}
+
+	// Initialize MAC vendor database
+	macVendorDB := macvendor.NewDB()
+
 	// Initialize API server
 	var apiServer *api.Server
 	if cfg.API.Enabled {
@@ -710,6 +744,17 @@ func main() {
 		apiOpts := []api.ServerOption{
 			api.WithConfigPath(*configPath),
 			api.WithConfigStore(cfgStore),
+			api.WithAnomalyDetector(anomalyDet),
+			api.WithMACVendorDB(macVendorDB),
+		}
+		if auditLog != nil {
+			apiOpts = append(apiOpts, api.WithAuditLog(auditLog))
+		}
+		if fpStore != nil {
+			apiOpts = append(apiOpts, api.WithFingerprintStore(fpStore))
+		}
+		if topoMap != nil {
+			apiOpts = append(apiOpts, api.WithTopologyMap(topoMap))
 		}
 		if dnsServer != nil {
 			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
@@ -720,7 +765,6 @@ func main() {
 		if haPeer != nil {
 			apiOpts = append(apiOpts, api.WithPeer(haPeer))
 		}
-
 		if rogueDetector != nil {
 			apiOpts = append(apiOpts, api.WithRogueDetector(rogueDetector))
 		}

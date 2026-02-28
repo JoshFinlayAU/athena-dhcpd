@@ -128,9 +128,22 @@ func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 func (f *FSM) PeerUp() {
 	f.mu.Lock()
 	prevHB := f.lastHeartbeat
+	wasZero := prevHB.IsZero()
 	f.lastHeartbeat = time.Now()
 	currentState := f.state
 	f.mu.Unlock()
+
+	// Publish peer_up event on first heartbeat or after being down
+	if wasZero || currentState == dhcpv4.HAStatePartnerDown {
+		f.bus.Publish(events.Event{
+			Type:      events.EventHAPeerUp,
+			Timestamp: time.Now(),
+			HA: &events.HAData{
+				PeerState: "connected",
+			},
+			Reason: "peer heartbeat received",
+		})
+	}
 
 	switch currentState {
 	case dhcpv4.HAStatePartnerDown:
@@ -153,6 +166,15 @@ func (f *FSM) PeerDown() {
 	currentState := f.state
 	lastHB := f.lastHeartbeat
 	f.mu.RUnlock()
+
+	f.bus.Publish(events.Event{
+		Type:      events.EventHAPeerDown,
+		Timestamp: time.Now(),
+		HA: &events.HAData{
+			PeerState: "disconnected",
+		},
+		Reason: fmt.Sprintf("heartbeat timeout (last: %s ago)", time.Since(lastHB).Round(time.Millisecond)),
+	})
 
 	f.logger.Warn("peer declared DOWN",
 		"current_state", string(currentState),
@@ -185,6 +207,15 @@ func (f *FSM) BulkSyncComplete() {
 	f.mu.RUnlock()
 
 	f.logger.Info("bulk sync complete", "current_state", string(currentState), "role", f.role)
+
+	f.bus.Publish(events.Event{
+		Type:      events.EventHASyncComplete,
+		Timestamp: time.Now(),
+		HA: &events.HAData{
+			PeerState: string(currentState),
+		},
+		Reason: "bulk lease sync complete",
+	})
 
 	if currentState == dhcpv4.HAStateRecovery {
 		if f.role == "primary" {

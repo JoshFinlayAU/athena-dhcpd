@@ -39,6 +39,13 @@ export function WSProvider({ children }: { children: ReactNode }) {
         const raw = JSON.parse(msg.data)
         // Normalize: backend may send "event" (old) or "type" (new)
         const evt: DhcpEvent = { ...raw, type: raw.type || raw.event || 'unknown' }
+
+        // stream.hello is a connection signal, not a real event
+        if (evt.type === 'stream.hello') {
+          setConnected(true)
+          return
+        }
+
         setLastEvent(evt)
         setEvents((prev) => [evt, ...prev].slice(0, MAX_EVENTS))
         handlersRef.current.forEach((h) => h(evt))

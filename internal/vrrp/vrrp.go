@@ -227,7 +227,7 @@ func parseDataFile(path string) ([]Instance, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "Virtual IP =") {
+		if strings.HasPrefix(line, "Virtual IP (") || strings.HasPrefix(line, "Virtual IP =") {
 			inVIPs = true
 			continue
 		}

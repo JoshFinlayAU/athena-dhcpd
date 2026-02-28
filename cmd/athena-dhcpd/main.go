@@ -41,7 +41,6 @@ import (
 
 func main() {
 	configPath := flag.String("config", "/etc/athena-dhcpd/config.toml", "path to configuration file")
-	reimport := flag.Bool("reimport", false, "force re-import of TOML config into database (overwrites DB config with TOML)")
 	debugPort := flag.String("debug-port", "", "enable pprof debug server on this port (e.g. 6060)")
 	flag.Parse()
 
@@ -107,33 +106,6 @@ func main() {
 	if err != nil {
 		logger.Error("failed to initialize config store", "error", err)
 		os.Exit(1)
-	}
-
-	// Auto-migrate TOML config into database
-	if *reimport || !cfgStore.IsV1Imported() {
-		if *reimport {
-			logger.Info("forced reimport of TOML config into database")
-		}
-		// Try loading full TOML to check for dynamic config sections
-		fullCfg, fullErr := config.Load(*configPath)
-		if fullErr == nil && config.HasDynamicConfig(fullCfg) {
-			logger.Info("importing TOML config sections to database")
-			if err := cfgStore.ImportFromConfig(fullCfg); err != nil {
-				logger.Error("failed to import config", "error", err)
-				os.Exit(1)
-			}
-			cfgStore.MarkV1Imported()
-			// If we imported a TOML config, mark setup as complete automatically
-			if !cfgStore.IsSetupComplete() {
-				cfgStore.MarkSetupComplete()
-			}
-			logger.Info("config imported successfully",
-				"subnets", len(fullCfg.Subnets))
-		} else if fullErr != nil {
-			logger.Warn("could not load full TOML for import", "error", fullErr)
-		} else {
-			logger.Debug("no dynamic config sections in TOML, skipping import")
-		}
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
@@ -766,8 +738,16 @@ func main() {
 	}
 
 	apiServer := api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
+	apiLn, err := apiServer.Listen()
+	if err != nil {
+		logger.Error("FATAL: API server failed to start", "error", err)
+		os.Exit(1)
+	} else {
+		logger.Info("API server started", "listen", apiLn.Addr().String(), "config", cfg.API.Listen)
+	}
+
 	go func() {
-		if err := apiServer.Start(); err != nil {
+		if err := apiServer.Serve(apiLn); err != nil {
 			logger.Error("API server failed", "error", err)
 		}
 	}()

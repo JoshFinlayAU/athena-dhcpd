@@ -175,31 +175,47 @@ func WithSetupMode(cb func()) ServerOption {
 	}
 }
 
-// Start begins serving the HTTP API.
-func (s *Server) Start() error {
+// Listen binds the API server to its configured address and prepares routes.
+// Call this synchronously to catch port conflicts before starting background serve.
+func (s *Server) Listen() (net.Listener, error) {
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
 
-	// Wrap with metrics middleware
 	handler := newMetricsMiddleware(mux)
 
 	s.httpServer = &http.Server{
-		Addr:        s.cfg.API.Listen,
 		Handler:     handler,
 		ReadTimeout: 30 * time.Second,
 		IdleTimeout: 120 * time.Second,
 		// No WriteTimeout — SSE streams need to stay open
 	}
 
-	// Start SSE hub
+	ln, err := net.Listen("tcp", s.cfg.API.Listen)
+	if err != nil {
+		return nil, fmt.Errorf("binding API server to %s: %w", s.cfg.API.Listen, err)
+	}
+
 	go s.sseHub.Run()
 
-	s.logger.Info("API server starting", "listen", s.cfg.API.Listen)
+	s.logger.Info("API server listening", "address", ln.Addr().String())
+	return ln, nil
+}
 
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+// Serve accepts connections on the listener. Blocks until shutdown.
+func (s *Server) Serve(ln net.Listener) error {
+	if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("API server: %w", err)
 	}
 	return nil
+}
+
+// Start is a convenience that calls Listen + Serve. Blocks until shutdown.
+func (s *Server) Start() error {
+	ln, err := s.Listen()
+	if err != nil {
+		return err
+	}
+	return s.Serve(ln)
 }
 
 // Stop gracefully shuts down the API server.

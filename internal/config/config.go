@@ -27,13 +27,37 @@ type Config struct {
 	API                  APIConfig                  `toml:"api"`
 }
 
-// SyslogConfig holds remote syslog forwarding settings.
+// SyslogConfig holds SIEM event forwarding settings.
+// Supports multiple output types (syslog, HTTP/HEC, file) and
+// multiple formats (RFC 5424, CEF, JSON) for SIEM compliance.
 type SyslogConfig struct {
-	Enabled  bool   `toml:"enabled" json:"enabled"`
-	Address  string `toml:"address" json:"address"`   // host:port
+	Enabled bool   `toml:"enabled" json:"enabled"`
+	Format  string `toml:"format" json:"format"` // "rfc5424", "cef", "json" (default: "rfc5424")
+
+	// Syslog output settings
+	Address  string `toml:"address" json:"address"`   // host:port for syslog
 	Protocol string `toml:"protocol" json:"protocol"` // "udp" or "tcp"
 	Facility int    `toml:"facility" json:"facility"` // syslog facility (default: 16 = local0)
 	Tag      string `toml:"tag" json:"tag"`           // syslog tag (default: "athena-dhcpd")
+
+	// HTTP output settings (Splunk HEC, Elasticsearch, generic HTTPS)
+	HTTPEnabled  bool              `toml:"http_enabled" json:"http_enabled"`
+	HTTPEndpoint string            `toml:"http_endpoint" json:"http_endpoint"` // e.g. "https://splunk:8088/services/collector/event"
+	HTTPToken    string            `toml:"http_token" json:"http_token"`       // Bearer/HEC token
+	HTTPHeaders  map[string]string `toml:"http_headers" json:"http_headers"`   // custom headers
+	HTTPTimeout  string            `toml:"http_timeout" json:"http_timeout"`   // default "5s"
+	HTTPInsecure bool              `toml:"http_insecure" json:"http_insecure"` // skip TLS verification
+
+	// File output settings
+	FileEnabled    bool   `toml:"file_enabled" json:"file_enabled"`
+	FilePath       string `toml:"file_path" json:"file_path"`               // e.g. "/var/log/athena-dhcpd/events.log"
+	FileMaxSizeMB  int    `toml:"file_max_size_mb" json:"file_max_size_mb"` // max file size before rotation (default: 100)
+	FileMaxBackups int    `toml:"file_max_backups" json:"file_max_backups"` // max rotated files to keep (default: 5)
+
+	// CEF-specific settings
+	CEFDeviceVendor  string `toml:"cef_device_vendor" json:"cef_device_vendor"`   // default: "athena-dhcpd"
+	CEFDeviceProduct string `toml:"cef_device_product" json:"cef_device_product"` // default: "DHCP Server"
+	CEFDeviceVersion string `toml:"cef_device_version" json:"cef_device_version"` // default: "1.0"
 }
 
 // FingerprintConfig holds device fingerprinting settings.

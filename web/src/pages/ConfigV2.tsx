@@ -37,7 +37,7 @@ const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'ddns', label: 'Dynamic DNS', icon: Globe },
   { id: 'dns', label: 'DNS Proxy', icon: Radio },
   { id: 'hostname', label: 'Hostname Sanitisation', icon: Type },
-  { id: 'syslog', label: 'Syslog', icon: Server },
+  { id: 'syslog', label: 'SIEM', icon: Server },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'backup', label: 'Backup & Restore', icon: Download },
 ]
@@ -1185,7 +1185,7 @@ function HostnameSanitisationTab({ onStatus }: { onStatus: StatusFn }) {
   )
 }
 
-// ============== SYSLOG TAB ==============
+// ============== SIEM / SYSLOG TAB ==============
 
 const syslogFacilities = [
   { value: '0', label: 'kern (0)' },
@@ -1220,53 +1220,160 @@ function SyslogTab({ onStatus }: { onStatus: StatusFn }) {
   const handleSave = async () => {
     try {
       await v2SetSyslogConfig(current)
-      onStatus('success', 'Syslog config saved')
+      onStatus('success', 'SIEM forwarding config saved')
     } catch (e) {
       onStatus('error', e instanceof Error ? e.message : 'Save failed')
     }
   }
 
   return (
-    <Card className="p-5 space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold">Remote Syslog Forwarding</h3>
-        <p className="text-xs text-text-muted mt-1">
-          Forward DHCP events to a remote syslog server via RFC 5424. Events are sent in real-time as they occur.
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* Global settings */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">SIEM Event Forwarding</h3>
+          <p className="text-xs text-text-muted mt-1">
+            Forward DHCP events to your SIEM in real-time. Supports RFC 5424 syslog, CEF (ArcSight/Sentinel), and JSON formats
+            over remote syslog, HTTP (Splunk HEC, Elasticsearch, etc.), or local file output.
+          </p>
+        </div>
 
-      <Toggle checked={current.enabled} onChange={v => setC({ ...current, enabled: v })} label="Enabled" description="Enable remote syslog forwarding" />
+        <Toggle checked={current.enabled} onChange={v => setC({ ...current, enabled: v })} label="Enabled" description="Enable SIEM event forwarding" />
+
+        {current.enabled && (
+          <Field label="Event Format" hint="Format used across all outputs">
+            <Select value={current.format || 'rfc5424'} onChange={v => setC({ ...current, format: v })}
+              options={[
+                { value: 'rfc5424', label: 'RFC 5424 (key=value)' },
+                { value: 'cef', label: 'CEF (ArcSight / Sentinel / QRadar)' },
+                { value: 'json', label: 'JSON (Splunk / Elasticsearch / Loki)' },
+              ]} />
+          </Field>
+        )}
+      </Card>
 
       {current.enabled && (
-        <div className="space-y-4">
-          <FieldGrid>
-            <Field label="Server Address" hint="Remote syslog server host:port">
-              <TextInput value={current.address || ''} onChange={v => setC({ ...current, address: v })} placeholder="10.0.0.5:514" mono />
-            </Field>
-            <Field label="Protocol">
-              <Select value={current.protocol || 'udp'} onChange={v => setC({ ...current, protocol: v })}
-                options={[{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }]} />
-            </Field>
-          </FieldGrid>
+        <>
+          {/* Syslog output */}
+          <Card className="p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Remote Syslog Output</h3>
+              <p className="text-xs text-text-muted mt-1">Send events to a remote syslog server over UDP or TCP</p>
+            </div>
 
-          <FieldGrid>
-            <Field label="Facility" hint="Syslog facility code">
-              <Select value={String(current.facility || 16)} onChange={v => setC({ ...current, facility: parseInt(v, 10) })}
-                options={syslogFacilities} />
-            </Field>
-            <Field label="Tag" hint="Syslog message tag / app name">
-              <TextInput value={current.tag || ''} onChange={v => setC({ ...current, tag: v })} placeholder="athena-dhcpd" mono />
-            </Field>
-          </FieldGrid>
-        </div>
+            <FieldGrid>
+              <Field label="Server Address" hint="Remote syslog server host:port (leave empty to disable)">
+                <TextInput value={current.address || ''} onChange={v => setC({ ...current, address: v })} placeholder="10.0.0.5:514" mono />
+              </Field>
+              <Field label="Protocol">
+                <Select value={current.protocol || 'udp'} onChange={v => setC({ ...current, protocol: v })}
+                  options={[{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }]} />
+              </Field>
+            </FieldGrid>
+
+            <FieldGrid>
+              <Field label="Facility" hint="Syslog facility code">
+                <Select value={String(current.facility || 16)} onChange={v => setC({ ...current, facility: parseInt(v, 10) })}
+                  options={syslogFacilities} />
+              </Field>
+              <Field label="Tag" hint="Syslog APP-NAME field">
+                <TextInput value={current.tag || ''} onChange={v => setC({ ...current, tag: v })} placeholder="athena-dhcpd" mono />
+              </Field>
+            </FieldGrid>
+          </Card>
+
+          {/* HTTP output */}
+          <Card className="p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">HTTP Output</h3>
+              <p className="text-xs text-text-muted mt-1">Push events via HTTPS to Splunk HEC, Elasticsearch, Graylog, or any HTTP endpoint</p>
+            </div>
+
+            <Toggle checked={current.http_enabled || false} onChange={v => setC({ ...current, http_enabled: v })} label="Enable HTTP Output" />
+
+            {current.http_enabled && (
+              <div className="space-y-4">
+                <Field label="Endpoint URL" hint="Full URL including path (e.g. https://splunk:8088/services/collector/event)">
+                  <TextInput value={current.http_endpoint || ''} onChange={v => setC({ ...current, http_endpoint: v })} placeholder="https://splunk:8088/services/collector/event" mono />
+                </Field>
+
+                <FieldGrid>
+                  <Field label="Auth Token" hint="Bearer token or Splunk HEC token">
+                    <input type="password" value={current.http_token || ''}
+                      onChange={e => setC({ ...current, http_token: e.target.value })}
+                      placeholder="your-hec-token"
+                      className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-border bg-surface-raised text-text-primary focus:outline-none focus:border-accent" />
+                  </Field>
+                  <Field label="Timeout" hint="HTTP request timeout">
+                    <TextInput value={current.http_timeout || ''} onChange={v => setC({ ...current, http_timeout: v })} placeholder="5s" mono />
+                  </Field>
+                </FieldGrid>
+
+                <Toggle checked={current.http_insecure || false} onChange={v => setC({ ...current, http_insecure: v })} label="Skip TLS Verification" description="Allow self-signed certificates (not recommended for production)" />
+              </div>
+            )}
+          </Card>
+
+          {/* File output */}
+          <Card className="p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">File Output</h3>
+              <p className="text-xs text-text-muted mt-1">Write events to a local log file with automatic rotation and gzip compression</p>
+            </div>
+
+            <Toggle checked={current.file_enabled || false} onChange={v => setC({ ...current, file_enabled: v })} label="Enable File Output" />
+
+            {current.file_enabled && (
+              <div className="space-y-4">
+                <Field label="File Path">
+                  <TextInput value={current.file_path || ''} onChange={v => setC({ ...current, file_path: v })} placeholder="/var/log/athena-dhcpd/events.log" mono />
+                </Field>
+
+                <FieldGrid>
+                  <Field label="Max File Size (MB)" hint="Rotate when file reaches this size">
+                    <NumberInput value={current.file_max_size_mb || 100} onChange={v => setC({ ...current, file_max_size_mb: v })} min={1} max={10000} />
+                  </Field>
+                  <Field label="Max Backups" hint="Number of compressed rotated files to keep">
+                    <NumberInput value={current.file_max_backups || 5} onChange={v => setC({ ...current, file_max_backups: v })} min={1} max={100} />
+                  </Field>
+                </FieldGrid>
+              </div>
+            )}
+          </Card>
+
+          {/* CEF settings — only show when CEF format is selected */}
+          {current.format === 'cef' && (
+            <Card className="p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold">CEF Device Identity</h3>
+                <p className="text-xs text-text-muted mt-1">
+                  These fields appear in the CEF header: CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extensions
+                </p>
+              </div>
+
+              <FieldGrid>
+                <Field label="Device Vendor">
+                  <TextInput value={current.cef_device_vendor || ''} onChange={v => setC({ ...current, cef_device_vendor: v })} placeholder="athena-dhcpd" />
+                </Field>
+                <Field label="Device Product">
+                  <TextInput value={current.cef_device_product || ''} onChange={v => setC({ ...current, cef_device_product: v })} placeholder="DHCP Server" />
+                </Field>
+                <Field label="Device Version">
+                  <TextInput value={current.cef_device_version || ''} onChange={v => setC({ ...current, cef_device_version: v })} placeholder="1.0" />
+                </Field>
+              </FieldGrid>
+            </Card>
+          )}
+        </>
       )}
 
-      <div className="flex justify-end pt-2">
+      {/* Save button */}
+      <div className="flex justify-end">
         <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
           <Save className="w-3.5 h-3.5" /> Save
         </button>
       </div>
-    </Card>
+    </div>
   )
 }
 

@@ -707,18 +707,12 @@ func main() {
 	go anomalyDet.Start()
 	defer anomalyDet.Stop()
 
-	// Initialize syslog forwarder if configured
+	// Initialize SIEM forwarder if configured
 	var syslogForwarder *syslogfwd.Forwarder
-	if cfg.Syslog.Enabled && cfg.Syslog.Address != "" {
-		syslogCfg := syslogfwd.Config{
-			Address:  cfg.Syslog.Address,
-			Protocol: cfg.Syslog.Protocol,
-			Facility: cfg.Syslog.Facility,
-			Tag:      cfg.Syslog.Tag,
-		}
-		syslogForwarder = syslogfwd.NewForwarder(syslogCfg, bus, logger)
+	if cfg.Syslog.Enabled {
+		syslogForwarder = syslogfwd.NewForwarder(cfg.Syslog, bus, logger)
 		if err := syslogForwarder.Start(); err != nil {
-			logger.Warn("failed to start syslog forwarder", "error", err)
+			logger.Warn("failed to start SIEM forwarder", "error", err)
 			syslogForwarder = nil
 		} else {
 			defer syslogForwarder.Stop()
@@ -929,25 +923,20 @@ func main() {
 			}
 		}
 
-		// Reload syslog forwarder
-		if cfg.Syslog.Enabled && cfg.Syslog.Address != "" {
-			if syslogForwarder == nil {
-				syslogCfg := syslogfwd.Config{
-					Address:  cfg.Syslog.Address,
-					Protocol: cfg.Syslog.Protocol,
-					Facility: cfg.Syslog.Facility,
-					Tag:      cfg.Syslog.Tag,
-				}
-				syslogForwarder = syslogfwd.NewForwarder(syslogCfg, bus, logger)
-				if err := syslogForwarder.Start(); err != nil {
-					logger.Warn("failed to start syslog forwarder after config change", "error", err)
-					syslogForwarder = nil
-				}
+		// Reload SIEM forwarder
+		if cfg.Syslog.Enabled {
+			if syslogForwarder != nil {
+				syslogForwarder.Stop()
+			}
+			syslogForwarder = syslogfwd.NewForwarder(cfg.Syslog, bus, logger)
+			if err := syslogForwarder.Start(); err != nil {
+				logger.Warn("failed to start SIEM forwarder after config change", "error", err)
+				syslogForwarder = nil
 			}
 		} else if syslogForwarder != nil {
 			syslogForwarder.Stop()
 			syslogForwarder = nil
-			logger.Info("syslog forwarder stopped (disabled in config)")
+			logger.Info("SIEM forwarder stopped (disabled in config)")
 		}
 
 		// Reload port automation rules from DB

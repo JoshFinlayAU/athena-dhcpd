@@ -544,10 +544,32 @@ export const v2SetHostnameSanitisation = (h: HostnameSanitisationConfig) =>
 
 export interface SyslogConfig {
   enabled: boolean
+  format: string
+
+  // Syslog output
   address: string
   protocol: string
   facility: number
   tag: string
+
+  // HTTP output (Splunk HEC, Elasticsearch, generic HTTPS)
+  http_enabled: boolean
+  http_endpoint: string
+  http_token: string
+  http_headers: Record<string, string> | null
+  http_timeout: string
+  http_insecure: boolean
+
+  // File output
+  file_enabled: boolean
+  file_path: string
+  file_max_size_mb: number
+  file_max_backups: number
+
+  // CEF settings
+  cef_device_vendor: string
+  cef_device_product: string
+  cef_device_version: string
 }
 
 export const v2GetSyslogConfig = () => request<SyslogConfig>('/config/syslog')

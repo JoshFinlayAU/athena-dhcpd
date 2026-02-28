@@ -40,7 +40,7 @@ client sends DHCPDISCOVER
 │ Dispatch│ │ DDNS| │ SSE   │ │ syslog fwd  │
 │ (hooks) │ │ Mgr | │ Hub   │ │ (RFC 5424)  │
 └─────────┘ └─────┘ └───────┘ └─────────────┘
-
+z
          ┌────────────────────┐
          │  dbconfig.Store    │  BoltDB-backed dynamic config
          │  (subnets, hooks,  │  managed via API/web UI

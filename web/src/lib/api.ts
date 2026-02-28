@@ -542,6 +542,18 @@ export const v2GetHostnameSanitisation = () => request<HostnameSanitisationConfi
 export const v2SetHostnameSanitisation = (h: HostnameSanitisationConfig) =>
   request<HostnameSanitisationConfig>('/config/hostname-sanitisation', { method: 'PUT', body: JSON.stringify(h) })
 
+export interface SyslogConfig {
+  enabled: boolean
+  address: string
+  protocol: string
+  facility: number
+  tag: string
+}
+
+export const v2GetSyslogConfig = () => request<SyslogConfig>('/config/syslog')
+export const v2SetSyslogConfig = (s: SyslogConfig) =>
+  request<SyslogConfig>('/config/syslog', { method: 'PUT', body: JSON.stringify(s) })
+
 // Audit log
 export interface AuditRecord {
   id: number

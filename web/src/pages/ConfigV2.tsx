@@ -5,7 +5,7 @@ import { Section, Field, FieldGrid, TextInput, NumberInput, Toggle, Select, Stri
 import { Table, THead, TH, TD, TR, EmptyRow } from '@/components/Table'
 import {
   Network, Settings, Shield, Zap, Globe, Radio, Save, Trash2, Plus, FileUp, AlertTriangle, Type,
-  Users, Download, Upload, Key,
+  Users, Download, Upload, Key, Server,
 } from 'lucide-react'
 import {
   v2GetSubnets, v2CreateSubnet, v2UpdateSubnet, v2DeleteSubnet,
@@ -17,15 +17,16 @@ import {
   v2GetDDNSConfig, v2SetDDNSConfig,
   v2GetDNSConfig, v2SetDNSConfig,
   v2GetHostnameSanitisation, v2SetHostnameSanitisation,
+  v2GetSyslogConfig, v2SetSyslogConfig,
   listUsers, createUser, deleteUser, exportBackup, importBackup,
   getVIPs, setVIPs,
   type SubnetConfig, type ReservationConfig, type DefaultsConfig,
   type ConflictDetectionConfig, type HAConfigType, type HooksConfigType,
   type DDNSConfigType, type DDNSZoneType, type DNSConfigType, type PoolConfig,
-  type HostnameSanitisationConfig, type VIPEntry,
+  type HostnameSanitisationConfig, type SyslogConfig, type VIPEntry,
 } from '@/lib/api'
 
-type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'users' | 'backup'
+type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'syslog' | 'users' | 'backup'
 
 const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'subnets', label: 'Subnets', icon: Network },
@@ -36,6 +37,7 @@ const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'ddns', label: 'Dynamic DNS', icon: Globe },
   { id: 'dns', label: 'DNS Proxy', icon: Radio },
   { id: 'hostname', label: 'Hostname Sanitisation', icon: Type },
+  { id: 'syslog', label: 'Syslog', icon: Server },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'backup', label: 'Backup & Restore', icon: Download },
 ]
@@ -89,6 +91,7 @@ export default function ConfigV2() {
       {tab === 'ddns' && <DDNSTab onStatus={showStatus} />}
       {tab === 'dns' && <DNSTab onStatus={showStatus} />}
       {tab === 'hostname' && <HostnameSanitisationTab onStatus={showStatus} />}
+      {tab === 'syslog' && <SyslogTab onStatus={showStatus} />}
       {tab === 'users' && <UsersTab onStatus={showStatus} />}
       {tab === 'backup' && <BackupTab onStatus={showStatus} />}
     </div>
@@ -1170,6 +1173,91 @@ function HostnameSanitisationTab({ onStatus }: { onStatus: StatusFn }) {
               className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-border bg-surface focus:outline-none focus:border-accent"
             />
           </Field>
+        </div>
+      )}
+
+      <div className="flex justify-end pt-2">
+        <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+          <Save className="w-3.5 h-3.5" /> Save
+        </button>
+      </div>
+    </Card>
+  )
+}
+
+// ============== SYSLOG TAB ==============
+
+const syslogFacilities = [
+  { value: '0', label: 'kern (0)' },
+  { value: '1', label: 'user (1)' },
+  { value: '2', label: 'mail (2)' },
+  { value: '3', label: 'daemon (3)' },
+  { value: '4', label: 'auth (4)' },
+  { value: '5', label: 'syslog (5)' },
+  { value: '6', label: 'lpr (6)' },
+  { value: '7', label: 'news (7)' },
+  { value: '8', label: 'uucp (8)' },
+  { value: '9', label: 'cron (9)' },
+  { value: '10', label: 'authpriv (10)' },
+  { value: '11', label: 'ftp (11)' },
+  { value: '16', label: 'local0 (16)' },
+  { value: '17', label: 'local1 (17)' },
+  { value: '18', label: 'local2 (18)' },
+  { value: '19', label: 'local3 (19)' },
+  { value: '20', label: 'local4 (20)' },
+  { value: '21', label: 'local5 (21)' },
+  { value: '22', label: 'local6 (22)' },
+  { value: '23', label: 'local7 (23)' },
+]
+
+function SyslogTab({ onStatus }: { onStatus: StatusFn }) {
+  const { data } = useApi(useCallback(() => v2GetSyslogConfig(), []))
+  const [current, setC] = useState<SyslogConfig | null>(null)
+
+  if (data && !current) setC(data)
+  if (!current) return <Card className="p-6 text-sm text-text-muted">Loading...</Card>
+
+  const handleSave = async () => {
+    try {
+      await v2SetSyslogConfig(current)
+      onStatus('success', 'Syslog config saved')
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Save failed')
+    }
+  }
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold">Remote Syslog Forwarding</h3>
+        <p className="text-xs text-text-muted mt-1">
+          Forward DHCP events to a remote syslog server via RFC 5424. Events are sent in real-time as they occur.
+        </p>
+      </div>
+
+      <Toggle checked={current.enabled} onChange={v => setC({ ...current, enabled: v })} label="Enabled" description="Enable remote syslog forwarding" />
+
+      {current.enabled && (
+        <div className="space-y-4">
+          <FieldGrid>
+            <Field label="Server Address" hint="Remote syslog server host:port">
+              <TextInput value={current.address || ''} onChange={v => setC({ ...current, address: v })} placeholder="10.0.0.5:514" mono />
+            </Field>
+            <Field label="Protocol">
+              <Select value={current.protocol || 'udp'} onChange={v => setC({ ...current, protocol: v })}
+                options={[{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }]} />
+            </Field>
+          </FieldGrid>
+
+          <FieldGrid>
+            <Field label="Facility" hint="Syslog facility code">
+              <Select value={String(current.facility || 16)} onChange={v => setC({ ...current, facility: parseInt(v, 10) })}
+                options={syslogFacilities} />
+            </Field>
+            <Field label="Tag" hint="Syslog message tag / app name">
+              <TextInput value={current.tag || ''} onChange={v => setC({ ...current, tag: v })} placeholder="athena-dhcpd" mono />
+            </Field>
+          </FieldGrid>
         </div>
       )}
 

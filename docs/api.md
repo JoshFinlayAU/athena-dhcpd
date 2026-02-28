@@ -1,6 +1,8 @@
 # API Reference
 
 > **OpenAPI Spec:** The full machine-readable API specification is available at [`docs/openapi.json`](openapi.json) (OpenAPI 3.1.0). You can load it into [Swagger Editor](https://editor.swagger.io/), [Redocly](https://redocly.com/), or any OpenAPI-compatible tool.
+>
+> **Postman Collection:** Import [`docs/athena-dhcpd.postman_collection.json`](athena-dhcpd.postman_collection.json) directly into Postman. Includes all 104 requests organized by tag with example bodies and query parameters. Set the `baseUrl` and `authToken` collection variables to get started.
 
 the REST API runs on whatever you set `api.listen` to (default `0.0.0.0:8067`). all responses are JSON unless noted otherwise. all endpoints are under `/api/v2/`
 

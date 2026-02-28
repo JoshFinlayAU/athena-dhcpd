@@ -1,0 +1,3284 @@
+{
+  "info": {
+    "name": "athena-dhcpd API",
+    "description": "REST API for athena-dhcpd \u2014 an RFC-compliant DHCPv4 server with built-in high availability, conflict detection, dynamic DNS, DNS proxy, and web management.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8067",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Server health check",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "health"
+              ]
+            },
+            "description": "Returns server health status. No authentication required.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "Server is healthy",
+              "status": "Server is healthy",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"ok\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Authentication and session management",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticates a user and sets a session cookie. No prior authentication required.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"secret\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Login successful. Session cookie is set.",
+              "status": "Login successful. Session cookie is set.",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"username\": \"admin\",\n  \"role\": \"admin\"\n}"
+            },
+            {
+              "name": "Invalid credentials",
+              "status": "Invalid credentials",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"invalid username or password\",\n  \"code\": \"invalid_credentials\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Destroys the session and clears the cookie. No prior authentication required.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "Logged out",
+              "status": "Logged out",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"logged_out\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Current user info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Returns the current authentication state. If no users are configured, returns needs_user_setup. No prior authentication required \u2014 this endpoint self-reports auth state.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "Current auth state",
+              "status": "Current auth state",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"authenticated\": true,\n  \"username\": \"admin\",\n  \"role\": \"admin\",\n  \"auth_required\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "User account management",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "users"
+              ]
+            },
+            "description": "Returns all configured users without password hashes. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "User list",
+              "status": "User list",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"users\": [\n    {\n      \"username\": \"admin\",\n      \"role\": \"admin\"\n    },\n    {\n      \"username\": \"viewer1\",\n      \"role\": \"viewer\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "users"
+              ]
+            },
+            "description": "Creates a new user or updates an existing one. If NO users exist yet, this endpoint does not require auth (allows initial admin account creation). Otherwise requires admin role.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"strongpassword\",\n  \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "User created",
+              "status": "User created",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"username\": \"admin\",\n  \"role\": \"admin\",\n  \"status\": \"created\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/auth/users/{username}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "auth",
+                "users",
+                ":username"
+              ]
+            },
+            "description": "Removes a user account. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "User deleted",
+              "status": "User deleted",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"deleted\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Leases",
+      "description": "DHCP lease management",
+      "item": [
+        {
+          "name": "List leases",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/leases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "leases"
+              ],
+              "query": [
+                {
+                  "key": "subnet",
+                  "value": "",
+                  "description": "Filter by subnet CIDR",
+                  "disabled": true
+                },
+                {
+                  "key": "mac",
+                  "value": "",
+                  "description": "Filter by MAC address",
+                  "disabled": true
+                },
+                {
+                  "key": "hostname",
+                  "value": "",
+                  "description": "Filter by hostname (substring match)",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "Filter by lease state",
+                  "disabled": true
+                },
+                {
+                  "key": "ip_start",
+                  "value": "",
+                  "description": "Filter by IP range start",
+                  "disabled": true
+                },
+                {
+                  "key": "ip_end",
+                  "value": "",
+                  "description": "Filter by IP range end",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "",
+                  "description": "Sort field",
+                  "disabled": true
+                },
+                {
+                  "key": "order",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns all DHCP leases with optional filtering by subnet, MAC, hostname, state, and IP range. Supports pagination."
+          },
+          "response": [
+            {
+              "name": "Lease list",
+              "status": "Lease list",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"leases\": [\n    {\n      \"ip\": \"10.0.1.100\",\n      \"mac\": \"aa:bb:cc:dd:ee:ff\",\n      \"hostname\": \"workstation-1\",\n      \"subnet\": \"10.0.1.0/24\",\n      \"pool\": \"10.0.1.100-10.0.1.200\",\n      \"state\": \"active\",\n      \"start\": \"2025-01-15T10:30:00Z\",\n      \"expiry\": \"2025-01-15T22:30:00Z\",\n      \"remaining\": \"11h59m\",\n      \"vendor\": \"Dell Inc.\",\n      \"fingerprint\": \"\",\n      \"relay_agent\": \"\",\n      \"circuit_id\": \"\",\n      \"remote_id\": \"\"\n    }\n  ],\n  \"total\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Export leases as CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/leases/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "leases",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "subnet",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Exports all leases in CSV format. Supports the same query filters as list leases."
+          }
+        },
+        {
+          "name": "Get lease by IP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/leases/{ip}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "leases",
+                ":ip"
+              ]
+            },
+            "description": "Returns a single DHCP lease by IP address."
+          }
+        },
+        {
+          "name": "Delete (force-release) lease",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/leases/{ip}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "leases",
+                ":ip"
+              ]
+            },
+            "description": "Removes a DHCP lease by IP address. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Lease deleted",
+              "status": "Lease deleted",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"lease deleted\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reservations",
+      "description": "DHCP reservation (static lease) management",
+      "item": [
+        {
+          "name": "List all reservations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations"
+              ]
+            },
+            "description": "Returns all DHCP reservations across all subnets with global IDs."
+          }
+        },
+        {
+          "name": "Create reservation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations"
+              ]
+            },
+            "description": "Creates a new DHCP reservation. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subnet_index\": 0,\n  \"mac\": \"aa:bb:cc:dd:ee:ff\",\n  \"ip\": \"10.0.1.10\",\n  \"hostname\": \"printer-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Reservation created",
+              "status": "Reservation created",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"reservation created\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update reservation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations",
+                ":id"
+              ]
+            },
+            "description": "Updates an existing reservation by global ID. Supports partial updates. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subnet_index\": 0,\n  \"mac\": \"aa:bb:cc:dd:ee:ff\",\n  \"ip\": \"10.0.1.10\",\n  \"hostname\": \"printer-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Reservation updated",
+              "status": "Reservation updated",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"reservation updated\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete reservation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations",
+                ":id"
+              ]
+            },
+            "description": "Deletes a reservation by global ID. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Reservation deleted",
+              "status": "Reservation deleted",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"reservation deleted\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Import reservations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations",
+                "import"
+              ]
+            },
+            "description": "Imports reservations from CSV or JSON. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"subnet_index\": 0,\n    \"mac\": \"aa:bb:cc:dd:ee:ff\",\n    \"ip\": \"10.0.1.10\",\n    \"hostname\": \"printer-1\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Import summary",
+              "status": "Import summary",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"imported\": 5,\n  \"errors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Export reservations as CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/reservations/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "reservations",
+                "export"
+              ]
+            },
+            "description": "Exports all reservations in CSV format."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subnets",
+      "description": "Runtime subnet and pool views",
+      "item": [
+        {
+          "name": "List runtime subnets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "subnets"
+              ]
+            },
+            "description": "Returns all configured subnets with runtime statistics (utilization, active leases)."
+          }
+        },
+        {
+          "name": "List runtime pools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/pools",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "pools"
+              ]
+            },
+            "description": "Returns all IP pools with allocation statistics."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conflicts",
+      "description": "IP conflict detection and management",
+      "item": [
+        {
+          "name": "List active conflicts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts"
+              ]
+            },
+            "description": "Returns all currently active IP conflicts."
+          }
+        },
+        {
+          "name": "Conflict history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts",
+                "history"
+              ]
+            },
+            "description": "Returns historical conflict detection records."
+          }
+        },
+        {
+          "name": "Conflict statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts",
+                "stats"
+              ]
+            },
+            "description": "Returns summary statistics about IP conflicts."
+          }
+        },
+        {
+          "name": "Get conflict by IP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts/{ip}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts",
+                ":ip"
+              ]
+            },
+            "description": "Returns conflict details for a specific IP address."
+          }
+        },
+        {
+          "name": "Clear conflict",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts/{ip}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts",
+                ":ip"
+              ]
+            },
+            "description": "Removes a conflict entry for the given IP. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Conflict cleared",
+              "status": "Conflict cleared",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"conflict cleared\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Exclude IP from allocation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/conflicts/{ip}/exclude",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "conflicts",
+                ":ip",
+                "exclude"
+              ]
+            },
+            "description": "Permanently excludes an IP from the allocation pool. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "IP excluded",
+              "status": "IP excluded",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"ip excluded\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Config - Subnets",
+      "description": "Database-backed subnet configuration CRUD",
+      "item": [
+        {
+          "name": "List configured subnets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets"
+              ]
+            },
+            "description": "Returns all subnets from the database config store."
+          }
+        },
+        {
+          "name": "Create subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets"
+              ]
+            },
+            "description": "Creates a new subnet configuration. Requires admin role. Blocked on HA standby nodes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"network\": \"10.0.1.0/24\",\n  \"interface\": \"eth0\",\n  \"routers\": [\n    \"10.0.1.1\"\n  ],\n  \"dns_servers\": [\n    \"10.0.1.1\"\n  ],\n  \"domain_name\": \"office.local\",\n  \"lease_time\": \"12h\",\n  \"pool\": [\n    {\n      \"range_start\": \"10.0.1.100\",\n      \"range_end\": \"10.0.1.200\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update subnet",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network"
+              ]
+            },
+            "description": "Updates an existing subnet by network CIDR. Supports partial updates. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"network\": \"10.0.1.0/24\",\n  \"interface\": \"eth0\",\n  \"routers\": [\n    \"10.0.1.1\"\n  ],\n  \"dns_servers\": [\n    \"10.0.1.1\"\n  ],\n  \"domain_name\": \"office.local\",\n  \"lease_time\": \"12h\",\n  \"pool\": [\n    {\n      \"range_start\": \"10.0.1.100\",\n      \"range_end\": \"10.0.1.200\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network"
+              ]
+            },
+            "description": "Deletes a subnet by network CIDR. Requires admin role. Blocked on HA standby."
+          },
+          "response": [
+            {
+              "name": "Subnet deleted",
+              "status": "Subnet deleted",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"deleted\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List reservations for subnet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network",
+                "reservations"
+              ]
+            },
+            "description": "Returns reservations for a specific subnet by network CIDR."
+          }
+        },
+        {
+          "name": "Create reservation in subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network",
+                "reservations"
+              ]
+            },
+            "description": "Adds a reservation to a specific subnet. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mac\": \"\",\n  \"identifier\": \"\",\n  \"ip\": \"10.0.1.1\",\n  \"hostname\": \"\",\n  \"dns_servers\": [],\n  \"ddns_hostname\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete reservation from subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}/reservations/{mac}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network",
+                "reservations",
+                ":mac"
+              ]
+            },
+            "description": "Removes a reservation by MAC from a specific subnet. Requires admin role. Blocked on HA standby."
+          }
+        },
+        {
+          "name": "Import reservations into subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/subnets/{network}/reservations/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "subnets",
+                ":network",
+                "reservations",
+                "import"
+              ]
+            },
+            "description": "Imports reservations from CSV or JSON into a specific subnet. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"mac\": \"\",\n    \"identifier\": \"\",\n    \"ip\": \"10.0.1.1\",\n    \"hostname\": \"\",\n    \"dns_servers\": [],\n    \"ddns_hostname\": \"\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Defaults",
+      "description": "Global default DHCP options",
+      "item": [
+        {
+          "name": "Get global defaults",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/defaults",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "defaults"
+              ]
+            },
+            "description": "Returns global default DHCP options."
+          }
+        },
+        {
+          "name": "Update global defaults",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/defaults",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "defaults"
+              ]
+            },
+            "description": "Updates global default DHCP options. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lease_time\": \"12h0m0s\",\n  \"renewal_time\": \"6h0m0s\",\n  \"rebind_time\": \"10h30m0s\",\n  \"dns_servers\": [\n    \"8.8.8.8\",\n    \"8.8.4.4\"\n  ],\n  \"domain_name\": \"example.local\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Conflict Detection",
+      "description": "Conflict detection settings",
+      "item": [
+        {
+          "name": "Get conflict detection config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/conflict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "conflict"
+              ]
+            },
+            "description": "Returns conflict detection settings."
+          }
+        },
+        {
+          "name": "Update conflict detection config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/conflict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "conflict"
+              ]
+            },
+            "description": "Updates conflict detection settings. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"probe_strategy\": \"parallel\",\n  \"probe_timeout\": \"500ms\",\n  \"max_probes_per_discover\": 3,\n  \"parallel_probe_count\": 4,\n  \"conflict_hold_time\": \"1h0m0s\",\n  \"max_conflict_count\": 3,\n  \"probe_cache_ttl\": \"10s\",\n  \"send_gratuitous_arp\": true,\n  \"icmp_fallback\": true,\n  \"probe_log_level\": \"debug\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - HA",
+      "description": "High availability configuration (TOML-backed)",
+      "item": [
+        {
+          "name": "Get HA config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/ha",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "ha"
+              ]
+            },
+            "description": "Returns high availability configuration. Read from TOML config file (not database)."
+          }
+        },
+        {
+          "name": "Update HA config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/ha",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "ha"
+              ]
+            },
+            "description": "Updates HA configuration. Writes directly to the TOML config file. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"role\": \"primary\",\n  \"peer_address\": \"10.0.0.2:9467\",\n  \"listen_address\": \"0.0.0.0:9467\",\n  \"heartbeat_interval\": \"1s\",\n  \"failover_timeout\": \"10s\",\n  \"sync_batch_size\": 100,\n  \"tls\": {\n    \"enabled\": false,\n    \"cert_file\": \"\",\n    \"key_file\": \"\",\n    \"ca_file\": \"\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Hooks",
+      "description": "Event hook configuration",
+      "item": [
+        {
+          "name": "Get hooks config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/hooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "hooks"
+              ]
+            },
+            "description": "Returns event hook configuration."
+          }
+        },
+        {
+          "name": "Update hooks config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/hooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "hooks"
+              ]
+            },
+            "description": "Updates event hook configuration. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_buffer_size\": 1000,\n  \"script_concurrency\": 4,\n  \"script_timeout\": \"30s\",\n  \"script\": [],\n  \"webhook\": [\n    {\n      \"name\": \"slack-alerts\",\n      \"events\": [\n        \"lease.ack\",\n        \"conflict.detected\"\n      ],\n      \"url\": \"https://hooks.slack.com/services/XXX\",\n      \"method\": \"POST\",\n      \"timeout\": \"10s\",\n      \"retries\": 3,\n      \"retry_backoff\": \"5s\",\n      \"template\": \"slack\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - DDNS",
+      "description": "Dynamic DNS configuration",
+      "item": [
+        {
+          "name": "Get DDNS config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/ddns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "ddns"
+              ]
+            },
+            "description": "Returns dynamic DNS configuration."
+          }
+        },
+        {
+          "name": "Update DDNS config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/ddns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "ddns"
+              ]
+            },
+            "description": "Updates dynamic DNS configuration. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"allow_client_fqdn\": true,\n  \"fallback_to_mac\": false,\n  \"ttl\": 300,\n  \"update_on_renew\": false,\n  \"conflict_policy\": \"client-wins\",\n  \"use_dhcid\": true,\n  \"forward\": {\n    \"zone\": \"example.local\",\n    \"method\": \"rfc2136\",\n    \"server\": \"10.0.0.1:53\",\n    \"tsig_name\": \"dhcp-update\",\n    \"tsig_algorithm\": \"hmac-sha256\"\n  },\n  \"reverse\": {\n    \"zone\": \"1.0.10.in-addr.arpa\",\n    \"method\": \"rfc2136\",\n    \"server\": \"10.0.0.1:53\",\n    \"tsig_name\": \"dhcp-update\",\n    \"tsig_algorithm\": \"hmac-sha256\"\n  },\n  \"zone_override\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - DNS",
+      "description": "DNS proxy configuration",
+      "item": [
+        {
+          "name": "Get DNS proxy config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/dns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "dns"
+              ]
+            },
+            "description": "Returns DNS proxy configuration."
+          }
+        },
+        {
+          "name": "Update DNS proxy config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/dns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "dns"
+              ]
+            },
+            "description": "Updates DNS proxy configuration. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"listen_udp\": \"0.0.0.0:53\",\n  \"domain\": \"example.local\",\n  \"ttl\": 60,\n  \"register_leases\": true,\n  \"register_leases_ptr\": true,\n  \"forwarders\": [\n    \"8.8.8.8\",\n    \"8.8.4.4\"\n  ],\n  \"cache_size\": 10000,\n  \"cache_ttl\": \"5m0s\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Hostname Sanitisation",
+      "description": "Hostname sanitisation pipeline settings",
+      "item": [
+        {
+          "name": "Get hostname sanitisation config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/hostname-sanitisation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "hostname-sanitisation"
+              ]
+            },
+            "description": "Returns hostname sanitisation pipeline settings."
+          }
+        },
+        {
+          "name": "Update hostname sanitisation config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/hostname-sanitisation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "hostname-sanitisation"
+              ]
+            },
+            "description": "Updates hostname sanitisation settings. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"allow_regex\": \"^[a-zA-Z0-9.-]+$\",\n  \"deny_patterns\": [],\n  \"dedup_suffix\": true,\n  \"max_length\": 63,\n  \"strip_emoji\": true,\n  \"lowercase\": true,\n  \"fallback_template\": \"host-{{.MAC}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Syslog",
+      "description": "Remote syslog forwarding settings",
+      "item": [
+        {
+          "name": "Get syslog config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/syslog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "syslog"
+              ]
+            },
+            "description": "Returns remote syslog forwarding configuration."
+          }
+        },
+        {
+          "name": "Update syslog config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/syslog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "syslog"
+              ]
+            },
+            "description": "Updates remote syslog forwarding configuration. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"address\": \"syslog.example.com:514\",\n  \"protocol\": \"udp\",\n  \"facility\": 16,\n  \"tag\": \"athena-dhcpd\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Fingerprint",
+      "description": "Device fingerprinting settings",
+      "item": [
+        {
+          "name": "Get fingerprint config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/fingerprint",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "fingerprint"
+              ]
+            },
+            "description": "Returns device fingerprinting configuration."
+          }
+        },
+        {
+          "name": "Update fingerprint config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/fingerprint",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "fingerprint"
+              ]
+            },
+            "description": "Updates device fingerprinting configuration. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"fingerbank_api_key\": \"\",\n  \"fingerbank_url\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config - Import/Export",
+      "description": "TOML config import, raw view, and validation",
+      "item": [
+        {
+          "name": "Import TOML config",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "import"
+              ]
+            },
+            "description": "Imports a full TOML configuration into the database config store. Requires admin role. Blocked on HA standby.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toml\": \"[defaults]\\nlease_time = \\\"12h\\\"\\n\\n[[subnet]]\\nnetwork = \\\"10.0.1.0/24\\\"\\n\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Import successful",
+              "status": "Import successful",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"imported\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get raw TOML config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/raw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "raw"
+              ]
+            },
+            "description": "Returns the running configuration as raw TOML text."
+          }
+        },
+        {
+          "name": "Validate TOML config",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/config/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "config",
+                "validate"
+              ]
+            },
+            "description": "Validates a TOML config string without applying it. Returns validation errors if any.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toml\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Validation result",
+              "status": "Validation result",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"valid\": true,\n  \"errors\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "description": "Event log and SSE streaming",
+      "item": [
+        {
+          "name": "List recent events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "events"
+              ]
+            },
+            "description": "Returns recent events from the event bus."
+          },
+          "response": [
+            {
+              "name": "Event list",
+              "status": "Event list",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"events\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Live event stream (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/events/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "events",
+                "stream"
+              ]
+            },
+            "description": "Server-Sent Events stream of live events. Sends a stream.hello message on connect and keepalive comments every 30s. Use EventSource API or query parameter token for auth."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hooks",
+      "description": "Configured hooks and testing",
+      "item": [
+        {
+          "name": "List configured hooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/hooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "hooks"
+              ]
+            },
+            "description": "Returns all configured hooks and their status."
+          }
+        },
+        {
+          "name": "Fire test event",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/hooks/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "hooks",
+                "test"
+              ]
+            },
+            "description": "Fires a test event through the event bus to verify webhooks. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Test event fired",
+              "status": "Test event fired",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"test event fired\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "description": "Audit log queries and export",
+      "item": [
+        {
+          "name": "Query audit log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Filter by action type",
+                  "disabled": true
+                },
+                {
+                  "key": "user",
+                  "value": "",
+                  "description": "Filter by user",
+                  "disabled": true
+                },
+                {
+                  "key": "since",
+                  "value": "",
+                  "description": "Start time",
+                  "disabled": true
+                },
+                {
+                  "key": "until",
+                  "value": "",
+                  "description": "End time",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns audit log entries with optional filtering."
+          }
+        },
+        {
+          "name": "Export audit log as CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/audit/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "audit",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "user",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "since",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "until",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Exports audit log records as CSV. Supports same query filters as audit query."
+          }
+        },
+        {
+          "name": "Audit log statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/audit/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "audit",
+                "stats"
+              ]
+            },
+            "description": "Returns summary statistics about the audit log."
+          },
+          "response": [
+            {
+              "name": "Audit stats",
+              "status": "Audit stats",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"total_records\": 1250\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fingerprints",
+      "description": "Device fingerprint data",
+      "item": [
+        {
+          "name": "List device fingerprints",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/fingerprints",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "fingerprints"
+              ]
+            },
+            "description": "Returns all known device fingerprints."
+          }
+        },
+        {
+          "name": "Fingerprint statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/fingerprints/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "fingerprints",
+                "stats"
+              ]
+            },
+            "description": "Returns fingerprint statistics including total devices, breakdown by type and OS."
+          },
+          "response": [
+            {
+              "name": "Fingerprint stats",
+              "status": "Fingerprint stats",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"total_devices\": 150,\n  \"by_type\": {\n    \"Computer\": 80,\n    \"Phone\": 50,\n    \"Printer\": 20\n  },\n  \"has_fingerbank_key\": false\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get fingerprint by MAC",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/fingerprints/{mac}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "fingerprints",
+                ":mac"
+              ]
+            },
+            "description": "Returns the device fingerprint for a specific MAC address."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rogue Detection",
+      "description": "Rogue DHCP server detection",
+      "item": [
+        {
+          "name": "List rogue DHCP servers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/rogue",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "rogue"
+              ]
+            },
+            "description": "Returns all detected rogue DHCP servers."
+          }
+        },
+        {
+          "name": "Rogue detection statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/rogue/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "rogue",
+                "stats"
+              ]
+            },
+            "description": "Returns rogue detection statistics."
+          }
+        },
+        {
+          "name": "Acknowledge rogue server",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/rogue/acknowledge",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "rogue",
+                "acknowledge"
+              ]
+            },
+            "description": "Acknowledges a rogue DHCP server to suppress repeated alerts. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_ip\": \"10.0.1.50\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove rogue server entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/rogue/remove",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "rogue",
+                "remove"
+              ]
+            },
+            "description": "Removes a rogue server entry by server IP. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server_ip\": \"10.0.1.50\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Trigger rogue scan",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/rogue/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "rogue",
+                "scan"
+              ]
+            },
+            "description": "Triggers an immediate scan for rogue DHCP servers. Requires admin role."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Topology",
+      "description": "Network topology discovery",
+      "item": [
+        {
+          "name": "Get topology tree",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/topology",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "topology"
+              ]
+            },
+            "description": "Returns the full network topology tree built from relay agent data."
+          }
+        },
+        {
+          "name": "Topology statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/topology/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "topology",
+                "stats"
+              ]
+            },
+            "description": "Returns topology summary statistics."
+          }
+        },
+        {
+          "name": "Set topology node label",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/topology/label",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "topology",
+                "label"
+              ]
+            },
+            "description": "Sets a custom label on a topology node (switch or port). Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"node_id\": \"switch-10.0.0.1\",\n  \"label\": \"Core Switch A\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anomaly Detection",
+      "description": "Anomaly detection weather indicator",
+      "item": [
+        {
+          "name": "Anomaly weather indicator",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/anomaly/weather",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "anomaly",
+                "weather"
+              ]
+            },
+            "description": "Returns the current anomaly detection status as a network weather-style indicator."
+          }
+        }
+      ]
+    },
+    {
+      "name": "MAC Vendor",
+      "description": "MAC address vendor/OUI lookup",
+      "item": [
+        {
+          "name": "MAC vendor database statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/macvendor/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "macvendor",
+                "stats"
+              ]
+            },
+            "description": "Returns statistics about the OUI database."
+          }
+        },
+        {
+          "name": "Lookup MAC vendor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/macvendor/{mac}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "macvendor",
+                ":mac"
+              ]
+            },
+            "description": "Returns the manufacturer for a MAC address from the built-in OUI database."
+          },
+          "response": [
+            {
+              "name": "Vendor info",
+              "status": "Vendor info",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"mac\": \"aa:bb:cc:dd:ee:ff\",\n  \"vendor\": \"Dell Inc.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RADIUS",
+      "description": "RADIUS authentication configuration",
+      "item": [
+        {
+          "name": "List RADIUS configurations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/radius",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "radius"
+              ]
+            },
+            "description": "Returns all configured RADIUS subnets."
+          }
+        },
+        {
+          "name": "Test RADIUS connectivity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/radius/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "radius",
+                "test"
+              ]
+            },
+            "description": "Tests connectivity to a RADIUS server. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"server\": \"10.0.0.5:1812\",\n  \"secret\": \"testing123\",\n  \"username\": \"testuser\",\n  \"password\": \"testpass\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get RADIUS config for subnet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/radius/{subnet}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "radius",
+                ":subnet"
+              ]
+            },
+            "description": "Returns RADIUS configuration for a specific subnet with secret redacted."
+          }
+        },
+        {
+          "name": "Set RADIUS config for subnet",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/radius/{subnet}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "radius",
+                ":subnet"
+              ]
+            },
+            "description": "Sets RADIUS configuration for a subnet. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete RADIUS config for subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/radius/{subnet}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "radius",
+                ":subnet"
+              ]
+            },
+            "description": "Removes RADIUS configuration for a subnet. Requires admin role."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Port Automation",
+      "description": "Port automation rules engine",
+      "item": [
+        {
+          "name": "Get port automation rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/portauto/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "portauto",
+                "rules"
+              ]
+            },
+            "description": "Returns all port automation rules."
+          }
+        },
+        {
+          "name": "Set port automation rules",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/portauto/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "portauto",
+                "rules"
+              ]
+            },
+            "description": "Replaces all port automation rules. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {}\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Test port automation rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/portauto/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "portauto",
+                "test"
+              ]
+            },
+            "description": "Tests port automation rules against a sample lease context. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "HA Status",
+      "description": "High availability runtime status and failover",
+      "item": [
+        {
+          "name": "HA runtime status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ha/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ha",
+                "status"
+              ]
+            },
+            "description": "Returns current HA state including role, state, active status, last heartbeat, peer connection, and VIP status."
+          },
+          "response": [
+            {
+              "name": "HA status",
+              "status": "HA status",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"enabled\": true,\n  \"role\": \"primary\",\n  \"state\": \"PARTNER_UP\",\n  \"active\": true,\n  \"last_heartbeat\": \"2025-01-15T10:30:00Z\",\n  \"peer_connected\": true,\n  \"vip_held\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Trigger manual failover",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ha/failover",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ha",
+                "failover"
+              ]
+            },
+            "description": "Triggers a manual HA failover to make this node active. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Failover triggered",
+              "status": "Failover triggered",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"failover triggered\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Floating VIPs",
+      "description": "Floating virtual IP management",
+      "item": [
+        {
+          "name": "Get VIP entries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/vips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "vips"
+              ]
+            },
+            "description": "Returns configured floating VIP entries."
+          }
+        },
+        {
+          "name": "Set VIP entries",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/vips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "vips"
+              ]
+            },
+            "description": "Replaces the entire VIP list. Validates entries and hot-reloads the VIP group. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"vip\": \"10.0.0.100/24\",\n    \"interface\": \"eth0\"\n  },\n  {\n    \"vip\": \"10.0.0.101/24\",\n    \"interface\": \"eth0\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "VIPs updated",
+              "status": "VIPs updated",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"vips updated\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get VIP runtime status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/vips/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "vips",
+                "status"
+              ]
+            },
+            "description": "Returns the runtime status of all VIPs including whether each is held and present on the interface."
+          }
+        }
+      ]
+    },
+    {
+      "name": "DNS Proxy",
+      "description": "DNS proxy runtime operations",
+      "item": [
+        {
+          "name": "DNS proxy statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "stats"
+              ]
+            },
+            "description": "Returns DNS proxy statistics including queries, cache, and filter lists."
+          }
+        },
+        {
+          "name": "Flush DNS cache",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/cache/flush",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "cache",
+                "flush"
+              ]
+            },
+            "description": "Flushes the DNS response cache. Requires admin role."
+          },
+          "response": [
+            {
+              "name": "Cache flushed",
+              "status": "Cache flushed",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"cache flushed\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List DNS local zone records",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/records",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "records"
+              ]
+            },
+            "description": "Returns all local DNS zone records with name, type, value, and TTL."
+          },
+          "response": [
+            {
+              "name": "DNS records",
+              "status": "DNS records",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"records\": [\n    {\n      \"name\": \"workstation-1.example.local.\",\n      \"type\": \"A\",\n      \"value\": \"10.0.1.100\",\n      \"ttl\": 60\n    },\n    {\n      \"name\": \"100.1.0.10.in-addr.arpa.\",\n      \"type\": \"PTR\",\n      \"value\": \"workstation-1.example.local.\",\n      \"ttl\": 60\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "DNS filter list status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/lists",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "lists"
+              ]
+            },
+            "description": "Returns status of all DNS filter lists including loaded status and domain counts."
+          }
+        },
+        {
+          "name": "Refresh DNS filter lists",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/lists/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "lists",
+                "refresh"
+              ]
+            },
+            "description": "Forces refresh of all or specific DNS filter lists. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Test domain against filter lists",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/lists/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "lists",
+                "test"
+              ]
+            },
+            "description": "Tests a domain against DNS filter lists and returns the result.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"domain\": \"ads.example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DNS query log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/querylog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "querylog"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns recent DNS query log entries with pagination."
+          }
+        },
+        {
+          "name": "Live DNS query log stream (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/dns/querylog/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "dns",
+                "querylog",
+                "stream"
+              ]
+            },
+            "description": "Streams live DNS query log entries via Server-Sent Events."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stats",
+      "description": "Server statistics",
+      "item": [
+        {
+          "name": "Server statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "stats"
+              ]
+            },
+            "description": "Returns overall server statistics including lease counts, uptime, and DHCP message counters."
+          },
+          "response": [
+            {
+              "name": "Server stats",
+              "status": "Server stats",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"uptime\": \"48h15m30s\",\n  \"total_leases\": 150,\n  \"active_leases\": 120,\n  \"total_discovers\": 5000,\n  \"total_offers\": 4990,\n  \"total_requests\": 4800,\n  \"total_acks\": 4780\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Setup Wizard",
+      "description": "Initial setup wizard",
+      "item": [
+        {
+          "name": "Setup wizard status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/setup/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "setup",
+                "status"
+              ]
+            },
+            "description": "Returns whether setup is needed. No authentication required.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "Setup status",
+              "status": "Setup status",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"setup_complete\": false,\n  \"needs_setup\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Setup HA configuration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/setup/ha",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "setup",
+                "ha"
+              ]
+            },
+            "description": "Saves HA configuration during setup wizard. Optionally writes TLS certificate files. Locked after setup is complete.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"primary\",\n  \"role\": \"primary\",\n  \"peer_address\": \"10.0.0.2:9467\",\n  \"listen_address\": \"0.0.0.0:9467\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "HA config saved",
+              "status": "HA config saved",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"ha configured\"\n}"
+            },
+            {
+              "name": "Setup already complete",
+              "status": "Setup already complete",
+              "code": 403,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"setup wizard is locked \\u2014 setup already complete\",\n  \"code\": \"setup_complete\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Apply initial configuration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/setup/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "setup",
+                "config"
+              ]
+            },
+            "description": "Applies initial DHCP/DNS configuration during setup. Includes defaults, subnets, conflict detection, DNS, and DDNS settings. Locked after setup is complete.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"defaults\": {},\n  \"subnets\": [],\n  \"conflict_detection\": {},\n  \"dns\": {},\n  \"ddns\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Config applied",
+              "status": "Config applied",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"config applied\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Complete setup",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/setup/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "setup",
+                "complete"
+              ]
+            },
+            "description": "Marks setup as complete and triggers service startup. Locked after setup is complete.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "Setup complete",
+              "status": "Setup complete",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"setup complete\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Backup",
+      "description": "Backup and restore",
+      "item": [
+        {
+          "name": "Export full backup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/backup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "backup"
+              ]
+            },
+            "description": "Exports a full backup including config sections, leases, and users as JSON. Requires admin role."
+          }
+        },
+        {
+          "name": "Restore from backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/backup/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "backup",
+                "restore"
+              ]
+            },
+            "description": "Restores config sections and users from a backup JSON file. HA config is skipped. Requires admin role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0,\n  \"timestamp\": \"2025-01-15T10:30:00Z\",\n  \"config\": {},\n  \"users\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Restore successful",
+              "status": "Restore successful",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"restore complete\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "description": "Prometheus metrics",
+      "item": [
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Returns Prometheus-formatted metrics. No authentication required.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

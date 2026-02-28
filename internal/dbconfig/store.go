@@ -23,6 +23,7 @@ var (
 	bucketHostSanit   = []byte("config_hostname_sanitisation")
 	bucketFingerprint = []byte("config_fingerprint")
 	bucketSyslog      = []byte("config_syslog")
+	bucketPortAuto    = []byte("config_portauto")
 	bucketMeta        = []byte("config_meta")
 	bucketUsers       = []byte("config_users")
 
@@ -34,6 +35,7 @@ var (
 	keyHostSanit     = []byte("hostname_sanitisation")
 	keyFingerprint   = []byte("fingerprint")
 	keySyslog        = []byte("syslog")
+	keyPortAuto      = []byte("portauto_rules")
 	keySetupComplete = []byte("setup_complete")
 )
 
@@ -44,16 +46,17 @@ type Store struct {
 	mu sync.RWMutex
 
 	// In-memory cache
-	subnets     []config.SubnetConfig
-	defaults    config.DefaultsConfig
-	conflict    config.ConflictDetectionConfig
-	hooks       config.HooksConfig
-	ddns        config.DDNSConfig
-	dns         config.DNSProxyConfig
-	hostSanit   config.HostnameSanitisationConfig
-	fingerprint config.FingerprintConfig
-	syslog      config.SyslogConfig
-	users       []config.UserConfig
+	subnets       []config.SubnetConfig
+	defaults      config.DefaultsConfig
+	conflict      config.ConflictDetectionConfig
+	hooks         config.HooksConfig
+	ddns          config.DDNSConfig
+	dns           config.DNSProxyConfig
+	hostSanit     config.HostnameSanitisationConfig
+	fingerprint   config.FingerprintConfig
+	syslog        config.SyslogConfig
+	portAutoRules json.RawMessage
+	users         []config.UserConfig
 
 	// Listeners notified on config changes (fires for ALL changes, local + peer)
 	onChange []func()
@@ -72,7 +75,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketSyslog, bucketMeta, bucketUsers,
+			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketSyslog, bucketPortAuto, bucketMeta, bucketUsers,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -472,6 +475,33 @@ func (s *Store) SetSyslog(sl config.SyslogConfig) error {
 	return nil
 }
 
+// --- Port Automation Rules (stored as raw JSON) ---
+
+func (s *Store) PortAutoRules() json.RawMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.portAutoRules == nil {
+		return nil
+	}
+	cp := make(json.RawMessage, len(s.portAutoRules))
+	copy(cp, s.portAutoRules)
+	return cp
+}
+
+func (s *Store) SetPortAutoRules(data json.RawMessage) error {
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketPortAuto).Put(keyPortAuto, data)
+	}); err != nil {
+		return fmt.Errorf("storing portauto rules: %w", err)
+	}
+	s.mu.Lock()
+	s.portAutoRules = make(json.RawMessage, len(data))
+	copy(s.portAutoRules, data)
+	s.mu.Unlock()
+	s.notifyLocalChange("portauto", data)
+	return nil
+}
+
 // HA config lives in TOML, not the database — see config.WriteHASection().
 
 // --- Build full config ---
@@ -580,6 +610,9 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	}
 	if data, err := json.Marshal(s.syslog); err == nil {
 		sections["syslog"] = data
+	}
+	if s.portAutoRules != nil {
+		sections["portauto"] = s.portAutoRules
 	}
 	return sections
 }
@@ -720,6 +753,21 @@ func (s *Store) ApplyPeerConfig(section string, data []byte) error {
 		s.syslog = sl
 		s.mu.Unlock()
 
+	case "portauto":
+		// Validate it's valid JSON array
+		if !json.Valid(data) {
+			return fmt.Errorf("invalid JSON for peer portauto rules")
+		}
+		if err := s.db.Update(func(tx *bolt.Tx) error {
+			return tx.Bucket(bucketPortAuto).Put(keyPortAuto, data)
+		}); err != nil {
+			return fmt.Errorf("storing peer portauto rules: %w", err)
+		}
+		s.mu.Lock()
+		s.portAutoRules = make(json.RawMessage, len(data))
+		copy(s.portAutoRules, data)
+		s.mu.Unlock()
+
 	default:
 		return fmt.Errorf("unknown config section from peer: %s", section)
 	}
@@ -765,6 +813,15 @@ func (s *Store) loadAll() error {
 		loadJSON(tx, bucketHostSanit, keyHostSanit, &s.hostSanit)
 		loadJSON(tx, bucketFingerprint, keyFingerprint, &s.fingerprint)
 		loadJSON(tx, bucketSyslog, keySyslog, &s.syslog)
+
+		// Load portauto rules as raw JSON
+		pab := tx.Bucket(bucketPortAuto)
+		if pab != nil {
+			if data := pab.Get(keyPortAuto); data != nil {
+				s.portAutoRules = make(json.RawMessage, len(data))
+				copy(s.portAutoRules, data)
+			}
+		}
 
 		// HA config lives in TOML, not the database — see config.WriteHASection()
 

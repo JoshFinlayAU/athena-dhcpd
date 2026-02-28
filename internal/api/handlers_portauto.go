@@ -33,6 +33,13 @@ func (s *Server) handlePortAutoSetRules(w http.ResponseWriter, r *http.Request) 
 		JSONError(w, http.StatusBadRequest, "invalid_rule", err.Error())
 		return
 	}
+	// Persist to database
+	if s.cfgStore != nil {
+		data, _ := json.Marshal(rules)
+		if err := s.cfgStore.SetPortAutoRules(data); err != nil {
+			s.logger.Warn("failed to persist portauto rules", "error", err)
+		}
+	}
 	JSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -34,6 +35,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/macvendor"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/portauto"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
 	syslogfwd "github.com/athena-dhcpd/athena-dhcpd/internal/syslog"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
@@ -730,6 +732,19 @@ func main() {
 		logger.Info("topology map initialized")
 	}
 
+	// Initialize port automation engine
+	portAutoEngine := portauto.NewEngine(logger)
+	if rulesJSON := cfgStore.PortAutoRules(); rulesJSON != nil {
+		var rules []portauto.Rule
+		if err := json.Unmarshal(rulesJSON, &rules); err != nil {
+			logger.Warn("failed to load portauto rules from db", "error", err)
+		} else if err := portAutoEngine.SetRules(rules); err != nil {
+			logger.Warn("failed to apply portauto rules from db", "error", err)
+		} else {
+			logger.Info("port automation rules loaded", "count", len(rules))
+		}
+	}
+
 	// Initialize MAC vendor database
 	macVendorDB := macvendor.NewDB(logger)
 
@@ -770,6 +785,9 @@ func main() {
 	}
 	if rogueDetector != nil {
 		apiOpts = append(apiOpts, api.WithRogueDetector(rogueDetector))
+	}
+	if portAutoEngine != nil {
+		apiOpts = append(apiOpts, api.WithPortAutoEngine(portAutoEngine))
 	}
 
 	apiServer := api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
@@ -869,6 +887,18 @@ func main() {
 			syslogForwarder.Stop()
 			syslogForwarder = nil
 			logger.Info("syslog forwarder stopped (disabled in config)")
+		}
+
+		// Reload port automation rules from DB
+		if portAutoEngine != nil {
+			if rulesJSON := cfgStore.PortAutoRules(); rulesJSON != nil {
+				var rules []portauto.Rule
+				if err := json.Unmarshal(rulesJSON, &rules); err != nil {
+					logger.Warn("failed to reload portauto rules", "error", err)
+				} else if err := portAutoEngine.SetRules(rules); err != nil {
+					logger.Warn("failed to apply portauto rules after config change", "error", err)
+				}
+			}
 		}
 
 		// Reload DHCP listeners — add/remove interfaces as needed

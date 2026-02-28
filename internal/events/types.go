@@ -46,9 +46,11 @@ type Event struct {
 }
 
 // LeaseData carries lease information in events.
+// MAC is string (not net.HardwareAddr) because HardwareAddr is []byte
+// which JSON encodes as base64 instead of a human-readable MAC string.
 type LeaseData struct {
 	IP       net.IP                 `json:"ip"`
-	MAC      net.HardwareAddr       `json:"mac"`
+	MAC      string                 `json:"mac"`
 	ClientID string                 `json:"client_id,omitempty"`
 	Hostname string                 `json:"hostname,omitempty"`
 	FQDN     string                 `json:"fqdn,omitempty"`
@@ -127,8 +129,8 @@ func (e *Event) ToEnvVars() map[string]string {
 		if l.IP != nil {
 			env["ATHENA_IP"] = l.IP.String()
 		}
-		if l.MAC != nil {
-			env["ATHENA_MAC"] = l.MAC.String()
+		if l.MAC != "" {
+			env["ATHENA_MAC"] = l.MAC
 		}
 		if l.Hostname != "" {
 			env["ATHENA_HOSTNAME"] = l.Hostname

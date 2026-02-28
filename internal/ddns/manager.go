@@ -160,7 +160,7 @@ func (m *Manager) handleEvent(evt events.Event) {
 // addRecords creates forward (A) and reverse (PTR) DNS records for a lease.
 func (m *Manager) addRecords(evt events.Event) {
 	l := evt.Lease
-	if l.IP == nil || l.MAC == nil {
+	if l.IP == nil || l.MAC == "" {
 		return
 	}
 
@@ -168,7 +168,7 @@ func (m *Manager) addRecords(evt events.Event) {
 	fqdn := m.buildFQDN(l)
 	if fqdn == "" {
 		m.logger.Debug("skipping DDNS update — no FQDN",
-			"ip", l.IP.String(), "mac", l.MAC.String())
+			"ip", l.IP.String(), "mac", l.MAC)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (m *Manager) addRecords(evt events.Event) {
 // removeRecords removes forward (A) and reverse (PTR) DNS records for a lease.
 func (m *Manager) removeRecords(evt events.Event) {
 	l := evt.Lease
-	if l.IP == nil || l.MAC == nil {
+	if l.IP == nil || l.MAC == "" {
 		return
 	}
 

@@ -6,7 +6,6 @@ package anomaly
 import (
 	"log/slog"
 	"math"
-	"net"
 	"sync"
 	"time"
 
@@ -15,17 +14,17 @@ import (
 
 // SubnetWeather holds the current activity state for a subnet.
 type SubnetWeather struct {
-	Subnet          string  `json:"subnet"`
-	CurrentRate     float64 `json:"current_rate"`      // events per minute (last window)
-	BaselineRate    float64 `json:"baseline_rate"`      // EWMA of rate
-	StdDev          float64 `json:"std_dev"`            // EWMA of standard deviation
-	KnownMACs       int     `json:"known_macs"`
-	UnknownMACs     int     `json:"unknown_macs_recent"`
-	LastActivity    string  `json:"last_activity"`
-	SilentMinutes   int     `json:"silent_minutes"`
-	AnomalyScore    float64 `json:"anomaly_score"`      // 0 = normal, >2 = notable, >4 = alert
-	AnomalyReason   string  `json:"anomaly_reason,omitempty"`
-	Status          string  `json:"status"`             // "normal", "elevated", "alert", "silent"
+	Subnet        string  `json:"subnet"`
+	CurrentRate   float64 `json:"current_rate"`  // events per minute (last window)
+	BaselineRate  float64 `json:"baseline_rate"` // EWMA of rate
+	StdDev        float64 `json:"std_dev"`       // EWMA of standard deviation
+	KnownMACs     int     `json:"known_macs"`
+	UnknownMACs   int     `json:"unknown_macs_recent"`
+	LastActivity  string  `json:"last_activity"`
+	SilentMinutes int     `json:"silent_minutes"`
+	AnomalyScore  float64 `json:"anomaly_score"` // 0 = normal, >2 = notable, >4 = alert
+	AnomalyReason string  `json:"anomaly_reason,omitempty"`
+	Status        string  `json:"status"` // "normal", "elevated", "alert", "silent"
 }
 
 // Config holds anomaly detection settings.
@@ -173,7 +172,7 @@ func (d *Detector) handleEvent(evt events.Event) {
 	}
 
 	subnet := evt.Lease.Subnet
-	mac := macStr(evt.Lease.MAC)
+	mac := evt.Lease.MAC
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -292,11 +291,4 @@ func (d *Detector) computeAnomaly(s *subnetState, silentMin int, stddev float64)
 	}
 
 	return 0, "", "normal"
-}
-
-func macStr(mac net.HardwareAddr) string {
-	if mac == nil {
-		return ""
-	}
-	return mac.String()
 }

@@ -142,7 +142,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		Type:      events.EventLeaseDiscover,
 		Timestamp: time.Now(),
 		Lease: &events.LeaseData{
-			MAC:      mac,
+			MAC:      mac.String(),
 			Hostname: hostname,
 		},
 	})
@@ -501,7 +501,7 @@ func (h *Handler) buildNAK(pkt *Packet, reason string) *Packet {
 		Type:      events.EventLeaseNak,
 		Timestamp: time.Now(),
 		Lease: &events.LeaseData{
-			MAC: pkt.CHAddr,
+			MAC: pkt.CHAddr.String(),
 		},
 		Reason: reason,
 	})

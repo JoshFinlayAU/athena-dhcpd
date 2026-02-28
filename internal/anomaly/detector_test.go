@@ -1,6 +1,7 @@
 package anomaly
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 )
+
+// keep net import for conflict test
+var _ = net.ParseIP
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -27,21 +31,21 @@ func TestWeatherTracksSubnets(t *testing.T) {
 		Type: events.EventLeaseDiscover,
 		Lease: &events.LeaseData{
 			Subnet: "10.0.0.0/24",
-			MAC:    net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x01},
+			MAC:    "aa:bb:cc:00:00:01",
 		},
 	})
 	d.handleEvent(events.Event{
 		Type: events.EventLeaseAck,
 		Lease: &events.LeaseData{
 			Subnet: "10.0.0.0/24",
-			MAC:    net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x01},
+			MAC:    "aa:bb:cc:00:00:01",
 		},
 	})
 	d.handleEvent(events.Event{
 		Type: events.EventLeaseDiscover,
 		Lease: &events.LeaseData{
 			Subnet: "192.168.1.0/24",
-			MAC:    net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x02},
+			MAC:    "aa:bb:cc:00:00:02",
 		},
 	})
 
@@ -65,7 +69,7 @@ func TestWindowProcessing(t *testing.T) {
 			Type: events.EventLeaseDiscover,
 			Lease: &events.LeaseData{
 				Subnet: "10.0.0.0/24",
-				MAC:    net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, byte(i)},
+				MAC:    fmt.Sprintf("aa:bb:cc:00:00:%02x", i),
 			},
 		})
 	}
@@ -94,8 +98,8 @@ func TestKnownVsUnknownMACs(t *testing.T) {
 	cfg := DefaultConfig()
 	d := NewDetector(bus, cfg, testLogger())
 
-	mac1 := net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x01}
-	mac2 := net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x02}
+	mac1 := "aa:bb:cc:00:00:01"
+	mac2 := "aa:bb:cc:00:00:02"
 
 	// First time seeing mac1
 	d.handleEvent(events.Event{
@@ -163,7 +167,7 @@ func TestStatusNormal(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			d.handleEvent(events.Event{
 				Type:  events.EventLeaseDiscover,
-				Lease: &events.LeaseData{Subnet: "10.0.0.0/24", MAC: net.HardwareAddr{0xaa, 0x00, 0x00, 0x00, byte(w), byte(i)}},
+				Lease: &events.LeaseData{Subnet: "10.0.0.0/24", MAC: fmt.Sprintf("aa:00:00:00:%02x:%02x", w, i)},
 			})
 		}
 		d.processWindow()

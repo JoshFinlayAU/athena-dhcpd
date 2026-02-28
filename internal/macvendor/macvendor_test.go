@@ -1,9 +1,14 @@
 package macvendor
 
 import (
+	"log/slog"
 	"os"
 	"testing"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+}
 
 func TestLookupFromJSON(t *testing.T) {
 	data, err := os.ReadFile("../../macdb/macdb.json")
@@ -11,7 +16,7 @@ func TestLookupFromJSON(t *testing.T) {
 		t.Skip("macdb.json not found, skipping")
 	}
 
-	db := NewDB()
+	db := NewDB(testLogger())
 	if err := db.Load(data); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +45,7 @@ func TestLookupFromJSON(t *testing.T) {
 }
 
 func TestLookupUnknown(t *testing.T) {
-	db := NewDB()
+	db := NewDB(testLogger())
 	db.Load([]byte(`[{"macPrefix":"AA:BB:CC","vendorName":"TestCorp","private":false,"blockType":"MA-L"}]`))
 
 	if v := db.Lookup("AA:BB:CC:DD:EE:FF"); v != "TestCorp" {
@@ -53,7 +58,7 @@ func TestLookupUnknown(t *testing.T) {
 }
 
 func TestLookupShortMAC(t *testing.T) {
-	db := NewDB()
+	db := NewDB(testLogger())
 	db.Load([]byte(`[{"macPrefix":"AA:BB:CC","vendorName":"TestCorp","private":false,"blockType":"MA-L"}]`))
 
 	// Too short
@@ -81,14 +86,14 @@ func TestNormalizePrefix(t *testing.T) {
 }
 
 func TestLoadBadJSON(t *testing.T) {
-	db := NewDB()
+	db := NewDB(testLogger())
 	if err := db.Load([]byte("not json")); err == nil {
 		t.Error("expected error for bad JSON")
 	}
 }
 
 func TestEmptyDB(t *testing.T) {
-	db := NewDB()
+	db := NewDB(testLogger())
 	if db.Count() != 0 {
 		t.Errorf("empty DB count = %d", db.Count())
 	}

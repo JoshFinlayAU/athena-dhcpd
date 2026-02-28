@@ -42,14 +42,14 @@ func TestReverseIPName(t *testing.T) {
 }
 
 func TestBuildFQDN(t *testing.T) {
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 
 	tests := []struct {
 		name       string
 		clientFQDN string
 		hostname   string
 		domain     string
-		mac        net.HardwareAddr
+		mac        string
 		fallback   bool
 		want       string
 	}{
@@ -59,7 +59,7 @@ func TestBuildFQDN(t *testing.T) {
 		{"MAC fallback with domain", "", "", "example.com", mac, true, "00-11-22-33-44-55.example.com."},
 		{"MAC fallback no domain", "", "", "", mac, true, "00-11-22-33-44-55"},
 		{"no fallback returns empty", "", "", "example.com", mac, false, ""},
-		{"all empty", "", "", "", nil, false, ""},
+		{"all empty", "", "", "", "", false, ""},
 	}
 
 	for _, tt := range tests {

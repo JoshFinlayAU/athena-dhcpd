@@ -191,7 +191,7 @@ func buildSlackPayload(evt Event) ([]byte, error) {
 		if evt.Lease.IP != nil {
 			text += fmt.Sprintf("\nIP: `%s`", evt.Lease.IP)
 		}
-		if evt.Lease.MAC != nil {
+		if evt.Lease.MAC != "" {
 			text += fmt.Sprintf("\nMAC: `%s`", evt.Lease.MAC)
 		}
 		if evt.Lease.Hostname != "" {
@@ -227,7 +227,7 @@ func buildTeamsPayload(evt Event) ([]byte, error) {
 		if evt.Lease.IP != nil {
 			text += fmt.Sprintf("<br>IP: %s", evt.Lease.IP)
 		}
-		if evt.Lease.MAC != nil {
+		if evt.Lease.MAC != "" {
 			text += fmt.Sprintf("<br>MAC: %s", evt.Lease.MAC)
 		}
 		if evt.Lease.Hostname != "" {

@@ -21,7 +21,7 @@ func TestFormatLeaseEvent(t *testing.T) {
 		Timestamp: time.Now(),
 		Lease: &events.LeaseData{
 			IP:       net.ParseIP("10.0.0.50"),
-			MAC:      net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x01},
+			MAC:      "aa:bb:cc:dd:ee:01",
 			Hostname: "laptop-1",
 			Subnet:   "10.0.0.0/24",
 		},
@@ -152,7 +152,7 @@ func TestForwarderUDP(t *testing.T) {
 		Timestamp: time.Now(),
 		Lease: &events.LeaseData{
 			IP:     net.ParseIP("10.0.0.50"),
-			MAC:    net.HardwareAddr{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x01},
+			MAC:    "aa:bb:cc:00:00:01",
 			Subnet: "10.0.0.0/24",
 		},
 	})

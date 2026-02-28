@@ -2,7 +2,6 @@ package hostname
 
 import (
 	"log/slog"
-	"net"
 	"os"
 	"testing"
 
@@ -13,7 +12,7 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
-func noopLookup(hostname, subnet string, mac net.HardwareAddr) bool {
+func noopLookup(hostname, subnet, mac string) bool {
 	return false
 }
 
@@ -27,12 +26,8 @@ func defaultCfg() config.HostnameSanitisationConfig {
 	}
 }
 
-func mustMAC(s string) net.HardwareAddr {
-	m, err := net.ParseMAC(s)
-	if err != nil {
-		panic(err)
-	}
-	return m
+func mustMAC(s string) string {
+	return s
 }
 
 func TestBasicSanitise(t *testing.T) {
@@ -251,8 +246,8 @@ func TestSanitiserDedup(t *testing.T) {
 
 	// Simulate "server-1" being taken by a different MAC
 	takenMAC := mustMAC("11:22:33:44:55:66")
-	lookup := func(hostname, subnet string, mac net.HardwareAddr) bool {
-		if hostname == "server-1" && mac.String() != takenMAC.String() {
+	lookup := func(hostname, subnet, mac string) bool {
+		if hostname == "server-1" && mac != takenMAC {
 			return true
 		}
 		return false

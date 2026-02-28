@@ -188,7 +188,7 @@ func formatEvent(evt events.Event) string {
 		if l.IP != nil {
 			parts = append(parts, fmt.Sprintf("ip=%s", l.IP))
 		}
-		if l.MAC != nil {
+		if l.MAC != "" {
 			parts = append(parts, fmt.Sprintf("mac=%s", l.MAC))
 		}
 		if l.Hostname != "" {

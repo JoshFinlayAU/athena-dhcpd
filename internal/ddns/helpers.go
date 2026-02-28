@@ -29,7 +29,7 @@ func ReverseIPName(ip net.IP) string {
 
 // BuildFQDN constructs an FQDN from hostname and domain.
 // Priority: client option 81 → hostname+domain → MAC fallback → empty.
-func BuildFQDN(clientFQDN, hostname, domain string, mac net.HardwareAddr, fallbackToMAC bool) string {
+func BuildFQDN(clientFQDN, hostname, domain string, mac string, fallbackToMAC bool) string {
 	// Client-provided FQDN (option 81)
 	if clientFQDN != "" {
 		return ensureDot(clientFQDN)
@@ -44,8 +44,8 @@ func BuildFQDN(clientFQDN, hostname, domain string, mac net.HardwareAddr, fallba
 	}
 
 	// MAC fallback
-	if fallbackToMAC && mac != nil {
-		macStr := strings.ReplaceAll(mac.String(), ":", "-")
+	if fallbackToMAC && mac != "" {
+		macStr := strings.ReplaceAll(mac, ":", "-")
 		if domain != "" {
 			return ensureDot(macStr + "." + domain)
 		}

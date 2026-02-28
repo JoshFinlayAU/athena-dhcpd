@@ -24,24 +24,24 @@ var (
 
 // Record is a single audit log entry.
 type Record struct {
-	ID        uint64 `json:"id"`
-	Timestamp string `json:"timestamp"`
-	Event     string `json:"event"`
-	IP        string `json:"ip"`
-	MAC       string `json:"mac"`
-	ClientID  string `json:"client_id,omitempty"`
-	Hostname  string `json:"hostname,omitempty"`
-	FQDN      string `json:"fqdn,omitempty"`
-	Subnet    string `json:"subnet,omitempty"`
-	Pool      string `json:"pool,omitempty"`
-	LeaseStart  int64  `json:"lease_start,omitempty"`
-	LeaseExpiry int64  `json:"lease_expiry,omitempty"`
-	CircuitID   string `json:"circuit_id,omitempty"`
-	RemoteID    string `json:"remote_id,omitempty"`
-	GIAddr      string `json:"giaddr,omitempty"`
-	ServerID    string `json:"server_id,omitempty"`
+	ID           uint64 `json:"id"`
+	Timestamp    string `json:"timestamp"`
+	Event        string `json:"event"`
+	IP           string `json:"ip"`
+	MAC          string `json:"mac"`
+	ClientID     string `json:"client_id,omitempty"`
+	Hostname     string `json:"hostname,omitempty"`
+	FQDN         string `json:"fqdn,omitempty"`
+	Subnet       string `json:"subnet,omitempty"`
+	Pool         string `json:"pool,omitempty"`
+	LeaseStart   int64  `json:"lease_start,omitempty"`
+	LeaseExpiry  int64  `json:"lease_expiry,omitempty"`
+	CircuitID    string `json:"circuit_id,omitempty"`
+	RemoteID     string `json:"remote_id,omitempty"`
+	GIAddr       string `json:"giaddr,omitempty"`
+	ServerID     string `json:"server_id,omitempty"`
 	HARoleAtTime string `json:"ha_role,omitempty"`
-	Reason      string `json:"reason,omitempty"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 // QueryParams holds filter parameters for querying the audit log.
@@ -153,7 +153,7 @@ func (l *Log) handleEvent(evt events.Event) {
 		Timestamp:    evt.Timestamp.UTC().Format(time.RFC3339Nano),
 		Event:        string(evt.Type),
 		IP:           ipStr(ld.IP),
-		MAC:          macStr(ld.MAC),
+		MAC:          ld.MAC,
 		ClientID:     ld.ClientID,
 		Hostname:     ld.Hostname,
 		FQDN:         ld.FQDN,

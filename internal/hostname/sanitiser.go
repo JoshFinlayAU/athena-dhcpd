@@ -9,7 +9,6 @@ package hostname
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,7 +19,7 @@ import (
 
 // HostnameLookupFunc checks whether a hostname is already in use.
 // Returns true if the hostname is taken by a different MAC.
-type HostnameLookupFunc func(hostname, subnet string, mac net.HardwareAddr) bool
+type HostnameLookupFunc func(hostname, subnet, mac string) bool
 
 // compiledConfig holds a config alongside its compiled regex patterns.
 type compiledConfig struct {
@@ -94,7 +93,7 @@ func NewSanitiser(global config.HostnameSanitisationConfig, subnets []config.Sub
 
 // Sanitise runs the full pipeline on a hostname.
 // Returns the cleaned hostname (may be empty if rejected) and whether it was modified.
-func (s *Sanitiser) Sanitise(hostname, subnet string, mac net.HardwareAddr) (string, bool) {
+func (s *Sanitiser) Sanitise(hostname, subnet, mac string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -188,19 +187,19 @@ func (s *Sanitiser) effectiveCompiled(subnet string) *compiledConfig {
 }
 
 // fallback generates a fallback hostname from the MAC address.
-func (s *Sanitiser) fallback(cfg config.HostnameSanitisationConfig, mac net.HardwareAddr) string {
+func (s *Sanitiser) fallback(cfg config.HostnameSanitisationConfig, mac string) string {
 	tmpl := cfg.FallbackTemplate
 	if tmpl == "" {
 		tmpl = "dhcp-{mac}"
 	}
 
-	macStr := strings.ReplaceAll(mac.String(), ":", "")
+	macStr := strings.ReplaceAll(mac, ":", "")
 	result := strings.ReplaceAll(tmpl, "{mac}", macStr)
 	return result
 }
 
 // deduplicate appends -2, -3, etc. until a unique hostname is found.
-func (s *Sanitiser) deduplicate(hostname, subnet string, mac net.HardwareAddr, maxLen int) string {
+func (s *Sanitiser) deduplicate(hostname, subnet, mac string, maxLen int) string {
 	for i := 2; i <= 99; i++ {
 		suffix := fmt.Sprintf("-%d", i)
 		candidate := hostname
@@ -215,7 +214,7 @@ func (s *Sanitiser) deduplicate(hostname, subnet string, mac net.HardwareAddr, m
 		}
 	}
 	// Exhausted — use MAC fallback
-	macStr := strings.ReplaceAll(mac.String(), ":", "")
+	macStr := strings.ReplaceAll(mac, ":", "")
 	return "dhcp-" + macStr
 }
 

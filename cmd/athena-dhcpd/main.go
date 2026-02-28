@@ -804,6 +804,11 @@ func main() {
 			apiServer.UpdatePools(allPools)
 		}
 
+		// Reload DNS proxy config (filter lists, forwarders, zone overrides)
+		if dnsServer != nil {
+			dnsServer.UpdateConfig(&cfg.DNS)
+		}
+
 		// Reload DHCP listeners — add/remove interfaces as needed
 		serverGroup.Reload(cfg)
 

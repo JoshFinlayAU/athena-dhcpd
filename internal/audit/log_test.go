@@ -184,7 +184,7 @@ func TestAuditEventBusIntegration(t *testing.T) {
 		Timestamp: time.Now(),
 		Lease: &events.LeaseData{
 			IP:       net.ParseIP("192.168.1.10"),
-			MAC:      net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x01},
+			MAC:      "aa:bb:cc:dd:ee:01",
 			Hostname: "test-device",
 			Subnet:   "192.168.1.0/24",
 			Start:    time.Now().Unix(),

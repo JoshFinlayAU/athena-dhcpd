@@ -657,6 +657,55 @@ func (s *Server) FlushCache() {
 	s.logger.Info("DNS proxy cache flushed")
 }
 
+// UpdateConfig hot-reloads the DNS proxy configuration.
+// Currently reloads filter lists, forwarders, and zone overrides.
+func (s *Server) UpdateConfig(cfg *config.DNSProxyConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldCfg := s.cfg
+	s.cfg = cfg
+
+	// Reload filter lists if they changed
+	listsChanged := len(oldCfg.Lists) != len(cfg.Lists)
+	if !listsChanged {
+		for i := range cfg.Lists {
+			if i >= len(oldCfg.Lists) ||
+				cfg.Lists[i].Name != oldCfg.Lists[i].Name ||
+				cfg.Lists[i].URL != oldCfg.Lists[i].URL ||
+				cfg.Lists[i].Enabled != oldCfg.Lists[i].Enabled ||
+				cfg.Lists[i].Format != oldCfg.Lists[i].Format {
+				listsChanged = true
+				break
+			}
+		}
+	}
+
+	if listsChanged {
+		// Stop old list manager
+		if s.lists != nil {
+			s.lists.Stop()
+		}
+		// Create and start new list manager
+		s.lists = NewListManager(cfg.Lists, s.logger)
+		if len(cfg.Lists) > 0 {
+			ctx := context.Background()
+			s.lists.Start(ctx)
+		}
+		s.logger.Info("DNS filter lists reloaded", "lists", len(cfg.Lists))
+	}
+
+	// Update forwarders
+	s.forwarders = cfg.Forwarders
+
+	// Rebuild zone overrides
+	newOverrides := make(map[string]config.DNSZoneOverride)
+	for _, ov := range cfg.ZoneOverrides {
+		newOverrides[strings.ToLower(ov.Zone)] = ov
+	}
+	s.zoneOverrides = newOverrides
+}
+
 // Lists returns the list manager for API access.
 func (s *Server) Lists() *ListManager {
 	return s.lists

@@ -222,7 +222,7 @@ func (m *Manager) Decline(ip net.IP, mac net.HardwareAddr) error {
 	l := m.store.GetByIP(ip)
 	eventData := &events.LeaseData{
 		IP:    ip,
-		MAC:   mac,
+		MAC:   mac.String(),
 		State: string(dhcpv4.LeaseStateDeclined),
 	}
 	if l != nil {
@@ -296,7 +296,7 @@ func (m *Manager) ExpireLeases() int {
 func (m *Manager) leaseToEventData(l *Lease) *events.LeaseData {
 	d := &events.LeaseData{
 		IP:       l.IP,
-		MAC:      l.MAC,
+		MAC:      l.MAC.String(),
 		ClientID: l.ClientID,
 		Hostname: l.Hostname,
 		FQDN:     l.FQDN,

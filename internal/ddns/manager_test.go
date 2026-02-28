@@ -90,7 +90,7 @@ func newTestManager(t *testing.T) (*Manager, *mockUpdater, *mockUpdater, *events
 
 func TestManagerFQDNConstruction(t *testing.T) {
 	mgr, _, _, _ := newTestManager(t)
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 
 	tests := []struct {
 		name  string
@@ -127,7 +127,7 @@ func TestManagerFQDNConstruction(t *testing.T) {
 func TestManagerAddRecords(t *testing.T) {
 	mgr, fwd, rev, bus := newTestManager(t)
 
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 	ip := net.IPv4(192, 168, 1, 100)
 
 	evt := events.Event{
@@ -165,7 +165,7 @@ func TestManagerAddRecords(t *testing.T) {
 func TestManagerRemoveRecords(t *testing.T) {
 	mgr, fwd, rev, _ := newTestManager(t)
 
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 	ip := net.IPv4(192, 168, 1, 100)
 
 	evt := events.Event{
@@ -198,7 +198,7 @@ func TestManagerRemoveRecords(t *testing.T) {
 func TestManagerSkipsRenewByDefault(t *testing.T) {
 	mgr, fwd, _, _ := newTestManager(t)
 
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 	ip := net.IPv4(192, 168, 1, 100)
 
 	evt := events.Event{
@@ -226,7 +226,7 @@ func TestManagerUpdatesOnRenewWhenEnabled(t *testing.T) {
 	mgr, fwd, _, _ := newTestManager(t)
 	mgr.cfg.UpdateOnRenew = true
 
-	mac, _ := net.ParseMAC("00:11:22:33:44:55")
+	mac := "00:11:22:33:44:55"
 	ip := net.IPv4(192, 168, 1, 100)
 
 	evt := events.Event{

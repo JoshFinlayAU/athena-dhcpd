@@ -53,7 +53,7 @@ func TestWebhookSenderBasic(t *testing.T) {
 		Timestamp: time.Now(),
 		Lease: &LeaseData{
 			IP:       net.IPv4(192, 168, 1, 100),
-			MAC:      net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+			MAC:      "00:11:22:33:44:55",
 			Hostname: "testhost",
 			Subnet:   "192.168.1.0/24",
 		},

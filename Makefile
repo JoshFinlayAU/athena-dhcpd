@@ -1,4 +1,4 @@
-.PHONY: build build-web build-deb apt-repo dev test lint clean install run
+.PHONY: build build-web build-deb apt-repo dev test lint clean install run hashpw
 
 BINARY_NAME := athena-dhcpd
 BUILD_DIR := build
@@ -14,6 +14,7 @@ build: $(if $(wildcard $(WEB_DIR)/package.json),build-web)
 	@rm -rf $(EMBED_DIR) && mkdir -p $(EMBED_DIR)
 	@if [ -d "$(WEB_DIST)" ]; then cp -r $(WEB_DIST)/* $(EMBED_DIR)/; fi
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/athena-dhcpd
+	go build $(LDFLAGS) -o $(BUILD_DIR)/athena-hashpw ./cmd/athena-hashpw
 
 # Build the frontend (React + Vite)
 build-web:
@@ -67,6 +68,7 @@ install: build
 	@echo "==> Installing athena-dhcpd..."
 	install -d /usr/local/bin
 	install -m 0755 $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	install -m 0755 $(BUILD_DIR)/athena-hashpw /usr/local/bin/athena-hashpw
 	@# Config directory (775 so service can write backups + temp files)
 	install -d -m 0775 /etc/athena-dhcpd
 	@if [ ! -f /etc/athena-dhcpd/config.toml ]; then \
@@ -96,6 +98,11 @@ install: build
 # Run the server (requires root/CAP_NET_RAW for ARP probing)
 run: build
 	sudo $(BUILD_DIR)/$(BINARY_NAME) -config configs/example.toml
+
+# Build just the password hash tool
+hashpw:
+	@mkdir -p $(BUILD_DIR)
+	go build $(LDFLAGS) -o $(BUILD_DIR)/athena-hashpw ./cmd/athena-hashpw
 
 # Format code
 fmt:

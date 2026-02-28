@@ -95,10 +95,18 @@ Web UI user accounts. passwords MUST be bcrypt hashes
 | `password_hash` | string | bcrypt hash of the password |
 | `role` | string | `"admin"` (read/write) or `"viewer"` (read-only) |
 
-generate a password hash:
+generate a password hash using the included tool:
 ```bash
-htpasswd -nbBC 10 "" 'yourpassword' | cut -d: -f2
+athena-hashpw
 ```
+
+it prompts for the password interactively (hidden input, with confirmation). you can also pipe or pass it as an argument:
+```bash
+echo 'yourpassword' | athena-hashpw
+athena-hashpw -cost 12    # higher cost = slower but more secure
+```
+
+built automatically with `make build` or standalone with `make hashpw`
 
 ### [api.tls]
 

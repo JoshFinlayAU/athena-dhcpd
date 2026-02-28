@@ -18,10 +18,11 @@ import {
   v2GetDNSConfig, v2SetDNSConfig,
   v2GetHostnameSanitisation, v2SetHostnameSanitisation,
   listUsers, createUser, deleteUser, exportBackup, importBackup,
+  getVIPs, setVIPs,
   type SubnetConfig, type ReservationConfig, type DefaultsConfig,
   type ConflictDetectionConfig, type HAConfigType, type HooksConfigType,
   type DDNSConfigType, type DDNSZoneType, type DNSConfigType, type PoolConfig,
-  type HostnameSanitisationConfig,
+  type HostnameSanitisationConfig, type VIPEntry,
 } from '@/lib/api'
 
 type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'users' | 'backup'
@@ -507,8 +508,11 @@ function ConflictTab({ onStatus }: { onStatus: StatusFn }) {
 
 function HATab({ onStatus }: { onStatus: StatusFn }) {
   const { data, refetch } = useApi(useCallback(() => v2GetHAConfig(), []))
+  const { data: vipData, refetch: refetchVIPs } = useApi(useCallback(() => getVIPs(), []))
   const [h, setH] = useState<HAConfigType | null>(null)
+  const [vips, setVips] = useState<VIPEntry[] | null>(null)
   const current = h || data
+  const currentVIPs = vips ?? vipData ?? []
 
   const handleSave = async () => {
     if (!current) return
@@ -522,39 +526,112 @@ function HATab({ onStatus }: { onStatus: StatusFn }) {
     }
   }
 
+  const handleSaveVIPs = async () => {
+    try {
+      await setVIPs(currentVIPs)
+      onStatus('success', 'Floating IPs saved')
+      setVips(null)
+      refetchVIPs()
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Failed to save VIPs')
+    }
+  }
+
+  const addVIP = () => setVips([...currentVIPs, { ip: '', cidr: 24, interface: 'eth0' }])
+  const removeVIP = (i: number) => setVips(currentVIPs.filter((_, idx) => idx !== i))
+  const updateVIP = (i: number, patch: Partial<VIPEntry>) => {
+    const next = [...currentVIPs]
+    next[i] = { ...next[i], ...patch }
+    setVips(next)
+  }
+
   if (!current) return <Card className="p-8 text-center text-text-muted">Loading...</Card>
 
   return (
-    <Card className="p-5 space-y-4">
-      <Toggle checked={current.enabled} onChange={v => setH({ ...current, enabled: v })} label="Enable High Availability"
-        description="Synchronize leases and conflicts with a peer node" />
-      <FieldGrid>
-        <Field label="Role">
-          <Select value={current.role || ''} onChange={v => setH({ ...current, role: v })}
-            options={[{ value: 'primary', label: 'Primary' }, { value: 'secondary', label: 'Secondary' }]} placeholder="Select role" />
-        </Field>
-        <Field label="Peer Address"><TextInput value={current.peer_address || ''} onChange={v => setH({ ...current, peer_address: v })} placeholder="10.0.0.2:9067" mono /></Field>
-        <Field label="Listen Address"><TextInput value={current.listen_address || ''} onChange={v => setH({ ...current, listen_address: v })} placeholder="0.0.0.0:9067" mono /></Field>
-        <Field label="Heartbeat Interval"><TextInput value={current.heartbeat_interval || ''} onChange={v => setH({ ...current, heartbeat_interval: v })} placeholder="1s" mono /></Field>
-        <Field label="Failover Timeout"><TextInput value={current.failover_timeout || ''} onChange={v => setH({ ...current, failover_timeout: v })} placeholder="10s" mono /></Field>
-        <Field label="Sync Batch Size"><NumberInput value={current.sync_batch_size} onChange={v => setH({ ...current, sync_batch_size: v })} min={1} /></Field>
-      </FieldGrid>
-      {current.tls && (
-        <Section title="TLS" defaultOpen={current.tls.enabled}>
-          <Toggle checked={current.tls.enabled} onChange={v => setH({ ...current, tls: { ...current.tls, enabled: v } })} label="Enable TLS" />
-          <FieldGrid>
-            <Field label="Certificate File"><TextInput value={current.tls.cert_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, cert_file: v } })} /></Field>
-            <Field label="Key File"><TextInput value={current.tls.key_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, key_file: v } })} /></Field>
-            <Field label="CA File"><TextInput value={current.tls.ca_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, ca_file: v } })} /></Field>
-          </FieldGrid>
-        </Section>
-      )}
-      <div className="flex justify-end pt-2">
-        <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
-          <Save className="w-3.5 h-3.5" /> Save
-        </button>
-      </div>
-    </Card>
+    <div className="space-y-4">
+      <Card className="p-5 space-y-4">
+        <Toggle checked={current.enabled} onChange={v => setH({ ...current, enabled: v })} label="Enable High Availability"
+          description="Synchronize leases and conflicts with a peer node" />
+        <FieldGrid>
+          <Field label="Role">
+            <Select value={current.role || ''} onChange={v => setH({ ...current, role: v })}
+              options={[{ value: 'primary', label: 'Primary' }, { value: 'secondary', label: 'Secondary' }]} placeholder="Select role" />
+          </Field>
+          <Field label="Peer Address"><TextInput value={current.peer_address || ''} onChange={v => setH({ ...current, peer_address: v })} placeholder="10.0.0.2:9067" mono /></Field>
+          <Field label="Listen Address"><TextInput value={current.listen_address || ''} onChange={v => setH({ ...current, listen_address: v })} placeholder="0.0.0.0:9067" mono /></Field>
+          <Field label="Heartbeat Interval"><TextInput value={current.heartbeat_interval || ''} onChange={v => setH({ ...current, heartbeat_interval: v })} placeholder="1s" mono /></Field>
+          <Field label="Failover Timeout"><TextInput value={current.failover_timeout || ''} onChange={v => setH({ ...current, failover_timeout: v })} placeholder="10s" mono /></Field>
+          <Field label="Sync Batch Size"><NumberInput value={current.sync_batch_size} onChange={v => setH({ ...current, sync_batch_size: v })} min={1} /></Field>
+        </FieldGrid>
+        {current.tls && (
+          <Section title="TLS" defaultOpen={current.tls.enabled}>
+            <Toggle checked={current.tls.enabled} onChange={v => setH({ ...current, tls: { ...current.tls, enabled: v } })} label="Enable TLS" />
+            <FieldGrid>
+              <Field label="Certificate File"><TextInput value={current.tls.cert_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, cert_file: v } })} /></Field>
+              <Field label="Key File"><TextInput value={current.tls.key_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, key_file: v } })} /></Field>
+              <Field label="CA File"><TextInput value={current.tls.ca_file || ''} onChange={v => setH({ ...current, tls: { ...current.tls, ca_file: v } })} /></Field>
+            </FieldGrid>
+          </Section>
+        )}
+        <div className="flex justify-end pt-2">
+          <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+            <Save className="w-3.5 h-3.5" /> Save
+          </button>
+        </div>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Floating Virtual IPs</h3>
+            <p className="text-xs text-text-muted mt-0.5">IPs managed by the active node — automatically acquired on failover</p>
+          </div>
+          <button onClick={addVIP} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+            <Plus className="w-3 h-3" /> Add VIP
+          </button>
+        </div>
+        {currentVIPs.length === 0 ? (
+          <p className="text-xs text-text-muted py-4 text-center">No floating IPs configured. Click "Add VIP" to add one.</p>
+        ) : (
+          <div className="space-y-2">
+            {currentVIPs.map((v, i) => (
+              <div key={i} className="flex items-center gap-2 p-3 border border-border/50 rounded-lg">
+                <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">IP Address</label>
+                    <input value={v.ip} onChange={e => updateVIP(i, { ip: e.target.value })}
+                      placeholder="10.0.0.100" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">CIDR</label>
+                    <input type="number" value={v.cidr} onChange={e => updateVIP(i, { cidr: parseInt(e.target.value) || 24 })}
+                      min={1} max={32} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">Interface</label>
+                    <input value={v.interface} onChange={e => updateVIP(i, { interface: e.target.value })}
+                      placeholder="eth0" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">Label (optional)</label>
+                    <input value={v.label || ''} onChange={e => updateVIP(i, { label: e.target.value || undefined })}
+                      placeholder="DNS VLAN 10" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface focus:outline-none focus:border-accent" />
+                  </div>
+                </div>
+                <button onClick={() => removeVIP(i)} className="p-1.5 text-text-muted hover:text-danger transition-colors shrink-0" title="Remove">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end pt-2">
+          <button onClick={handleSaveVIPs} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+            <Save className="w-3.5 h-3.5" /> Save VIPs
+          </button>
+        </div>
+      </Card>
+    </div>
   )
 }
 

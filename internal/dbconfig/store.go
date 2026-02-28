@@ -24,6 +24,7 @@ var (
 	bucketFingerprint = []byte("config_fingerprint")
 	bucketSyslog      = []byte("config_syslog")
 	bucketPortAuto    = []byte("config_portauto")
+	bucketVIPs        = []byte("config_vips")
 	bucketMeta        = []byte("config_meta")
 	bucketUsers       = []byte("config_users")
 
@@ -36,6 +37,7 @@ var (
 	keyFingerprint   = []byte("fingerprint")
 	keySyslog        = []byte("syslog")
 	keyPortAuto      = []byte("portauto_rules")
+	keyVIPs          = []byte("vips")
 	keySetupComplete = []byte("setup_complete")
 )
 
@@ -56,6 +58,7 @@ type Store struct {
 	fingerprint   config.FingerprintConfig
 	syslog        config.SyslogConfig
 	portAutoRules json.RawMessage
+	vips          json.RawMessage
 	users         []config.UserConfig
 
 	// Listeners notified on config changes (fires for ALL changes, local + peer)
@@ -75,7 +78,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketSyslog, bucketPortAuto, bucketMeta, bucketUsers,
+			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketSyslog, bucketPortAuto, bucketVIPs, bucketMeta, bucketUsers,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -502,6 +505,33 @@ func (s *Store) SetPortAutoRules(data json.RawMessage) error {
 	return nil
 }
 
+// --- Virtual IPs (floating IPs for HA) ---
+
+func (s *Store) VIPs() json.RawMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.vips == nil {
+		return nil
+	}
+	cp := make(json.RawMessage, len(s.vips))
+	copy(cp, s.vips)
+	return cp
+}
+
+func (s *Store) SetVIPs(data json.RawMessage) error {
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketVIPs).Put(keyVIPs, data)
+	}); err != nil {
+		return fmt.Errorf("storing VIPs: %w", err)
+	}
+	s.mu.Lock()
+	s.vips = make(json.RawMessage, len(data))
+	copy(s.vips, data)
+	s.mu.Unlock()
+	s.notifyLocalChange("vips", data)
+	return nil
+}
+
 // HA config lives in TOML, not the database — see config.WriteHASection().
 
 // --- Build full config ---
@@ -613,6 +643,9 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	}
 	if s.portAutoRules != nil {
 		sections["portauto"] = s.portAutoRules
+	}
+	if s.vips != nil {
+		sections["vips"] = s.vips
 	}
 	return sections
 }
@@ -768,6 +801,20 @@ func (s *Store) ApplyPeerConfig(section string, data []byte) error {
 		copy(s.portAutoRules, data)
 		s.mu.Unlock()
 
+	case "vips":
+		if !json.Valid(data) {
+			return fmt.Errorf("invalid JSON for peer VIPs")
+		}
+		if err := s.db.Update(func(tx *bolt.Tx) error {
+			return tx.Bucket(bucketVIPs).Put(keyVIPs, data)
+		}); err != nil {
+			return fmt.Errorf("storing peer VIPs: %w", err)
+		}
+		s.mu.Lock()
+		s.vips = make(json.RawMessage, len(data))
+		copy(s.vips, data)
+		s.mu.Unlock()
+
 	default:
 		return fmt.Errorf("unknown config section from peer: %s", section)
 	}
@@ -820,6 +867,15 @@ func (s *Store) loadAll() error {
 			if data := pab.Get(keyPortAuto); data != nil {
 				s.portAutoRules = make(json.RawMessage, len(data))
 				copy(s.portAutoRules, data)
+			}
+		}
+
+		// Load VIPs as raw JSON
+		vb := tx.Bucket(bucketVIPs)
+		if vb != nil {
+			if data := vb.Get(keyVIPs); data != nil {
+				s.vips = make(json.RawMessage, len(data))
+				copy(s.vips, data)
 			}
 		}
 

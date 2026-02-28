@@ -3,8 +3,6 @@ package api
 import (
 	"net/http"
 	"time"
-
-	"github.com/athena-dhcpd/athena-dhcpd/internal/vrrp"
 )
 
 // handleHAStatus returns the current HA state.
@@ -38,9 +36,9 @@ func (s *Server) handleHAStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// VRRP/keepalived auto-detection (independent of HA FSM, no config needed)
-	if v := vrrp.Detect(); v != nil {
-		resp["vrrp"] = v
+	// Built-in floating VIP status
+	if s.vipGroup != nil {
+		resp["vip"] = s.vipGroup.Status()
 	}
 
 	JSONResponse(w, http.StatusOK, resp)

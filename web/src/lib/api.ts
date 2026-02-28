@@ -56,30 +56,28 @@ export interface ConflictStats {
   by_method: Record<string, number>
 }
 
-export interface VRRPInstanceStats {
-  advertisements_rx: number
-  advertisements_tx: number
-  became_master: number
-  released_master: number
-  packet_errors?: number
-  auth_errors?: number
+export interface VIPEntry {
+  ip: string
+  cidr: number
+  interface: string
+  label?: string
 }
 
-export interface VRRPInstance {
-  name: string
-  state: string
-  interface?: string
-  vips?: string[]
-  vip_on_local: boolean
-  priority?: number
-  stats?: VRRPInstanceStats
+export interface VIPEntryStatus {
+  ip: string
+  cidr: number
+  interface: string
+  label?: string
+  held: boolean
+  on_local: boolean
+  acquired_at?: string
+  error?: string
 }
 
-export interface VRRPStatus {
-  detected: boolean
-  running: boolean
-  pid?: number
-  instances?: VRRPInstance[]
+export interface VIPGroupStatus {
+  configured: boolean
+  active: boolean
+  entries?: VIPEntryStatus[]
 }
 
 export interface HAStatus {
@@ -91,7 +89,7 @@ export interface HAStatus {
   last_heartbeat: string
   is_standby: boolean
   primary_url?: string
-  vrrp?: VRRPStatus
+  vip?: VIPGroupStatus
 }
 
 export interface HealthResponse {
@@ -238,6 +236,12 @@ export const updateConfig = (config: string) =>
 export const getHAStatus = () => request<HAStatus>('/ha/status')
 export const triggerFailover = () =>
   request<void>('/ha/failover', { method: 'POST' })
+
+// Floating VIPs
+export const getVIPs = () => request<VIPEntry[]>('/vips')
+export const setVIPs = (entries: VIPEntry[]) =>
+  request<VIPEntry[]>('/vips', { method: 'PUT', body: JSON.stringify(entries) })
+export const getVIPStatus = () => request<VIPGroupStatus>('/vips/status')
 
 // Events
 export const getEvents = () => request<DhcpEvent[]>('/events')

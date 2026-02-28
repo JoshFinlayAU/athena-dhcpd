@@ -1,20 +1,10 @@
 import { useCallback } from 'react'
-import { Shield, Heart, ArrowRightLeft, Server, Radio, Wifi, WifiOff } from 'lucide-react'
+import { Shield, Heart, ArrowRightLeft, Server, Globe, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import { Card, StatCard } from '@/components/Card'
 import StatusBadge from '@/components/StatusBadge'
 import { usePolling } from '@/hooks/useApi'
-import { getHAStatus, triggerFailover, type VRRPStatus, type VRRPInstance } from '@/lib/api'
+import { getHAStatus, triggerFailover, type VIPGroupStatus, type VIPEntryStatus } from '@/lib/api'
 import { timeAgo } from '@/lib/utils'
-
-function vrrpStateColor(state: string): string {
-  switch (state) {
-    case 'MASTER': return 'bg-success/15 text-success'
-    case 'BACKUP': return 'bg-warning/15 text-warning'
-    case 'FAULT': return 'bg-danger/15 text-danger'
-    case 'STOPPED': return 'bg-text-muted/15 text-text-muted'
-    default: return 'bg-text-muted/15 text-text-muted'
-  }
-}
 
 export default function HAStatus() {
   const { data: ha, loading, refetch } = usePolling(useCallback(() => getHAStatus(), []), 5000)
@@ -38,7 +28,7 @@ export default function HAStatus() {
     )
   }
 
-  if (!ha?.enabled && !ha?.vrrp) {
+  if (!ha?.enabled) {
     return (
       <div className="p-6 max-w-7xl">
         <h1 className="text-2xl font-bold mb-6">HA Status</h1>
@@ -58,137 +48,119 @@ export default function HAStatus() {
           <h1 className="text-2xl font-bold">HA Status</h1>
           <p className="text-sm text-text-secondary mt-0.5">High availability cluster status</p>
         </div>
-        {ha?.enabled && (
-          <button
-            onClick={handleFailover}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-warning/15 text-warning hover:bg-warning/25 border border-warning/30 transition-colors"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5" /> Trigger Failover
-          </button>
-        )}
+        <button
+          onClick={handleFailover}
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-warning/15 text-warning hover:bg-warning/25 border border-warning/30 transition-colors"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5" /> Trigger Failover
+        </button>
       </div>
 
-      {ha?.enabled && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              label="Role"
-              value={ha.role || '—'}
-              icon={Shield}
-              color="bg-accent/15"
-            />
-            <StatCard
-              label="State"
-              value={ha.state || '—'}
-              icon={Server}
-              color={ha.state === 'ACTIVE' ? 'bg-success/15' : 'bg-warning/15'}
-            />
-            <StatCard
-              label="Last Heartbeat"
-              value={ha.last_heartbeat ? timeAgo(ha.last_heartbeat) : 'Never'}
-              icon={Heart}
-              color="bg-info/15"
-            />
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard
+          label="Role"
+          value={ha.role || '—'}
+          icon={Shield}
+          color="bg-accent/15"
+        />
+        <StatCard
+          label="State"
+          value={ha.state || '—'}
+          icon={Server}
+          color={ha.state === 'ACTIVE' ? 'bg-success/15' : 'bg-warning/15'}
+        />
+        <StatCard
+          label="Last Heartbeat"
+          value={ha.last_heartbeat ? timeAgo(ha.last_heartbeat) : 'Never'}
+          icon={Heart}
+          color="bg-info/15"
+        />
+      </div>
 
-          <Card>
-            <h2 className="text-sm font-semibold mb-4">Peer Connection</h2>
-            <div className="space-y-3">
-              <DetailRow label="Peer Address" value={ha.peer_address || '—'} mono />
-              <DetailRow label="Connection" value={ha.peer_connected ? 'Connected' : 'Disconnected'}>
-                <StatusBadge status={ha.peer_connected ? 'connected' : 'disconnected'} />
-              </DetailRow>
-              <DetailRow label="State" value={ha.state || '—'}>
-                <StatusBadge status={(ha.state || 'unknown').toLowerCase()} />
-              </DetailRow>
-            </div>
-          </Card>
-        </>
-      )}
+      <Card>
+        <h2 className="text-sm font-semibold mb-4">Peer Connection</h2>
+        <div className="space-y-3">
+          <DetailRow label="Peer Address" value={ha.peer_address || '—'} mono />
+          <DetailRow label="Connection" value={ha.peer_connected ? 'Connected' : 'Disconnected'}>
+            <StatusBadge status={ha.peer_connected ? 'connected' : 'disconnected'} />
+          </DetailRow>
+          <DetailRow label="State" value={ha.state || '—'}>
+            <StatusBadge status={(ha.state || 'unknown').toLowerCase()} />
+          </DetailRow>
+        </div>
+      </Card>
 
-      {ha?.vrrp && <VRRPCard vrrp={ha.vrrp} />}
+      {ha.vip && ha.vip.configured && <VIPCard vip={ha.vip} />}
     </div>
   )
 }
 
-function VRRPCard({ vrrp }: { vrrp: VRRPStatus }) {
+function VIPCard({ vip }: { vip: VIPGroupStatus }) {
+  const heldCount = vip.entries?.filter(e => e.held).length ?? 0
+  const totalCount = vip.entries?.length ?? 0
+
   return (
     <Card>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold flex items-center gap-2">
-          <Radio className="w-4 h-4" /> VRRP / Keepalived
+          <Globe className="w-4 h-4" /> Floating Virtual IPs
         </h2>
-        <div className="flex items-center gap-1.5 text-sm">
-          {vrrp.running
-            ? <><Wifi className="w-3.5 h-3.5 text-success" /><span className="text-success">Running</span></>
-            : <><WifiOff className="w-3.5 h-3.5 text-danger" /><span className="text-danger">Stopped</span></>
-          }
-        </div>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+          vip.active ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'
+        }`}>
+          {vip.active ? `${heldCount}/${totalCount} held` : 'standby'}
+        </span>
       </div>
 
-      {vrrp.instances && vrrp.instances.length > 0 ? (
-        <div className="space-y-4">
-          {vrrp.instances.map((inst) => (
-            <VRRPInstanceRow key={inst.name} inst={inst} />
+      {vip.entries && vip.entries.length > 0 ? (
+        <div className="space-y-2">
+          {vip.entries.map((entry, i) => (
+            <VIPEntryRow key={`${entry.ip}-${entry.interface}-${i}`} entry={entry} />
           ))}
         </div>
       ) : (
-        <p className="text-xs text-text-muted">Keepalived detected but no VRRP instance data available.</p>
+        <p className="text-xs text-text-muted">No floating IPs configured. Add them in Configuration &gt; HA.</p>
       )}
     </Card>
   )
 }
 
-function VRRPInstanceRow({ inst }: { inst: VRRPInstance }) {
-  const st = inst.stats
+function VIPEntryRow({ entry }: { entry: VIPEntryStatus }) {
   return (
-    <div className="border border-border/50 rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium font-mono">{inst.name}</span>
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${vrrpStateColor(inst.state)}`}>
-          {inst.state}
+    <div className="flex items-center justify-between py-2 px-3 border border-border/50 rounded-lg">
+      <div className="flex items-center gap-3">
+        {entry.error ? (
+          <AlertTriangle className="w-4 h-4 text-danger shrink-0" />
+        ) : entry.held ? (
+          <CheckCircle className="w-4 h-4 text-success shrink-0" />
+        ) : (
+          <XCircle className="w-4 h-4 text-text-muted shrink-0" />
+        )}
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono font-medium">{entry.ip}/{entry.cidr}</span>
+            <span className="text-[10px] text-text-muted font-mono">dev {entry.interface}</span>
+            {entry.label && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent">{entry.label}</span>
+            )}
+          </div>
+          {entry.error && (
+            <p className="text-[11px] text-danger mt-0.5">{entry.error}</p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+          entry.on_local ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'
+        }`}>
+          {entry.on_local ? 'on local' : 'not local'}
+        </span>
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+          entry.held ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'
+        }`}>
+          {entry.held ? 'held' : 'released'}
         </span>
       </div>
-      <div className="space-y-1.5">
-        {inst.interface && (
-          <DetailRow label="Interface" value={inst.interface} mono />
-        )}
-        {inst.priority != null && inst.priority > 0 && (
-          <DetailRow label="Priority" value={String(inst.priority)} />
-        )}
-        {inst.vips && inst.vips.length > 0 && (
-          <DetailRow label="Virtual IPs" value={inst.vips.join(', ')} mono>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm">{inst.vips.join(', ')}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${inst.vip_on_local ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'}`}>
-                {inst.vip_on_local ? 'local' : 'not local'}
-              </span>
-            </div>
-          </DetailRow>
-        )}
-      </div>
-      {st && (
-        <div className="mt-3 pt-3 border-t border-border/30">
-          <p className="text-[10px] uppercase tracking-wider text-text-muted mb-2 font-semibold">Statistics</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <MiniStat label="Adverts TX" value={st.advertisements_tx} />
-            <MiniStat label="Adverts RX" value={st.advertisements_rx} />
-            <MiniStat label="Became Master" value={st.became_master} />
-            <MiniStat label="Released Master" value={st.released_master} />
-            {(st.packet_errors ?? 0) > 0 && <MiniStat label="Pkt Errors" value={st.packet_errors!} warn />}
-            {(st.auth_errors ?? 0) > 0 && <MiniStat label="Auth Errors" value={st.auth_errors!} warn />}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function MiniStat({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
-  return (
-    <div className="text-center">
-      <p className={`text-sm font-semibold tabular-nums ${warn ? 'text-danger' : ''}`}>{value.toLocaleString()}</p>
-      <p className="text-[10px] text-text-muted">{label}</p>
     </div>
   )
 }

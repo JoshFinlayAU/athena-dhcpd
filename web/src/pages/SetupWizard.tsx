@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react'
-import { Server, Shield, Network, ChevronRight, ChevronLeft, Check, Upload, Eye, EyeOff, Loader2, AlertCircle, FileUp, X, FileText, Trash2 } from 'lucide-react'
+import { Server, Shield, Network, ChevronRight, ChevronLeft, Check, Upload, Eye, EyeOff, Loader2, AlertCircle, FileUp, X, FileText, Trash2, Plus } from 'lucide-react'
 import { Card } from '@/components/Card'
 import { usePolling } from '@/hooks/useApi'
 import {
-  setupHA, setupConfig, setupComplete, getHAStatus,
+  setupHA, setupConfig, setupComplete, getHAStatus, setVIPs,
   type SetupHARequest, type SubnetConfig, type PoolConfig, type DefaultsConfig,
-  type ReservationConfig, type ConflictDetectionConfig, type DNSConfigType,
+  type ReservationConfig, type ConflictDetectionConfig, type DNSConfigType, type VIPEntry,
 } from '@/lib/api'
 import { parseReservations, detectFormat, FORMAT_INFO, type ImportFormat, type ParseResult } from '@/lib/reservationParser'
 
@@ -29,6 +29,7 @@ export default function SetupWizard() {
     mode: 'ha', peer_address: '', listen_address: '0.0.0.0:8068',
     tls_enabled: false, tls_ca: '', tls_cert: '', tls_key: '',
   })
+  const [haVIPs, setHaVIPs] = useState<VIPEntry[]>([])
   const [subnets, setSubnets] = useState<SubnetConfig[]>([{ ...emptySubnet }])
   const [defaults, setDefaults] = useState<DefaultsConfig>({ ...emptyDefaults })
   const [conflict, setConflict] = useState<ConflictDetectionConfig>({
@@ -79,6 +80,10 @@ export default function SetupWizard() {
     try {
       const req: SetupHARequest = { ...haConfig, mode: 'ha', role }
       await setupHA(req)
+      // Save floating VIPs if any configured
+      if (haVIPs.length > 0) {
+        await setVIPs(haVIPs)
+      }
       if (role === 'secondary') {
         setStep('ha-standby-wait')
       } else {
@@ -164,7 +169,7 @@ export default function SetupWizard() {
         )}
 
         {step === 'ha-config' && (
-          <HAConfigStep config={haConfig} onChange={setHaConfig} role={role} />
+          <HAConfigStep config={haConfig} onChange={setHaConfig} role={role} vips={haVIPs} onVIPsChange={setHaVIPs} />
         )}
 
         {step === 'ha-standby-wait' && (
@@ -331,11 +336,20 @@ function RoleStep({ role, onChange }: { role: string; onChange: (r: 'primary' | 
 
 // --- Step: HA Config ---
 
-function HAConfigStep({ config, onChange, role }: {
+function HAConfigStep({ config, onChange, role, vips, onVIPsChange }: {
   config: SetupHARequest; onChange: (c: SetupHARequest) => void; role: string
+  vips: VIPEntry[]; onVIPsChange: (v: VIPEntry[]) => void
 }) {
   const set = (k: keyof SetupHARequest, v: string | boolean) => onChange({ ...config, [k]: v })
   const [showKey, setShowKey] = useState(false)
+
+  const addVIP = () => onVIPsChange([...vips, { ip: '', cidr: 24, interface: 'eth0' }])
+  const removeVIP = (i: number) => onVIPsChange(vips.filter((_, idx) => idx !== i))
+  const updateVIP = (i: number, patch: Partial<VIPEntry>) => {
+    const next = [...vips]
+    next[i] = { ...next[i], ...patch }
+    onVIPsChange(next)
+  }
 
   const readFile = (field: 'tls_ca' | 'tls_cert' | 'tls_key') => {
     const input = document.createElement('input')
@@ -352,74 +366,123 @@ function HAConfigStep({ config, onChange, role }: {
   }
 
   return (
-    <Card className="space-y-5">
-      <h2 className="text-lg font-semibold">HA Peer Configuration</h2>
-      <p className="text-sm text-text-muted">
-        {role === 'primary'
-          ? 'Configure how this primary connects to the standby node.'
-          : 'Configure how this standby connects to the primary node.'}
-      </p>
+    <div className="space-y-4">
+      <Card className="space-y-5">
+        <h2 className="text-lg font-semibold">HA Peer Configuration</h2>
+        <p className="text-sm text-text-muted">
+          {role === 'primary'
+            ? 'Configure how this primary connects to the standby node.'
+            : 'Configure how this standby connects to the primary node.'}
+        </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-text-muted mb-1">Peer Address</label>
-          <input
-            value={config.peer_address}
-            onChange={e => set('peer_address', e.target.value)}
-            placeholder="10.0.0.2:8068"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface font-mono focus:outline-none focus:border-accent transition-colors"
-          />
-          <p className="text-[11px] text-text-muted mt-1">
-            {role === 'primary' ? 'IP:port of the standby node' : 'IP:port of the primary node'}
-          </p>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-text-muted mb-1">Listen Address</label>
-          <input
-            value={config.listen_address}
-            onChange={e => set('listen_address', e.target.value)}
-            placeholder="0.0.0.0:8068"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface font-mono focus:outline-none focus:border-accent transition-colors"
-          />
-          <p className="text-[11px] text-text-muted mt-1">Address this node listens on for HA</p>
-        </div>
-      </div>
-
-      {/* TLS toggle */}
-      <div className="pt-3 border-t border-border/50">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.tls_enabled ?? false}
-            onChange={e => set('tls_enabled', e.target.checked)}
-            className="rounded border-border"
-          />
-          <span className="text-sm font-medium">Enable TLS encryption</span>
-        </label>
-      </div>
-
-      {config.tls_enabled && (
-        <div className="space-y-3 pl-1">
-          <TLSField label="CA Certificate" value={config.tls_ca ?? ''} field="tls_ca"
-            onChange={v => set('tls_ca', v)} onUpload={() => readFile('tls_ca')} />
-          <TLSField label="Client Certificate" value={config.tls_cert ?? ''} field="tls_cert"
-            onChange={v => set('tls_cert', v)} onUpload={() => readFile('tls_cert')} />
-          <div className="relative">
-            <TLSField label="Client Key" value={config.tls_key ?? ''} field="tls_key"
-              onChange={v => set('tls_key', v)} onUpload={() => readFile('tls_key')}
-              hidden={!showKey} />
-            <button
-              type="button"
-              onClick={() => setShowKey(!showKey)}
-              className="absolute top-0 right-0 p-1 text-text-muted hover:text-text-primary"
-              title={showKey ? 'Hide' : 'Show'}
-            >
-              {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">Peer Address</label>
+            <input
+              value={config.peer_address}
+              onChange={e => set('peer_address', e.target.value)}
+              placeholder="10.0.0.2:8068"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface font-mono focus:outline-none focus:border-accent transition-colors"
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              {role === 'primary' ? 'IP:port of the standby node' : 'IP:port of the primary node'}
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">Listen Address</label>
+            <input
+              value={config.listen_address}
+              onChange={e => set('listen_address', e.target.value)}
+              placeholder="0.0.0.0:8068"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface font-mono focus:outline-none focus:border-accent transition-colors"
+            />
+            <p className="text-[11px] text-text-muted mt-1">Address this node listens on for HA</p>
           </div>
         </div>
-      )}
-    </Card>
+
+        {/* TLS toggle */}
+        <div className="pt-3 border-t border-border/50">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.tls_enabled ?? false}
+              onChange={e => set('tls_enabled', e.target.checked)}
+              className="rounded border-border"
+            />
+            <span className="text-sm font-medium">Enable TLS encryption</span>
+          </label>
+        </div>
+
+        {config.tls_enabled && (
+          <div className="space-y-3 pl-1">
+            <TLSField label="CA Certificate" value={config.tls_ca ?? ''} field="tls_ca"
+              onChange={v => set('tls_ca', v)} onUpload={() => readFile('tls_ca')} />
+            <TLSField label="Client Certificate" value={config.tls_cert ?? ''} field="tls_cert"
+              onChange={v => set('tls_cert', v)} onUpload={() => readFile('tls_cert')} />
+            <div className="relative">
+              <TLSField label="Client Key" value={config.tls_key ?? ''} field="tls_key"
+                onChange={v => set('tls_key', v)} onUpload={() => readFile('tls_key')}
+                hidden={!showKey} />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute top-0 right-0 p-1 text-text-muted hover:text-text-primary"
+                title={showKey ? 'Hide' : 'Show'}
+              >
+                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Floating Virtual IPs</h2>
+            <p className="text-sm text-text-muted">Optional — the active node holds these IPs, released on failover</p>
+          </div>
+          <button onClick={addVIP} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+            <Plus className="w-3 h-3" /> Add VIP
+          </button>
+        </div>
+        {vips.length === 0 ? (
+          <p className="text-xs text-text-muted py-2 text-center">No floating IPs. You can add these later in Configuration.</p>
+        ) : (
+          <div className="space-y-2">
+            {vips.map((v, i) => (
+              <div key={i} className="flex items-center gap-2 p-3 border border-border/50 rounded-lg">
+                <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">IP Address</label>
+                    <input value={v.ip} onChange={e => updateVIP(i, { ip: e.target.value })}
+                      placeholder="10.0.0.100" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">CIDR</label>
+                    <input type="number" value={v.cidr} onChange={e => updateVIP(i, { cidr: parseInt(e.target.value) || 24 })}
+                      min={1} max={32} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">Interface</label>
+                    <input value={v.interface} onChange={e => updateVIP(i, { interface: e.target.value })}
+                      placeholder="eth0" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface font-mono focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted mb-0.5">Label</label>
+                    <input value={v.label || ''} onChange={e => updateVIP(i, { label: e.target.value || undefined })}
+                      placeholder="DNS VLAN 10" className="w-full px-2 py-1.5 text-xs rounded border border-border bg-surface focus:outline-none focus:border-accent" />
+                  </div>
+                </div>
+                <button onClick={() => removeVIP(i)} className="p-1.5 text-text-muted hover:text-danger transition-colors shrink-0" title="Remove">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   )
 }
 

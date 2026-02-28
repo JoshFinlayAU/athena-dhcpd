@@ -39,6 +39,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
 	syslogfwd "github.com/athena-dhcpd/athena-dhcpd/internal/syslog"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/vip"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
 
@@ -788,6 +789,46 @@ func main() {
 	}
 	if portAutoEngine != nil {
 		apiOpts = append(apiOpts, api.WithPortAutoEngine(portAutoEngine))
+	}
+
+	// Initialize floating VIP group from database
+	var vipGroup *vip.Group
+	if vipData := cfgStore.VIPs(); vipData != nil {
+		entries, err := vip.ParseEntries(vipData)
+		if err != nil {
+			logger.Warn("failed to parse VIP entries from database", "error", err)
+		} else if len(entries) > 0 {
+			g, err := vip.NewGroup(entries, logger)
+			if err != nil {
+				logger.Warn("failed to create VIP group", "error", err)
+			} else {
+				vipGroup = g
+				// If we're already active (primary on startup), acquire VIPs now
+				if haFSM != nil && haFSM.IsActive() {
+					vipGroup.AcquireAll()
+				}
+				defer vipGroup.ReleaseAll()
+			}
+		}
+	}
+
+	// Wire VIP acquire/release to HA state transitions
+	if haFSM != nil && vipGroup != nil {
+		haFSM.OnStateChange(func(oldState, newState dhcpv4.HAState) {
+			isNowActive := newState == dhcpv4.HAStateActive || newState == dhcpv4.HAStatePartnerDown
+			wasActive := oldState == dhcpv4.HAStateActive || oldState == dhcpv4.HAStatePartnerDown
+			if isNowActive && !wasActive {
+				logger.Info("HA became active — acquiring VIPs")
+				vipGroup.AcquireAll()
+			} else if !isNowActive && wasActive {
+				logger.Info("HA became standby — releasing VIPs")
+				vipGroup.ReleaseAll()
+			}
+		})
+	}
+
+	if vipGroup != nil {
+		apiOpts = append(apiOpts, api.WithVIPGroup(vipGroup))
 	}
 
 	apiServer := api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)

@@ -28,6 +28,7 @@ import (
 	radiuspkg "github.com/athena-dhcpd/athena-dhcpd/internal/radius"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/vip"
 )
 
 // Server is the HTTP API server for athena-dhcpd.
@@ -50,6 +51,7 @@ type Server struct {
 	macVendorDB     *macvendor.DB
 	radiusClient    *radiuspkg.Client
 	portAutoEngine  *portauto.Engine
+	vipGroup        *vip.Group
 	logger          *slog.Logger
 	httpServer      *http.Server
 	auth            *AuthMiddleware
@@ -165,6 +167,11 @@ func WithRADIUSClient(rc *radiuspkg.Client) ServerOption {
 // WithPortAutoEngine sets the port automation engine.
 func WithPortAutoEngine(pa *portauto.Engine) ServerOption {
 	return func(s *Server) { s.portAutoEngine = pa }
+}
+
+// WithVIPGroup sets the floating VIP manager group.
+func WithVIPGroup(g *vip.Group) ServerOption {
+	return func(s *Server) { s.vipGroup = g }
 }
 
 // WithSetupMode marks this server as running in setup wizard mode.
@@ -355,6 +362,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// HA
 	mux.HandleFunc("GET /api/v2/ha/status", s.auth.RequireAuth(s.handleHAStatus))
 	mux.HandleFunc("POST /api/v2/ha/failover", s.auth.RequireAdmin(s.handleHAFailover))
+
+	// Floating VIPs
+	mux.HandleFunc("GET /api/v2/vips", s.auth.RequireAuth(s.handleGetVIPs))
+	mux.HandleFunc("PUT /api/v2/vips", s.auth.RequireAdmin(s.handleSetVIPs))
+	mux.HandleFunc("GET /api/v2/vips/status", s.auth.RequireAuth(s.handleGetVIPStatus))
 
 	// DNS proxy
 	mux.HandleFunc("GET /api/v2/dns/stats", s.auth.RequireAuth(s.handleDNSStats))

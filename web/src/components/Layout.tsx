@@ -6,7 +6,7 @@ import { usePolling } from '@/hooks/useApi'
 import { getHAStatus } from '@/lib/api'
 import {
   LayoutDashboard, Network, BookmarkPlus, AlertTriangle,
-  Activity, Settings, Shield, ShieldCheck, ShieldAlert, Wifi, WifiOff, LogOut, ScrollText, FileText, Fingerprint, GitBranch, CloudSun, ExternalLink,
+  Activity, Settings, Shield, ShieldCheck, ShieldAlert, Wifi, WifiOff, LogOut, ScrollText, FileText, Fingerprint, GitBranch, CloudSun, Zap, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +24,7 @@ const navItems = [
   { to: '/rogue', icon: ShieldAlert, label: 'Rogue Servers' },
   { to: '/topology', icon: GitBranch, label: 'Topology' },
   { to: '/weather', icon: CloudSun, label: 'Network Weather' },
+  { to: '/portauto', icon: Zap, label: 'Port Automation' },
   { to: '/config', icon: Settings, label: 'Config' },
 ]
 

@@ -688,6 +688,50 @@ export const v2GetWeather = () => request<SubnetWeather[]>('/anomaly/weather')
 export const v2ImportTOML = (toml: string) =>
   request<{ status: string; subnets: number }>('/config/import', { method: 'POST', body: JSON.stringify({ toml }) })
 
+// Port Automation
+export interface PortAutoAction {
+  type: 'webhook' | 'log' | 'tag'
+  url?: string
+  method?: string
+  headers?: Record<string, string>
+  tag?: string
+  vlan?: number
+}
+
+export interface PortAutoRule {
+  name: string
+  enabled: boolean
+  priority: number
+  mac_patterns?: string[]
+  subnets?: string[]
+  circuit_ids?: string[]
+  remote_ids?: string[]
+  device_types?: string[]
+  actions: PortAutoAction[]
+}
+
+export interface PortAutoLeaseContext {
+  mac: string
+  ip: string
+  hostname?: string
+  subnet?: string
+  circuit_id?: string
+  remote_id?: string
+  device_type?: string
+  vendor?: string
+}
+
+export interface PortAutoMatchResult {
+  rule: string
+  actions: PortAutoAction[]
+}
+
+export const v2GetPortAutoRules = () => request<PortAutoRule[]>('/portauto/rules')
+export const v2SetPortAutoRules = (rules: PortAutoRule[]) =>
+  request<{ status: string }>('/portauto/rules', { method: 'PUT', body: JSON.stringify(rules) })
+export const v2TestPortAutoRules = (ctx: PortAutoLeaseContext) =>
+  request<PortAutoMatchResult[]>('/portauto/test', { method: 'POST', body: JSON.stringify(ctx) })
+
 // --- Setup Wizard API ---
 
 export interface SetupStatus {

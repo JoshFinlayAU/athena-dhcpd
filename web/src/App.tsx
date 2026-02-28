@@ -17,6 +17,7 @@ import Fingerprints from '@/pages/Fingerprints'
 import RogueServers from '@/pages/RogueServers'
 import Topology from '@/pages/Topology'
 import NetworkWeather from '@/pages/NetworkWeather'
+import PortAutomation from '@/pages/PortAutomation'
 import Login from '@/pages/Login'
 import CreateAdmin from '@/pages/CreateAdmin'
 import SetupWizard from '@/pages/SetupWizard'
@@ -92,6 +93,7 @@ export default function App() {
                   <Route path="/rogue" element={<RogueServers />} />
                   <Route path="/topology" element={<Topology />} />
                   <Route path="/weather" element={<NetworkWeather />} />
+                  <Route path="/portauto" element={<PortAutomation />} />
                   <Route path="/config" element={<Config />} />
                 </Route>
               </Routes>

@@ -6,11 +6,16 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
+
+// SO_BINDTODEVICE pins the socket to a specific interface (Linux only, value 25).
+// On non-Linux platforms the setsockopt call will fail harmlessly.
+const soBindToDevice = 25
 
 // Server is the core DHCPv4 UDP server.
 type Server struct {
@@ -39,16 +44,44 @@ func NewServer(handler *Handler, iface, addr string, logger *slog.Logger) *Serve
 
 // Start begins listening for DHCP packets on UDP port 67.
 func (s *Server) Start(ctx context.Context) error {
-	udpAddr, err := net.ResolveUDPAddr("udp4", s.addr)
-	if err != nil {
-		return fmt.Errorf("resolving UDP address %s: %w", s.addr, err)
+	iface := s.iface
+	logger := s.logger
+
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var firstErr error
+			c.Control(func(fd uintptr) {
+				// SO_REUSEADDR — allow multiple listeners (one per interface)
+				if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+					logger.Warn("failed to set SO_REUSEADDR", "error", err)
+				}
+
+				// SO_BROADCAST — required to send to 255.255.255.255
+				if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1); err != nil {
+					logger.Warn("failed to set SO_BROADCAST", "error", err)
+					firstErr = err
+				}
+
+				// SO_BINDTODEVICE — pin socket to interface (Linux only)
+				if iface != "" {
+					if err := syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, soBindToDevice, iface); err != nil {
+						// Expected to fail on non-Linux (macOS, etc.)
+						logger.Debug("SO_BINDTODEVICE not available (non-Linux?)", "interface", iface, "error", err)
+					} else {
+						logger.Info("socket bound to interface", "interface", iface)
+					}
+				}
+			})
+			return firstErr
+		},
 	}
 
-	conn, err := net.ListenUDP("udp4", udpAddr)
+	pc, err := lc.ListenPacket(ctx, "udp4", s.addr)
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", s.addr, err)
 	}
-	s.conn = conn
+
+	s.conn = pc.(*net.UDPConn)
 
 	s.logger.Info("DHCP server started",
 		"address", s.addr,

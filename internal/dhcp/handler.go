@@ -77,6 +77,17 @@ func NewHandler(
 		logger.Info("interface IP discovered for subnet matching", "interface", cfg.Server.Interface, "ip", h.ifaceIP.String())
 	}
 
+	// If no explicit server_id configured, fall back to the interface IP.
+	// Without a valid server IP, Option 54 would be 0.0.0.0 and clients
+	// reject the OFFER (or the server drops the REQUEST thinking "not for us").
+	if h.serverIP == nil && h.ifaceIP != nil {
+		h.serverIP = h.ifaceIP
+		logger.Warn("server_id not configured, using interface IP as server identifier", "server_ip", h.serverIP.String())
+	}
+	if h.serverIP == nil {
+		logger.Error("CRITICAL: no server_id configured and no interface IP discovered — DHCP will not work")
+	}
+
 	return h
 }
 
@@ -679,6 +690,9 @@ func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *conf
 func (h *Handler) UpdateConfig(cfg *config.Config) {
 	h.cfg = cfg
 	h.serverIP = cfg.ServerIP()
+	if h.serverIP == nil && h.ifaceIP != nil {
+		h.serverIP = h.ifaceIP
+	}
 }
 
 // UpdatePools updates the handler's pool map (for hot-reload).

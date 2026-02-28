@@ -374,6 +374,9 @@ func applyBootstrapDefaults(cfg *Config) {
 	if cfg.Server.PIDFile == "" {
 		cfg.Server.PIDFile = DefaultPIDFile
 	}
+	// API + WebUI are always on — they're core features of athena-dhcpd
+	cfg.API.Enabled = true
+	cfg.API.WebUI = true
 	if cfg.API.Listen == "" {
 		cfg.API.Listen = DefaultAPIListen
 	}
@@ -608,7 +611,9 @@ func applyDefaults(cfg *Config) {
 		cfg.Defaults.RebindTime = DefaultRebindTime.String()
 	}
 
-	// API defaults
+	// API + WebUI always on
+	cfg.API.Enabled = true
+	cfg.API.WebUI = true
 	if cfg.API.Listen == "" {
 		cfg.API.Listen = DefaultAPIListen
 	}

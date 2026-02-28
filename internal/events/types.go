@@ -95,13 +95,15 @@ type HAData struct {
 }
 
 // RogueData carries rogue DHCP server detection information.
+// MAC fields are string (not net.HardwareAddr) because HardwareAddr is []byte
+// which JSON encodes as base64 instead of a human-readable MAC string.
 type RogueData struct {
-	ServerIP  net.IP           `json:"server_ip"`
-	ServerMAC net.HardwareAddr `json:"server_mac,omitempty"`
-	OfferedIP net.IP           `json:"offered_ip,omitempty"`
-	ClientMAC net.HardwareAddr `json:"client_mac,omitempty"`
-	Interface string           `json:"interface,omitempty"`
-	Count     int              `json:"count"`
+	ServerIP  net.IP `json:"server_ip"`
+	ServerMAC string `json:"server_mac,omitempty"`
+	OfferedIP net.IP `json:"offered_ip,omitempty"`
+	ClientMAC string `json:"client_mac,omitempty"`
+	Interface string `json:"interface,omitempty"`
+	Count     int    `json:"count"`
 }
 
 // MarshalJSON implements custom JSON marshalling for Event.

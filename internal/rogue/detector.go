@@ -19,26 +19,26 @@ var bucketRogue = []byte("rogue_servers")
 
 // ServerEntry represents a detected rogue DHCP server.
 type ServerEntry struct {
-	ServerIP    string    `json:"server_ip"`
-	ServerMAC   string    `json:"server_mac,omitempty"`
-	LastOffer   string    `json:"last_offer_ip,omitempty"`
-	LastClient  string    `json:"last_client_mac,omitempty"`
-	Interface   string    `json:"interface,omitempty"`
-	FirstSeen   time.Time `json:"first_seen"`
-	LastSeen    time.Time `json:"last_seen"`
-	Count       int       `json:"count"`
-	Acknowledged bool     `json:"acknowledged"`
+	ServerIP     string    `json:"server_ip"`
+	ServerMAC    string    `json:"server_mac,omitempty"`
+	LastOffer    string    `json:"last_offer_ip,omitempty"`
+	LastClient   string    `json:"last_client_mac,omitempty"`
+	Interface    string    `json:"interface,omitempty"`
+	FirstSeen    time.Time `json:"first_seen"`
+	LastSeen     time.Time `json:"last_seen"`
+	Count        int       `json:"count"`
+	Acknowledged bool      `json:"acknowledged"`
 }
 
 // Detector monitors the network for rogue DHCP servers.
 type Detector struct {
-	db        *bolt.DB
-	bus       *events.Bus
-	logger    *slog.Logger
-	ownIPs    map[string]bool // our server IPs (to exclude)
-	mu        sync.RWMutex
-	known     map[string]*ServerEntry // serverIP → entry
-	done      chan struct{}
+	db     *bolt.DB
+	bus    *events.Bus
+	logger *slog.Logger
+	ownIPs map[string]bool // our server IPs (to exclude)
+	mu     sync.RWMutex
+	known  map[string]*ServerEntry // serverIP → entry
+	done   chan struct{}
 }
 
 // NewDetector creates a new rogue DHCP server detector.
@@ -106,17 +106,22 @@ func (d *Detector) ReportOffer(serverIP, offeredIP net.IP, clientMAC net.Hardwar
 			"client_mac", clientMAC,
 			"count", entry.Count)
 
+		rd := &events.RogueData{
+			ServerIP:  serverIP,
+			OfferedIP: offeredIP,
+			Interface: iface,
+			Count:     entry.Count,
+		}
+		if serverMAC != nil {
+			rd.ServerMAC = serverMAC.String()
+		}
+		if clientMAC != nil {
+			rd.ClientMAC = clientMAC.String()
+		}
 		d.bus.Publish(events.Event{
 			Type:      events.EventRogueDetected,
 			Timestamp: now,
-			Rogue: &events.RogueData{
-				ServerIP:  serverIP,
-				ServerMAC: serverMAC,
-				OfferedIP: offeredIP,
-				ClientMAC: clientMAC,
-				Interface: iface,
-				Count:     entry.Count,
-			},
+			Rogue:     rd,
 		})
 		return
 	}
@@ -150,17 +155,22 @@ func (d *Detector) ReportOffer(serverIP, offeredIP net.IP, clientMAC net.Hardwar
 		"client_mac", clientMAC,
 		"interface", iface)
 
+	rd2 := &events.RogueData{
+		ServerIP:  serverIP,
+		OfferedIP: offeredIP,
+		Interface: iface,
+		Count:     1,
+	}
+	if serverMAC != nil {
+		rd2.ServerMAC = serverMAC.String()
+	}
+	if clientMAC != nil {
+		rd2.ClientMAC = clientMAC.String()
+	}
 	d.bus.Publish(events.Event{
 		Type:      events.EventRogueDetected,
 		Timestamp: now,
-		Rogue: &events.RogueData{
-			ServerIP:  serverIP,
-			ServerMAC: serverMAC,
-			OfferedIP: offeredIP,
-			ClientMAC: clientMAC,
-			Interface: iface,
-			Count:     1,
-		},
+		Rogue:     rd2,
 	})
 }
 

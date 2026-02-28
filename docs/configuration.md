@@ -3,7 +3,7 @@
 athena-dhcpd uses a **two-layer configuration model**:
 
 1. **Bootstrap TOML** (`config.toml`) — the only file you create manually. contains `[server]`, `[api]`, and optionally `[ha]`. loaded at startup
-2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, VIPs, syslog, fingerprinting, hostname sanitisation. configured through the **setup wizard** on first boot and managed ongoing through the **web UI** Configuration page or REST API. synced automatically between HA peers
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, VIPs, SIEM forwarding, fingerprinting, hostname sanitisation. configured through the **setup wizard** on first boot and managed ongoing through the **web UI** Configuration page or REST API. synced automatically between HA peers
 
 the config file is passed via `-config` flag:
 ```bash
@@ -421,20 +421,62 @@ Dynamic blocklists/allowlists for domain blocking
 
 ---
 
-## Syslog
+## SIEM Event Forwarding
 
-**Web UI:** Configuration > Syslog
+**Web UI:** Configuration > SIEM
 **API:** `GET/PUT /api/v2/config/syslog`
 
-Remote syslog forwarding. forwards DHCP events to your syslog server as RFC 5424 messages
+forwards DHCP events to your SIEM in real-time. supports multiple formats and output backends. you can enable any combination of outputs simultaneously
+
+### General
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Enable syslog forwarding |
-| `address` | string | | Syslog server host:port e.g. `"10.0.0.1:514"` |
+| `enabled` | bool | `false` | Enable SIEM event forwarding |
+| `format` | string | `"rfc5424"` | Event format: `"rfc5424"` (key=value), `"cef"` (ArcSight/Sentinel/QRadar), `"json"` (Splunk/Elasticsearch/Loki) |
+
+### Remote syslog output
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `address` | string | | Syslog server host:port e.g. `"10.0.0.1:514"`. leave empty to disable syslog output |
 | `protocol` | string | `"udp"` | `"udp"` or `"tcp"` |
 | `facility` | int | `16` | Syslog facility (16 = local0) |
-| `tag` | string | `"athena-dhcpd"` | Syslog tag/app name |
+| `tag` | string | `"athena-dhcpd"` | Syslog APP-NAME field |
+
+### HTTP output
+
+push events to Splunk HEC, Elasticsearch, Graylog, or any HTTP endpoint. auto-detects Splunk HEC endpoints and formats the request accordingly (HEC wrapper, `Splunk` auth header)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `http_enabled` | bool | `false` | Enable HTTP output |
+| `http_endpoint` | string | | Full URL e.g. `"https://splunk:8088/services/collector/event"` |
+| `http_token` | string | | Auth token (Splunk HEC token or Bearer token) |
+| `http_headers` | map | | Custom HTTP headers |
+| `http_timeout` | duration | `"5s"` | Request timeout |
+| `http_insecure` | bool | `false` | Skip TLS certificate verification |
+
+### File output
+
+writes events to a local log file with automatic rotation and gzip compression of rotated files
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file_enabled` | bool | `false` | Enable file output |
+| `file_path` | string | | Log file path e.g. `"/var/log/athena-dhcpd/events.log"` |
+| `file_max_size_mb` | int | `100` | Max file size in MB before rotation |
+| `file_max_backups` | int | `5` | Number of compressed rotated files to keep |
+
+### CEF settings
+
+only used when `format` is `"cef"`. these values fill the CEF header: `CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extensions`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cef_device_vendor` | string | `"athena-dhcpd"` | CEF Device Vendor |
+| `cef_device_product` | string | `"DHCP Server"` | CEF Device Product |
+| `cef_device_version` | string | `"1.0"` | CEF Device Version |
 
 ---
 

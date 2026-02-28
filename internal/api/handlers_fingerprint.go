@@ -55,5 +55,6 @@ func (s *Server) handleFingerprintStats(w http.ResponseWriter, r *http.Request) 
 		"total_devices": len(all),
 		"by_type":       byType,
 		"by_os":         byOS,
+		"has_api_key":   s.fpStore.HasFingerbank(),
 	})
 }

@@ -14,15 +14,16 @@ import (
 
 // BoltDB bucket names for config storage.
 var (
-	bucketSubnets   = []byte("config_subnets")
-	bucketDefaults  = []byte("config_defaults")
-	bucketConflict  = []byte("config_conflict")
-	bucketHooks     = []byte("config_hooks")
-	bucketDDNS      = []byte("config_ddns")
-	bucketDNS       = []byte("config_dns")
-	bucketHostSanit = []byte("config_hostname_sanitisation")
-	bucketMeta      = []byte("config_meta")
-	bucketUsers     = []byte("config_users")
+	bucketSubnets     = []byte("config_subnets")
+	bucketDefaults    = []byte("config_defaults")
+	bucketConflict    = []byte("config_conflict")
+	bucketHooks       = []byte("config_hooks")
+	bucketDDNS        = []byte("config_ddns")
+	bucketDNS         = []byte("config_dns")
+	bucketHostSanit   = []byte("config_hostname_sanitisation")
+	bucketFingerprint = []byte("config_fingerprint")
+	bucketMeta        = []byte("config_meta")
+	bucketUsers       = []byte("config_users")
 
 	keyDefaults      = []byte("defaults")
 	keyConflict      = []byte("conflict_detection")
@@ -30,6 +31,7 @@ var (
 	keyDDNS          = []byte("ddns")
 	keyDNS           = []byte("dns")
 	keyHostSanit     = []byte("hostname_sanitisation")
+	keyFingerprint   = []byte("fingerprint")
 	keySetupComplete = []byte("setup_complete")
 )
 
@@ -40,14 +42,15 @@ type Store struct {
 	mu sync.RWMutex
 
 	// In-memory cache
-	subnets   []config.SubnetConfig
-	defaults  config.DefaultsConfig
-	conflict  config.ConflictDetectionConfig
-	hooks     config.HooksConfig
-	ddns      config.DDNSConfig
-	dns       config.DNSProxyConfig
-	hostSanit config.HostnameSanitisationConfig
-	users     []config.UserConfig
+	subnets     []config.SubnetConfig
+	defaults    config.DefaultsConfig
+	conflict    config.ConflictDetectionConfig
+	hooks       config.HooksConfig
+	ddns        config.DDNSConfig
+	dns         config.DNSProxyConfig
+	hostSanit   config.HostnameSanitisationConfig
+	fingerprint config.FingerprintConfig
+	users       []config.UserConfig
 
 	// Listeners notified on config changes (fires for ALL changes, local + peer)
 	onChange []func()
@@ -66,7 +69,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketMeta, bucketUsers,
+			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketMeta, bucketUsers,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -430,6 +433,24 @@ func (s *Store) SetHostnameSanitisation(h config.HostnameSanitisationConfig) err
 	return nil
 }
 
+func (s *Store) Fingerprint() config.FingerprintConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fingerprint
+}
+
+func (s *Store) SetFingerprint(f config.FingerprintConfig) error {
+	data, _ := json.Marshal(f)
+	if err := s.putJSON(bucketFingerprint, keyFingerprint, f); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.fingerprint = f
+	s.mu.Unlock()
+	s.notifyLocalChange("fingerprint", data)
+	return nil
+}
+
 // HA config lives in TOML, not the database — see config.WriteHASection().
 
 // --- Build full config ---
@@ -449,6 +470,7 @@ func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
 	cfg.DDNS = s.ddns
 	cfg.DNS = s.dns
 	cfg.HostnameSanitisation = s.hostSanit
+	cfg.Fingerprint = s.fingerprint
 
 	// Merge DB users into API auth (TOML users take precedence by being first)
 	if len(s.users) > 0 {
@@ -487,6 +509,9 @@ func (s *Store) ImportFromConfig(cfg *config.Config) error {
 	if err := s.SetHostnameSanitisation(cfg.HostnameSanitisation); err != nil {
 		return fmt.Errorf("importing hostname sanitisation: %w", err)
 	}
+	if err := s.SetFingerprint(cfg.Fingerprint); err != nil {
+		return fmt.Errorf("importing fingerprint: %w", err)
+	}
 	for _, sub := range cfg.Subnets {
 		if err := s.PutSubnet(sub); err != nil {
 			return fmt.Errorf("importing subnet %s: %w", sub.Network, err)
@@ -524,6 +549,9 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	}
 	if data, err := json.Marshal(s.hostSanit); err == nil {
 		sections["hostname_sanitisation"] = data
+	}
+	if data, err := json.Marshal(s.fingerprint); err == nil {
+		sections["fingerprint"] = data
 	}
 	return sections
 }
@@ -640,6 +668,18 @@ func (s *Store) ApplyPeerConfig(section string, data []byte) error {
 		s.hostSanit = h
 		s.mu.Unlock()
 
+	case "fingerprint":
+		var f config.FingerprintConfig
+		if err := json.Unmarshal(data, &f); err != nil {
+			return fmt.Errorf("unmarshalling peer fingerprint config: %w", err)
+		}
+		if err := s.putJSON(bucketFingerprint, keyFingerprint, f); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.fingerprint = f
+		s.mu.Unlock()
+
 	default:
 		return fmt.Errorf("unknown config section from peer: %s", section)
 	}
@@ -683,6 +723,7 @@ func (s *Store) loadAll() error {
 		loadJSON(tx, bucketDDNS, keyDDNS, &s.ddns)
 		loadJSON(tx, bucketDNS, keyDNS, &s.dns)
 		loadJSON(tx, bucketHostSanit, keyHostSanit, &s.hostSanit)
+		loadJSON(tx, bucketFingerprint, keyFingerprint, &s.fingerprint)
 
 		// HA config lives in TOML, not the database — see config.WriteHASection()
 

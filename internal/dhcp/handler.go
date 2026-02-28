@@ -10,6 +10,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/conflict"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
+	"github.com/athena-dhcpd/athena-dhcpd/internal/fingerprint"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/lease"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
@@ -32,6 +33,7 @@ type Handler struct {
 	serverIP net.IP
 	ifaceIP  net.IP // auto-discovered from listening interface
 	ha       HAChecker
+	fpStore  *fingerprint.Store
 }
 
 // NewHandler creates a new DHCP message handler.
@@ -81,6 +83,11 @@ func NewHandler(
 // SetHA sets the HA state checker (call after FSM is created).
 func (h *Handler) SetHA(ha HAChecker) {
 	h.ha = ha
+}
+
+// SetFingerprintStore sets the fingerprint store for device classification.
+func (h *Handler) SetFingerprintStore(fp *fingerprint.Store) {
+	h.fpStore = fp
 }
 
 // UpdateDetector sets or replaces the conflict detector (used by secondary on failover).
@@ -136,6 +143,17 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		"mac", mac.String(),
 		"hostname", hostname,
 		"requested_ip", pkt.RequestedIP())
+
+	// Extract and record device fingerprint
+	if h.fpStore != nil {
+		rawParamList, _ := pkt.Options[dhcpv4.OptionParameterRequestList]
+		h.fpStore.Record(&fingerprint.RawFingerprint{
+			MAC:         mac,
+			VendorClass: pkt.VendorClassID(),
+			ParamList:   rawParamList,
+			Hostname:    hostname,
+		})
+	}
 
 	// Fire discover event
 	h.bus.Publish(events.Event{

@@ -689,6 +689,18 @@ func main() {
 		logger.Warn("failed to initialize fingerprint store", "error", err)
 	} else {
 		logger.Info("fingerprint store initialized")
+
+		// Set up Fingerbank API client if configured
+		if cfg.Fingerprint.FingerbankAPI != "" {
+			fb := fingerprint.NewFingerbankClient(cfg.Fingerprint.FingerbankAPI, cfg.Fingerprint.FingerbankURL, logger)
+			if fb != nil {
+				fpStore.SetFingerbank(fb)
+				logger.Info("fingerbank API client configured")
+			}
+		}
+
+		// Wire fingerprint store into DHCP handler
+		handler.SetFingerprintStore(fpStore)
 	}
 
 	// Initialize topology map
@@ -807,6 +819,16 @@ func main() {
 		// Reload DNS proxy config (filter lists, forwarders, zone overrides)
 		if dnsServer != nil {
 			dnsServer.UpdateConfig(&cfg.DNS)
+		}
+
+		// Reload Fingerbank API client if API key changed
+		if fpStore != nil {
+			if cfg.Fingerprint.FingerbankAPI != "" {
+				fb := fingerprint.NewFingerbankClient(cfg.Fingerprint.FingerbankAPI, cfg.Fingerprint.FingerbankURL, logger)
+				fpStore.SetFingerbank(fb)
+			} else {
+				fpStore.SetFingerbank(nil)
+			}
 		}
 
 		// Reload DHCP listeners — add/remove interfaces as needed

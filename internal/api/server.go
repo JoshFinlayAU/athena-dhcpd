@@ -297,6 +297,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v2/config/dns", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetDNS)))
 	mux.HandleFunc("GET /api/v2/config/hostname-sanitisation", s.auth.RequireAuth(s.handleV2GetHostnameSanitisation))
 	mux.HandleFunc("PUT /api/v2/config/hostname-sanitisation", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetHostnameSanitisation)))
+	mux.HandleFunc("GET /api/v2/config/fingerprint", s.auth.RequireAuth(s.handleV2GetFingerprint))
+	mux.HandleFunc("PUT /api/v2/config/fingerprint", s.auth.RequireAdmin(s.standbyGuard(s.handleV2SetFingerprint)))
 	mux.HandleFunc("POST /api/v2/config/import", s.auth.RequireAdmin(s.standbyGuard(s.handleV2ImportTOML)))
 	mux.HandleFunc("GET /api/v2/config/raw", s.auth.RequireAuth(s.handleGetConfigRaw))
 	mux.HandleFunc("POST /api/v2/config/validate", s.auth.RequireAuth(s.handleValidateConfig))

@@ -592,11 +592,20 @@ export interface FingerprintStats {
   total_devices: number
   by_type: Record<string, number>
   by_os: Record<string, number>
+  has_api_key: boolean
+}
+
+export interface FingerprintConfig {
+  enabled: boolean
+  fingerbank_api_key: string
+  fingerbank_url: string
 }
 
 export const v2GetFingerprints = () => request<DeviceFingerprint[]>('/fingerprints')
 export const v2GetFingerprint = (mac: string) => request<DeviceFingerprint>(`/fingerprints/${encodeURIComponent(mac)}`)
 export const v2GetFingerprintStats = () => request<FingerprintStats>('/fingerprints/stats')
+export const v2GetFingerprintConfig = () => request<FingerprintConfig>('/config/fingerprint')
+export const v2SetFingerprintConfig = (cfg: FingerprintConfig) => request<FingerprintConfig>('/config/fingerprint', { method: 'PUT', body: JSON.stringify(cfg) })
 
 // Rogue DHCP server detection
 export interface RogueServer {

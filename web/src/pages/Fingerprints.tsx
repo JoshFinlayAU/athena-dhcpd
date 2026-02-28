@@ -3,10 +3,10 @@ import { useApi } from '@/hooks/useApi'
 import { Card } from '@/components/Card'
 import { TextInput } from '@/components/FormFields'
 import { Table, THead, TH, TD, TR, EmptyRow } from '@/components/Table'
-import { Fingerprint, Search, Monitor, Smartphone, Printer, Wifi, Camera, HelpCircle, Server } from 'lucide-react'
+import { Fingerprint, Search, Monitor, Smartphone, Printer, Wifi, Camera, HelpCircle, Server, AlertTriangle, Key } from 'lucide-react'
 import {
-  v2GetFingerprints, v2GetFingerprintStats,
-  type DeviceFingerprint,
+  v2GetFingerprints, v2GetFingerprintStats, v2GetFingerprintConfig, v2SetFingerprintConfig,
+  type DeviceFingerprint, type FingerprintConfig,
 } from '@/lib/api'
 
 const typeIcons: Record<string, typeof Monitor> = {
@@ -34,8 +34,28 @@ function formatTime(ts: string) {
 
 export default function Fingerprints() {
   const { data: devices, loading } = useApi(useCallback(() => v2GetFingerprints(), []))
-  const { data: stats } = useApi(useCallback(() => v2GetFingerprintStats(), []))
+  const { data: stats, refetch: refetchStats } = useApi(useCallback(() => v2GetFingerprintStats(), []))
+  const { data: fpConfig, refetch: refetchConfig } = useApi<FingerprintConfig>(useCallback(() => v2GetFingerprintConfig(), []))
   const [filter, setFilter] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) return
+    setSaving(true)
+    try {
+      await v2SetFingerprintConfig({
+        enabled: true,
+        fingerbank_api_key: apiKey.trim(),
+        fingerbank_url: fpConfig?.fingerbank_url || '',
+      })
+      setApiKey('')
+      refetchConfig()
+      refetchStats()
+    } catch { /* ignore */ } finally {
+      setSaving(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     if (!devices) return []
@@ -62,6 +82,44 @@ export default function Fingerprints() {
           {stats && <span className="text-text-muted ml-1">({stats.total_devices} devices known)</span>}
         </p>
       </div>
+
+      {/* Fingerbank API key alert */}
+      {stats && !stats.has_api_key && (
+        <Card className="p-4 border-warning/30 bg-warning/5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <div>
+                <p className="text-sm font-medium">Fingerbank API Key Not Configured</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Without a Fingerbank API key, device classification uses basic local heuristics only.
+                  Get a free API key from{' '}
+                  <a href="https://api.fingerbank.org" target="_blank" rel="noopener noreferrer"
+                    className="text-primary hover:underline">api.fingerbank.org</a>{' '}
+                  for much more accurate device identification.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-text-muted" />
+                <input
+                  type="text"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder="Paste your Fingerbank API key..."
+                  className="flex-1 bg-surface border border-border rounded px-2 py-1 text-xs font-mono"
+                />
+                <button
+                  onClick={handleSaveApiKey}
+                  disabled={saving || !apiKey.trim()}
+                  className="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Stats cards */}
       {stats && (

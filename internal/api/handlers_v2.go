@@ -408,6 +408,33 @@ func (s *Server) handleV2SetHostnameSanitisation(w http.ResponseWriter, r *http.
 	JSONResponse(w, http.StatusOK, h)
 }
 
+// --- Fingerprint Config ---
+
+func (s *Server) handleV2GetFingerprint(w http.ResponseWriter, r *http.Request) {
+	if s.cfgStore == nil {
+		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
+		return
+	}
+	JSONResponse(w, http.StatusOK, s.cfgStore.Fingerprint())
+}
+
+func (s *Server) handleV2SetFingerprint(w http.ResponseWriter, r *http.Request) {
+	if s.cfgStore == nil {
+		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
+		return
+	}
+	var f config.FingerprintConfig
+	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := s.cfgStore.SetFingerprint(f); err != nil {
+		JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	JSONResponse(w, http.StatusOK, f)
+}
+
 // --- V1 TOML Import ---
 
 func (s *Server) handleV2ImportTOML(w http.ResponseWriter, r *http.Request) {

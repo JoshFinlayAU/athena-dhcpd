@@ -19,10 +19,18 @@ type Config struct {
 	Hooks                HooksConfig                `toml:"hooks"`
 	DDNS                 DDNSConfig                 `toml:"ddns"`
 	DNS                  DNSProxyConfig             `toml:"dns"`
+	Fingerprint          FingerprintConfig          `toml:"fingerprint" json:"fingerprint"`
 	HostnameSanitisation HostnameSanitisationConfig `toml:"hostname_sanitisation" json:"hostname_sanitisation"`
 	Subnets              []SubnetConfig             `toml:"subnet"`
 	Defaults             DefaultsConfig             `toml:"defaults"`
 	API                  APIConfig                  `toml:"api"`
+}
+
+// FingerprintConfig holds device fingerprinting settings.
+type FingerprintConfig struct {
+	Enabled       bool   `toml:"enabled" json:"enabled"`
+	FingerbankAPI string `toml:"fingerbank_api_key" json:"fingerbank_api_key"`
+	FingerbankURL string `toml:"fingerbank_url" json:"fingerbank_url"`
 }
 
 // ServerConfig holds core server settings.

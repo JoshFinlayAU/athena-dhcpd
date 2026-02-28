@@ -5,6 +5,7 @@
 package fingerprint
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -73,10 +74,11 @@ func (rf *RawFingerprint) ParamListString() string {
 
 // Store provides persistent storage and lookup of device fingerprints.
 type Store struct {
-	db     *bolt.DB
-	logger *slog.Logger
-	mu     sync.RWMutex
-	cache  map[string]*DeviceInfo // mac → DeviceInfo
+	db         *bolt.DB
+	logger     *slog.Logger
+	mu         sync.RWMutex
+	cache      map[string]*DeviceInfo // mac → DeviceInfo
+	fingerbank *FingerbankClient
 }
 
 // NewStore creates a new fingerprint store backed by BoltDB.
@@ -149,6 +151,11 @@ func (s *Store) Record(fp *RawFingerprint) *DeviceInfo {
 	s.cache[mac] = info
 	s.persist(info)
 
+	// Async Fingerbank API enrichment for new/changed fingerprints
+	if s.fingerbank != nil {
+		go s.enrichFromFingerbank(info, fp)
+	}
+
 	cp := *info
 	return &cp
 }
@@ -206,6 +213,45 @@ func (s *Store) loadAll() error {
 			return nil
 		})
 	})
+}
+
+// SetFingerbank sets the Fingerbank API client for enhanced classification.
+func (s *Store) SetFingerbank(fb *FingerbankClient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fingerbank = fb
+}
+
+// HasFingerbank returns true if the Fingerbank API client is configured.
+func (s *Store) HasFingerbank() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fingerbank != nil
+}
+
+// enrichFromFingerbank calls the Fingerbank API to improve classification.
+// Runs asynchronously — updates the cached info and persists on success.
+func (s *Store) enrichFromFingerbank(info *DeviceInfo, fp *RawFingerprint) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := s.fingerbank.Classify(ctx, info, fp); err != nil {
+		s.logger.Debug("fingerbank enrichment failed",
+			"mac", info.MAC, "error", err)
+		return
+	}
+
+	// Update the cached entry and persist
+	s.mu.Lock()
+	if cached, ok := s.cache[info.MAC]; ok {
+		cached.DeviceName = info.DeviceName
+		cached.DeviceType = info.DeviceType
+		cached.OS = info.OS
+		cached.Confidence = info.Confidence
+		cached.Source = info.Source
+		s.persist(cached)
+	}
+	s.mu.Unlock()
 }
 
 // ouiFromMAC extracts the OUI prefix (first 3 octets) from a MAC address.

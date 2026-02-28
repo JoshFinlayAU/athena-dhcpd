@@ -23,14 +23,19 @@ DHCP uses port 67 (privileged) and conflict detection uses raw sockets. you need
 
 | Capability | Why |
 |-----------|-----|
-| `CAP_NET_BIND_SERVICE` | Bind to port 67 |
+| `CAP_NET_BIND_SERVICE` | Bind to privileged ports (67 for DHCP, 53 for DNS proxy) |
 | `CAP_NET_RAW` | Raw sockets for ARP/ICMP conflict detection |
+| `CAP_NET_ADMIN` | Floating VIP management (`ip addr add/del`) for HA. only needed if you use built-in VIPs |
 
 three ways to handle this:
 
 ### option 1: setcap on the binary (simple)
 ```bash
+# without floating VIPs
 sudo setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/local/bin/athena-dhcpd
+
+# with floating VIPs (HA)
+sudo setcap 'cap_net_raw,cap_net_bind_service,cap_net_admin+ep' /usr/local/bin/athena-dhcpd
 ```
 
 note: setcap gets wiped if you replace the binary. re-run after updates
@@ -45,6 +50,8 @@ sudo ./athena-dhcpd -config /etc/athena-dhcpd/config.toml
 works but you know... root
 
 if the server can't get CAP_NET_RAW, conflict detection gets disabled automatically. DHCP still works, you just lose the probing safety net. it logs a big warning about it
+
+if the server can't get CAP_NET_ADMIN, floating VIP management falls back to running `sudo ip addr add/del`. if that also fails, the VIP error is reported in the API/web UI but DHCP continues to function
 
 ## directory setup
 
@@ -88,8 +95,8 @@ User=athena-dhcpd
 Group=athena-dhcpd
 
 # Capabilities
-AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_NET_ADMIN
 
 # Security hardening
 NoNewPrivileges=yes
@@ -142,6 +149,7 @@ docker run -d \
   --name athena-dhcpd \
   --cap-add=NET_RAW \
   --cap-add=NET_BIND_SERVICE \
+  --cap-add=NET_ADMIN \
   --network=host \
   -v /etc/athena-dhcpd:/etc/athena-dhcpd \
   -v /var/lib/athena-dhcpd:/var/lib/athena-dhcpd \
@@ -150,7 +158,7 @@ docker run -d \
 
 **`--network=host` is required.** DHCP uses broadcast packets and needs to be on the actual network. you cannot use bridge networking for a DHCP server. this is a DHCP protocol thing, not an athena limitation. every DHCP server in Docker needs host networking
 
-`--cap-add=NET_RAW` and `--cap-add=NET_BIND_SERVICE` are needed for the same reasons as bare metal
+`--cap-add=NET_RAW` and `--cap-add=NET_BIND_SERVICE` are needed for the same reasons as bare metal. `--cap-add=NET_ADMIN` is needed for floating VIP management in HA — if you're not using VIPs you can leave it out
 
 ### docker compose
 
@@ -162,6 +170,7 @@ services:
     cap_add:
       - NET_RAW
       - NET_BIND_SERVICE
+      - NET_ADMIN
     volumes:
       - /etc/athena-dhcpd:/etc/athena-dhcpd
       - dhcp-data:/var/lib/athena-dhcpd
@@ -184,6 +193,7 @@ the binary runs as a non-root `athena` user. the image is about 15MB
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 67 | UDP | DHCP server |
+| 53 | UDP/TCP | DNS proxy (if enabled) |
 | 8067 | TCP | HA peer communication (if enabled) |
 | 8080 | TCP | API + Web UI (configurable via `api.listen`) |
 
@@ -195,6 +205,10 @@ if you're running a firewall (you should be), you need:
 # DHCP (always)
 sudo ufw allow 67/udp
 
+# DNS proxy (if enabled)
+sudo ufw allow 53/udp
+sudo ufw allow 53/tcp
+
 # API/Web UI (if using)
 sudo ufw allow 8080/tcp
 
@@ -205,6 +219,8 @@ sudo ufw allow from 192.168.1.2 to any port 8067 proto tcp
 or with iptables:
 ```bash
 iptables -A INPUT -p udp --dport 67 -j ACCEPT
+iptables -A INPUT -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -p tcp --dport 53 -j ACCEPT
 iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
 iptables -A INPUT -p tcp --dport 8067 -s 192.168.1.2 -j ACCEPT
 ```

@@ -6,12 +6,10 @@ dark mode React SPA baked into the Go binary. no Node.js runtime, no separate we
 
 ```toml
 [api]
-enabled = true
 listen = "127.0.0.1:8080"
-web_ui = true
 ```
 
-then open `http://localhost:8080` in a browser. thats it
+the API server and web UI always start. just set the listen address and open it in a browser. thats it
 
 ## pages
 
@@ -68,34 +66,75 @@ high availability cluster overview
 
 if HA is disabled, shows a message saying so
 
-### Configuration
-TOML config editor
+### Device Fingerprints
+DHCP fingerprinting and device classification
 
-- loads the raw TOML from the server
-- syntax-highlighted editor (its a textarea, its not VS Code, but it works)
-- **validate** button — checks your changes without applying
-- **save** button — validates, creates a timestamped backup, writes the new config
-- **reset** button — reloads from server, discards unsaved changes
-- unsaved changes indicator so you dont accidentally navigate away
+- device table with MAC, vendor class, hostname, device type, OS, confidence, source
+- stats cards showing breakdown by device type
+- search and filter by any field
+- if Fingerbank API key is not configured, shows an alert banner with inline key setup
+- supports both local heuristic classification and Fingerbank API enrichment
+
+### Rogue DHCP Servers
+detected rogue DHCP servers on your network
+
+- table of detected rogue servers with IP, MAC, offered IPs, client MACs, first/last seen
+- **acknowledge** button — mark a server as known/expected
+- **remove** button — clear the entry
+- **scan** button — trigger an active scan
+- stats summary
+
+### Audit Log
+who did what and when
+
+- searchable, filterable audit trail of all API writes and DHCP state changes
+- filter by time range, event type, user, IP, MAC
+- export to CSV
+- stats breakdown by event type
+
+### Topology
+network topology tree built from relay agent data
+
+- tree view showing switches, ports, and connected clients
+- custom labels for topology nodes
+- stats summary
+
+### Configuration
+DB-backed config editor with per-section pages
+
+- subnets, pools, reservations — full CRUD
+- defaults, conflict detection, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation, HA — each editable via forms
+- all changes go through the API and take effect immediately
+- TOML import for migration from other DHCP servers
+- raw config view
+
+### Setup Wizard
+first-boot guided setup
+
+- walks through deployment mode, HA, subnets, pools, reservations, conflict detection, DNS proxy
+- import reservations from CSV, JSON, ISC dhcpd, dnsmasq, Kea, or MikroTik
+- only shown when no config exists in the database
 
 ## live updates
 
-the web UI connects to `/api/v1/events/stream` via WebSocket. this means:
+the web UI connects to `/api/v2/events/stream` via SSE (Server-Sent Events). this means:
 
 - lease changes appear on the Leases page instantly
 - conflicts pop up on the Conflicts page as they're detected
 - the Dashboard event feed updates in real time
 - a green pulsing dot in the sidebar shows connection status
 
-if the WebSocket disconnects (server restart, network blip), it automatically reconnects after 3 seconds. the dot turns grey while disconnected so you know
+if the SSE connection drops (server restart, network blip), it automatically reconnects. the dot turns grey while disconnected so you know
 
 ## authentication
 
-the web UI uses the same auth as the API:
+the web UI uses session cookie auth:
 
-- if `api.auth.auth_token` is set, you can use Bearer token auth
-- if `api.auth.users` has entries, you can use Basic auth with username/password
-- session cookies are planned but not fully wired yet — for now its Basic auth per request
+- login page with username/password form
+- `POST /api/v2/auth/login` sets an `athena_session` cookie
+- sessions expire after 24h by default (configurable via `api.session.expiry`)
+- if `api.auth.users` has entries in config, those are available. users can also be created via the API
+- Bearer token auth still works for API-only access
 
 roles work the same: admin sees all buttons, viewer sees read-only views with action buttons hidden
 

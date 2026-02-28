@@ -22,6 +22,7 @@ var (
 	bucketDNS         = []byte("config_dns")
 	bucketHostSanit   = []byte("config_hostname_sanitisation")
 	bucketFingerprint = []byte("config_fingerprint")
+	bucketSyslog      = []byte("config_syslog")
 	bucketMeta        = []byte("config_meta")
 	bucketUsers       = []byte("config_users")
 
@@ -32,6 +33,7 @@ var (
 	keyDNS           = []byte("dns")
 	keyHostSanit     = []byte("hostname_sanitisation")
 	keyFingerprint   = []byte("fingerprint")
+	keySyslog        = []byte("syslog")
 	keySetupComplete = []byte("setup_complete")
 )
 
@@ -50,6 +52,7 @@ type Store struct {
 	dns         config.DNSProxyConfig
 	hostSanit   config.HostnameSanitisationConfig
 	fingerprint config.FingerprintConfig
+	syslog      config.SyslogConfig
 	users       []config.UserConfig
 
 	// Listeners notified on config changes (fires for ALL changes, local + peer)
@@ -69,7 +72,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketMeta, bucketUsers,
+			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketFingerprint, bucketSyslog, bucketMeta, bucketUsers,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -451,6 +454,24 @@ func (s *Store) SetFingerprint(f config.FingerprintConfig) error {
 	return nil
 }
 
+func (s *Store) Syslog() config.SyslogConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.syslog
+}
+
+func (s *Store) SetSyslog(sl config.SyslogConfig) error {
+	data, _ := json.Marshal(sl)
+	if err := s.putJSON(bucketSyslog, keySyslog, sl); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.syslog = sl
+	s.mu.Unlock()
+	s.notifyLocalChange("syslog", data)
+	return nil
+}
+
 // HA config lives in TOML, not the database — see config.WriteHASection().
 
 // --- Build full config ---
@@ -471,6 +492,7 @@ func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
 	cfg.DNS = s.dns
 	cfg.HostnameSanitisation = s.hostSanit
 	cfg.Fingerprint = s.fingerprint
+	cfg.Syslog = s.syslog
 
 	// Merge DB users into API auth (TOML users take precedence by being first)
 	if len(s.users) > 0 {
@@ -512,6 +534,9 @@ func (s *Store) ImportFromConfig(cfg *config.Config) error {
 	if err := s.SetFingerprint(cfg.Fingerprint); err != nil {
 		return fmt.Errorf("importing fingerprint: %w", err)
 	}
+	if err := s.SetSyslog(cfg.Syslog); err != nil {
+		return fmt.Errorf("importing syslog: %w", err)
+	}
 	for _, sub := range cfg.Subnets {
 		if err := s.PutSubnet(sub); err != nil {
 			return fmt.Errorf("importing subnet %s: %w", sub.Network, err)
@@ -552,6 +577,9 @@ func (s *Store) ExportAllSections() map[string][]byte {
 	}
 	if data, err := json.Marshal(s.fingerprint); err == nil {
 		sections["fingerprint"] = data
+	}
+	if data, err := json.Marshal(s.syslog); err == nil {
+		sections["syslog"] = data
 	}
 	return sections
 }
@@ -680,6 +708,18 @@ func (s *Store) ApplyPeerConfig(section string, data []byte) error {
 		s.fingerprint = f
 		s.mu.Unlock()
 
+	case "syslog":
+		var sl config.SyslogConfig
+		if err := json.Unmarshal(data, &sl); err != nil {
+			return fmt.Errorf("unmarshalling peer syslog config: %w", err)
+		}
+		if err := s.putJSON(bucketSyslog, keySyslog, sl); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.syslog = sl
+		s.mu.Unlock()
+
 	default:
 		return fmt.Errorf("unknown config section from peer: %s", section)
 	}
@@ -724,6 +764,7 @@ func (s *Store) loadAll() error {
 		loadJSON(tx, bucketDNS, keyDNS, &s.dns)
 		loadJSON(tx, bucketHostSanit, keyHostSanit, &s.hostSanit)
 		loadJSON(tx, bucketFingerprint, keyFingerprint, &s.fingerprint)
+		loadJSON(tx, bucketSyslog, keySyslog, &s.syslog)
 
 		// HA config lives in TOML, not the database — see config.WriteHASection()
 

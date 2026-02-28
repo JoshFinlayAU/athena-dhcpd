@@ -14,32 +14,38 @@ client sends DHCPDISCOVER
 └────────┬────────┘
          │
          ▼
-┌─────────────────┐
-│  dhcp.Handler   │  DORA cycle: Discover→Offer→Request→Ack
-│  (handler.go)   │  + Decline, Release, Inform
-└──┬───┬───┬──────┘
-   │   │   │
-   │   │   └──────────────────────┐
-   │   │                          │
-   ▼   ▼                          ▼
-┌──────────┐  ┌───────────────┐  ┌──────────────┐
-│ pool     │  │ lease.Manager │  │ conflict     │
-│ allocator│  │ (BoltDB)      │  │ Detector     │
-│ (bitmap) │  │               │  │ (ARP/ICMP)   │
-└──────────┘  └───────┬───────┘  └──────────────┘
-                      │
-                      ▼
-              ┌───────────────┐
-              │  events.Bus   │  buffered channel, fan-out to subscribers
-              └──┬───┬───┬───┘
-                 │   │   │
-        ┌────────┘   │   └────────┐
-        ▼            ▼            ▼
-┌─────────────┐ ┌─────────┐ ┌──────────┐
-│ Dispatcher  │ │ DDNS    │ │ WS Hub   │
-│ (hooks)     │ │ Manager │ │ (live    │
-│             │ │         │ │  events) │
-└─────────────┘ └─────────┘ └──────────┘
+┌───────────────────────────────────────┐
+│  dhcp.Handler                               │
+│  DORA cycle + Decline, Release, Inform       │
+│  + fingerprint extraction on DISCOVER         │
+└──┬───┬───┬──────┬───────────────────────┘
+   │   │   │      │
+   │   │   │      └────────────────┐
+   │   │   │                         │
+   ▼   ▼   ▼                         ▼
+┌────────┐ ┌─────────────┐ ┌────────────┐ ┌─────────────┐
+│ pool   │ │ lease       │ │ conflict   │ │ fingerprint │
+│ alloc  │ │ Manager     │ │ Detector   │ │ Store       │
+│ bitmap │ │ (BoltDB)    │ │ (ARP/ICMP) │ │ (BoltDB)    │
+└────────┘ └──────┬──────┘ └────────────┘ └─────────────┘
+                  │
+                  ▼
+          ┌───────────────┐
+          │  events.Bus   │  buffered channel, fan-out to subscribers
+          └──┬──┬──┬──┬──┘
+             │  │  │  │
+    ┌───────┘  │  │  └──────────┐
+    ▼         ▼  ▼              ▼
+┌─────────┐ ┌────┐ ┌───────┐ ┌─────────────┐
+│ Dispatch│ │ DDNS │ │ SSE   │ │ syslog fwd  │
+│ (hooks) │ │ Mgr  │ │ Hub   │ │ (RFC 5424) │
+└─────────┘ └────┘ └───────┘ └─────────────┘
+
+         ┌────────────────────┐
+         │  dbconfig.Store    │  BoltDB-backed dynamic config
+         │  (subnets, hooks,  │  managed via API/web UI
+         │   ddns, dns, etc)  │  synced between HA peers
+         └────────────────────┘
 ```
 
 ## package layout
@@ -49,23 +55,26 @@ everything follows standard Go conventions. `internal/` for private packages, `p
 ```
 cmd/athena-dhcpd/main.go     — entry point, wiring, signal handling
 internal/
-  config/                     — TOML parsing, validation, defaults, hot-reload
-  dhcp/                       — the DHCP engine
-    handler.go                — DORA message handler
-    server.go                 — UDP server loop
-    packet.go                 — packet encode/decode
-    options.go                — option serialization
-    options_registry.go       — option type registry (adding new options = one entry here)
-    relay.go                  — Option 82 relay agent info parsing
-    ratelimit.go              — per-MAC and global rate limiting
-  lease/
-    types.go                  — Lease struct, states
-    store.go                  — BoltDB persistence, indexes
-    manager.go                — lease lifecycle (offer, ack, renew, release, expire)
-    gc.go                     — garbage collector for expired leases
-  pool/
-    allocator.go              — bitmap-based IP allocator (O(1) allocate/release)
-    matcher.go                — pool selection based on relay/vendor/user class
+  anomaly/
+    detector.go               — anomaly detection (MAC flapping, lease storms)
+  api/
+    server.go                 — HTTP server, route registration
+    auth.go                   — Bearer token + Basic auth + session cookie middleware
+    handlers.go               — lease, subnet, pool, conflict, stats endpoints
+    handlers_v2.go            — DB-backed config CRUD (subnets, defaults, hooks, etc)
+    handlers_reservations.go  — reservation CRUD + CSV import/export
+    handlers_fingerprint.go   — device fingerprint endpoints
+    handlers_audit.go         — audit log query + export
+    handlers_events.go        — event list, hooks list, test hook
+    handlers_ha.go            — HA status + manual failover
+    sse.go                    — SSE hub for live event streaming
+    spa.go                    — SPA fallback handler (serves embedded React app)
+    metrics_middleware.go     — HTTP request metrics
+  audit/
+    log.go                    — BoltDB-backed audit log
+  config/
+    config.go                 — TOML parsing, validation, defaults
+    write_ha.go               — TOML file writer for HA section
   conflict/
     detector.go               — coordinates ARP + ICMP probing
     arp.go                    — raw socket ARP prober
@@ -73,39 +82,68 @@ internal/
     table.go                  — conflict table (BoltDB + in-memory)
     cache.go                  — probe result cache (TTL-based)
     gratuitous.go             — gratuitous ARP sender
-  events/
-    bus.go                    — buffered event bus with pub/sub
-    types.go                  — event types, payloads, env var conversion
-    dispatcher.go             — routes events to matching hooks
-    script.go                 — script executor (bounded goroutine pool)
-    webhook.go                — webhook sender (retries, HMAC, templates)
+  dbconfig/
+    store.go                  — BoltDB-backed dynamic config store
+                                manages all DB-backed config sections
+                                merges with TOML bootstrap via BuildConfig()
+                                syncs between HA peers
   ddns/
     manager.go                — DDNS lifecycle (subscribe to events, create/remove records)
     rfc2136.go                — RFC 2136 DNS UPDATE client with TSIG
     api_powerdns.go           — PowerDNS HTTP API client
     api_technitium.go         — Technitium HTTP API client
     helpers.go                — FQDN construction, hostname sanitization, reverse IP
+  dhcp/                       — the DHCP engine
+    handler.go                — DORA message handler + fingerprint extraction
+    server.go                 — UDP server loop
+    packet.go                 — packet encode/decode
+    options.go                — option serialization
+    options_registry.go       — option type registry (adding new options = one entry here)
+    relay.go                  — Option 82 relay agent info parsing
+    ratelimit.go              — per-MAC and global rate limiting
+  dnsproxy/
+    server.go                 — built-in DNS proxy, caching, filter lists, DoH
+  events/
+    bus.go                    — buffered event bus with pub/sub
+    types.go                  — event types, payloads, env var conversion
+    dispatcher.go             — routes events to matching hooks
+    script.go                 — script executor (bounded goroutine pool)
+    webhook.go                — webhook sender (retries, HMAC, templates)
+  fingerprint/
+    fingerprint.go            — DHCP fingerprinting, local heuristic classification
+    fingerbank.go             — Fingerbank API v2 client for enhanced classification
   ha/
     fsm.go                    — failover state machine (5 states)
     peer.go                   — TCP peer connection, heartbeat, reconnect
     protocol.go               — wire format (length-prefixed JSON messages)
-  api/
-    server.go                 — HTTP server, route registration
-    auth.go                   — Bearer token + Basic auth middleware
-    handlers.go               — lease, subnet, pool, conflict, stats endpoints
-    handlers_reservations.go  — reservation CRUD + CSV import/export
-    handlers_config.go        — config read/write/validate/backup
-    handlers_events.go        — event list, hooks list, test hook
-    handlers_ha.go            — HA status + manual failover
-    websocket.go              — WebSocket hub for live event streaming
-    spa.go                    — SPA fallback handler (serves embedded React app)
-    metrics_middleware.go     — HTTP request metrics
-  webui/
-    embed.go                  — go:embed for the React SPA dist/
+  hostname/
+    sanitiser.go              — hostname cleanup and deduplication
+  lease/
+    types.go                  — Lease struct, states
+    store.go                  — BoltDB persistence, indexes
+    manager.go                — lease lifecycle (offer, ack, renew, release, expire)
+    gc.go                     — garbage collector for expired leases
   logging/
     logger.go                 — slog setup helpers
+  macvendor/
+    lookup.go                 — OUI database for MAC vendor identification
   metrics/
     metrics.go                — all Prometheus metric definitions
+  pool/
+    allocator.go              — bitmap-based IP allocator (O(1) allocate/release)
+    matcher.go                — pool selection based on relay/vendor/user class
+  portauto/
+    engine.go                 — port automation rule engine
+  radius/
+    client.go                 — RADIUS client for DHCP authentication
+  rogue/
+    detector.go               — rogue DHCP server detection
+  syslog/
+    syslog.go                 — remote syslog forwarder (RFC 5424 over UDP/TCP)
+  topology/
+    map.go                    — network topology tree from relay agent data
+  webui/
+    embed.go                  — go:embed for the React SPA dist/
 pkg/dhcpv4/
   constants.go               — option codes, message types, HA states, detection methods
   encoding.go                — IP/bytes conversion helpers
@@ -142,10 +180,15 @@ BoltDB has buckets indexed by IP, MAC, and client-id. the in-memory index mirror
 - **webhook sender**: unbounded goroutines (each webhook fires a goroutine), but the HTTP client has a connection pool
 - **DDNS manager**: single goroutine reads events, spawns async goroutines for DNS updates
 - **HA peer**: multiple goroutines — accept loop, connect loop, heartbeat sender, timeout checker, per-connection handler
-- **WebSocket hub**: single goroutine broadcasts to all connected clients
+- **SSE hub**: single goroutine broadcasts to all connected SSE clients
 - **lease GC**: single goroutine on a ticker
+- **syslog forwarder**: single goroutine reads from event bus subscription, writes to remote syslog
+- **anomaly detector**: single goroutine reads events, maintains sliding window stats
+- **rogue detector**: passive monitoring via event bus
+- **audit log**: single goroutine writes audit entries to BoltDB
+- **fingerprint store**: synchronous on DISCOVER (Record call), async Fingerbank API enrichment in goroutine
 
-all shared state is protected by mutexes. the pool allocator, lease store, conflict table, and FSM all use `sync.Mutex` or `sync.RWMutex` as appropriate
+all shared state is protected by mutexes. the pool allocator, lease store, conflict table, dbconfig store, and FSM all use `sync.Mutex` or `sync.RWMutex` as appropriate
 
 ## error handling
 
@@ -153,15 +196,22 @@ all errors are wrapped with context: `fmt.Errorf("allocating IP for %s: %w", mac
 
 ## config hot-reload
 
-on SIGHUP:
+two kinds of config changes:
+
+**SIGHUP (bootstrap TOML reload):**
 1. load and validate the new config file
 2. if validation fails, log error, keep old config, done
-3. update the lease manager's config reference
-4. update the handler's config reference
-5. reinitialize pools from the new config
-6. update the handler's pool map
+3. rebuild full config by merging TOML with database state via `dbconfig.BuildConfig()`
+4. update handler, lease manager, pools, API server, DNS proxy
 
-leases, connections, and the event bus are preserved across reloads. the only thing that requires a restart is changing the network interface or bind address
+**database config changes (via API or web UI):**
+1. `dbconfig.Store` persists the change to BoltDB
+2. fires `onLocalChange` → triggers HA peer sync for that section
+3. fires debounced `onChange` callback in main.go
+4. callback rebuilds full config via `BuildConfig()` and updates all components
+5. live components (syslog forwarder, Fingerbank client, DNS proxy) are started/stopped/reconfigured as needed
+
+leases, connections, and the event bus are preserved across reloads. database-backed config changes take effect immediately — no restart or SIGHUP needed
 
 ## testing approach
 

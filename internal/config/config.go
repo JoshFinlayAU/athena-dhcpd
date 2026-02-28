@@ -20,10 +20,20 @@ type Config struct {
 	DDNS                 DDNSConfig                 `toml:"ddns"`
 	DNS                  DNSProxyConfig             `toml:"dns"`
 	Fingerprint          FingerprintConfig          `toml:"fingerprint" json:"fingerprint"`
+	Syslog               SyslogConfig               `toml:"syslog" json:"syslog"`
 	HostnameSanitisation HostnameSanitisationConfig `toml:"hostname_sanitisation" json:"hostname_sanitisation"`
 	Subnets              []SubnetConfig             `toml:"subnet"`
 	Defaults             DefaultsConfig             `toml:"defaults"`
 	API                  APIConfig                  `toml:"api"`
+}
+
+// SyslogConfig holds remote syslog forwarding settings.
+type SyslogConfig struct {
+	Enabled  bool   `toml:"enabled" json:"enabled"`
+	Address  string `toml:"address" json:"address"`   // host:port
+	Protocol string `toml:"protocol" json:"protocol"` // "udp" or "tcp"
+	Facility int    `toml:"facility" json:"facility"` // syslog facility (default: 16 = local0)
+	Tag      string `toml:"tag" json:"tag"`           // syslog tag (default: "athena-dhcpd")
 }
 
 // FingerprintConfig holds device fingerprinting settings.

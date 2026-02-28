@@ -5,7 +5,7 @@ welcome to the docs. pick what you need
 ## guides
 
 - **[Configuration Reference](configuration.md)** — every config field, every option, every default. the whole TOML explained
-- **[API Reference](api.md)** — all REST endpoints, authentication, WebSocket streaming, request/response formats
+- **[API Reference](api.md)** — all REST endpoints, authentication, SSE streaming, request/response formats
 - **[Deployment Guide](deployment.md)** — systemd, Docker, capabilities, firewalls, security hardening, backup strategy
 
 ## feature deep-dives

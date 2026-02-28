@@ -35,6 +35,7 @@ import (
 	"github.com/athena-dhcpd/athena-dhcpd/internal/metrics"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/pool"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/rogue"
+	syslogfwd "github.com/athena-dhcpd/athena-dhcpd/internal/syslog"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/topology"
 	"github.com/athena-dhcpd/athena-dhcpd/pkg/dhcpv4"
 )
@@ -683,6 +684,24 @@ func main() {
 	go anomalyDet.Start()
 	defer anomalyDet.Stop()
 
+	// Initialize syslog forwarder if configured
+	var syslogForwarder *syslogfwd.Forwarder
+	if cfg.Syslog.Enabled && cfg.Syslog.Address != "" {
+		syslogCfg := syslogfwd.Config{
+			Address:  cfg.Syslog.Address,
+			Protocol: cfg.Syslog.Protocol,
+			Facility: cfg.Syslog.Facility,
+			Tag:      cfg.Syslog.Tag,
+		}
+		syslogForwarder = syslogfwd.NewForwarder(syslogCfg, bus, logger)
+		if err := syslogForwarder.Start(); err != nil {
+			logger.Warn("failed to start syslog forwarder", "error", err)
+			syslogForwarder = nil
+		} else {
+			defer syslogForwarder.Stop()
+		}
+	}
+
 	// Initialize fingerprint store
 	fpStore, err := fingerprint.NewStore(store.DB(), logger)
 	if err != nil {
@@ -829,6 +848,27 @@ func main() {
 			} else {
 				fpStore.SetFingerbank(nil)
 			}
+		}
+
+		// Reload syslog forwarder
+		if cfg.Syslog.Enabled && cfg.Syslog.Address != "" {
+			if syslogForwarder == nil {
+				syslogCfg := syslogfwd.Config{
+					Address:  cfg.Syslog.Address,
+					Protocol: cfg.Syslog.Protocol,
+					Facility: cfg.Syslog.Facility,
+					Tag:      cfg.Syslog.Tag,
+				}
+				syslogForwarder = syslogfwd.NewForwarder(syslogCfg, bus, logger)
+				if err := syslogForwarder.Start(); err != nil {
+					logger.Warn("failed to start syslog forwarder after config change", "error", err)
+					syslogForwarder = nil
+				}
+			}
+		} else if syslogForwarder != nil {
+			syslogForwarder.Stop()
+			syslogForwarder = nil
+			logger.Info("syslog forwarder stopped (disabled in config)")
 		}
 
 		// Reload DHCP listeners — add/remove interfaces as needed

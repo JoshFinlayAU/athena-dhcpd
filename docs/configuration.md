@@ -3,7 +3,7 @@
 athena-dhcpd uses a **two-layer configuration model**:
 
 1. **Bootstrap TOML** (`config.toml`) — loaded at startup. contains `[server]`, `[api]`, and optionally `[ha]`. this is the only file you need to create manually
-2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy. managed through the web UI or REST API. synced automatically between HA peers
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation. managed through the web UI or REST API. synced automatically between HA peers
 
 the config file is passed via `-config` flag:
 ```bash
@@ -71,7 +71,7 @@ max_per_mac_per_second = 10
 
 ## Database-Backed Sections
 
-These sections are stored in the database and managed through the web UI or API. they can also be set via the TOML file for initial import or v1 migration, but once imported, the database copy takes precedence
+These sections are stored in the database and managed through the web UI or API. they can also be set via the TOML file for initial import or migration, but once imported, the database copy takes precedence
 
 ## [conflict_detection]
 
@@ -385,6 +385,66 @@ cache_ttl = "5m"
 
 ---
 
+## [syslog]
+
+Remote syslog forwarding. forwards DHCP events to your syslog server as RFC 5424 messages
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable syslog forwarding |
+| `address` | string | | Syslog server host:port e.g. `"10.0.0.1:514"` |
+| `protocol` | string | `"udp"` | `"udp"` or `"tcp"` |
+| `facility` | int | `16` | Syslog facility (16 = local0) |
+| `tag` | string | `"athena-dhcpd"` | Syslog tag/app name |
+
+```toml
+[syslog]
+enabled = true
+address = "10.0.0.1:514"
+protocol = "udp"
+facility = 16
+tag = "athena-dhcpd"
+```
+
+---
+
+## [fingerprint]
+
+Device fingerprinting. extracts DHCP fingerprint data from DISCOVER packets and classifies devices. optional Fingerbank API integration for better accuracy
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable fingerprinting |
+| `fingerbank_api_key` | string | | Fingerbank API key from api.fingerbank.org. if empty, uses local heuristics only |
+| `fingerbank_url` | string | `"https://api.fingerbank.org/api/v2"` | Fingerbank API base URL (override for self-hosted) |
+
+```toml
+[fingerprint]
+enabled = true
+fingerbank_api_key = "your-api-key-here"
+```
+
+---
+
+## [hostname_sanitisation]
+
+Hostname cleanup and deduplication. clients send all kinds of garbage as hostnames — this cleans it up
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable hostname sanitisation |
+| `max_length` | int | `63` | Maximum hostname length |
+| `deduplicate` | bool | `false` | Append suffix when multiple clients claim the same hostname |
+
+```toml
+[hostname_sanitisation]
+enabled = true
+max_length = 63
+deduplicate = true
+```
+
+---
+
 ## [defaults]
 
 Global default options applied to all subnets unless overridden
@@ -499,13 +559,11 @@ ntp_servers = ["192.168.1.1"]
 
 ## [api]
 
-HTTP API and web UI settings
+HTTP API and web UI settings. the API server and web UI always start — they're essential services. no need for an `enabled` flag
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Enable the API server |
 | `listen` | string | `"0.0.0.0:8067"` | Listen address |
-| `web_ui` | bool | `false` | Enable the embedded React web UI |
 
 ### [api.auth]
 
@@ -552,9 +610,7 @@ Session cookie settings for the web UI
 
 ```toml
 [api]
-enabled = true
 listen = "127.0.0.1:8080"
-web_ui = true
 
   [api.auth]
   auth_token = "my-secret-api-token"

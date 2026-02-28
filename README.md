@@ -68,6 +68,47 @@ Active-standby failover with lease synchronization
 - Optional TLS for peer communication
 - manual failover trigger via API
 
+### device fingerprinting
+know what's on your network without an agent on every device
+
+- extracts DHCP fingerprint data from every DISCOVER (option 55 parameter list, option 60 vendor class, hostname)
+- local heuristic classification identifies Windows, macOS, iOS, Android, Linux, printers, network gear, cameras, embedded devices
+- optional Fingerbank API integration for much more accurate classification. free API key from api.fingerbank.org
+- persistent storage in BoltDB — survives restarts
+- web UI page with device table, type/OS stats, search/filter, and inline API key setup
+
+### rogue DHCP server detection
+someone plugged in a consumer router again
+
+- passively monitors for DHCP offers from servers that aren't us
+- tracks rogue server IP, MAC, offered IPs, and client MACs
+- fires events through the event bus for alerting
+- web UI page with rogue server list and acknowledge/remove actions
+- on-demand active scan via API
+
+### anomaly detection
+automatically spots weird DHCP behaviour
+
+- detects MAC flapping, lease storms, unusual request patterns
+- weather-style status indicator in the web UI (calm, advisory, watch, warning, critical)
+- fires events for hook integration
+
+### audit log
+who did what and when
+
+- logs all API write operations and DHCP state changes to BoltDB
+- query by time range, event type, user, IP, MAC
+- export as CSV
+- stats endpoint for audit activity breakdown
+
+### remote syslog forwarding
+forward events to your existing log infrastructure
+
+- RFC 5424 syslog messages over UDP or TCP
+- configurable facility, tag, and protocol
+- auto-reconnect on connection failure
+- all DHCP events, conflicts, HA failovers, and rogue detections forwarded
+
 ### event hooks
 Things happen, you probably want to know about them
 
@@ -98,18 +139,59 @@ why run a separate DNS server when your DHCP server already knows every hostname
   - test any domain against your lists via API or web UI
 - if you dont need it just dont enable it. zero overhead when disabled
 
+### hostname sanitisation
+clients send garbage hostnames. we clean them up
+
+- strips invalid characters, enforces length limits
+- deduplication — if two clients claim the same hostname, the second one gets a suffix
+- configurable allowed character set and max length
+- optional lookup function to check for conflicts before accepting
+
+### MAC vendor lookup
+know who made the thing
+
+- built-in OUI database for MAC address vendor identification
+- API endpoint for on-demand lookups
+- enriches lease data in the web UI
+
+### topology mapping
+visualize your network
+
+- builds a tree from relay agent data (option 82 circuit ID, remote ID)
+- tracks which switch port each client is connected to
+- custom labels for switches and ports
+- web UI topology page with tree view and stats
+
+### RADIUS integration
+authenticate DHCP clients before handing out IPs
+
+- per-subnet RADIUS server configuration
+- Access-Request with MAC, circuit ID, and NAS-IP
+- test connectivity via API
+
+### port automation
+trigger switch port changes based on DHCP events
+
+- rule-based automation (e.g. auto-enable port on lease, disable on expiry)
+- configurable via API
+- test rules before deploying
+
 ### web UI
 React + TypeScript + Tailwind. dark mode because we have taste
 
 - **Setup wizard** — first boot walks you through deployment mode, HA, subnets, pools, reservations, conflict detection, and DNS proxy. import reservations from CSV, JSON, ISC dhcpd, dnsmasq, Kea, or MikroTik
 - Dashboard with real-time stats, pool utilization, live event feed
 - Lease browser with search, filtering, pagination, and live updates via SSE
-- Full configuration editor — subnets, pools, reservations, defaults, conflict detection, HA, hooks, DDNS, DNS proxy, zone overrides, static records. all stored in the database and editable live
+- Full configuration editor — subnets, pools, reservations, defaults, conflict detection, HA, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation. all stored in the database and editable live
 - Reservation management with multi-format import (CSV, JSON, ISC dhcpd, dnsmasq, Kea, MikroTik)
 - Conflict viewer with clear and permanent-exclude actions
+- Device fingerprints page with type/OS breakdown and Fingerbank API key setup
+- Rogue DHCP server detection page with acknowledge/remove actions
 - Live event stream. watch packets fly by in real time
+- Audit log viewer with search, filtering, and CSV export
 - HA cluster status and manual failover controls
 - DNS proxy dashboard with query log, cache stats, filter list management
+- Network topology tree view
 - Role-based auth: admin gets write access, viewer gets read-only
 - Bearer token auth for API, session cookies for the web UI
 - Passwords stored as bcrypt hashes. we're not storing passwords in plaintext in 2025
@@ -117,35 +199,89 @@ React + TypeScript + Tailwind. dark mode because we have taste
 the whole frontend compiles into the Go binary via go:embed. zero runtime dependencies. no node.js on your DHCP server
 
 ### REST API
-Everything the web UI does, the API can do too
+Everything the web UI does, the API can do too. all endpoints are under `/api/v2/`
 
 ```
 GET    /api/v2/health
-GET    /api/v2/leases
+GET    /api/v2/stats
+POST   /api/v2/auth/login              session login
+POST   /api/v2/auth/logout             session logout
+GET    /api/v2/auth/me                 current user info
+GET    /api/v2/leases                  list/search/filter/paginate
+GET    /api/v2/leases/export           CSV export
 GET    /api/v2/leases/{ip}
 DELETE /api/v2/leases/{ip}
-GET    /api/v2/reservations
+GET    /api/v2/reservations            flat view across all subnets
 POST   /api/v2/reservations
+PUT    /api/v2/reservations/{id}
+DELETE /api/v2/reservations/{id}
+POST   /api/v2/reservations/import
+GET    /api/v2/reservations/export
+GET    /api/v2/subnets
+GET    /api/v2/pools
 GET    /api/v2/conflicts
 GET    /api/v2/conflicts/stats
+GET    /api/v2/conflicts/history
 DELETE /api/v2/conflicts/{ip}
 POST   /api/v2/conflicts/{ip}/exclude
-GET    /api/v2/config/subnets          (DB-backed CRUD)
+GET    /api/v2/config/subnets          DB-backed CRUD
 POST   /api/v2/config/subnets
+PUT    /api/v2/config/subnets/{network}
+DELETE /api/v2/config/subnets/{network}
+GET    /api/v2/config/defaults
 PUT    /api/v2/config/defaults
+GET    /api/v2/config/conflict
 PUT    /api/v2/config/conflict
-PUT    /api/v2/config/ha               (writes to TOML)
+GET    /api/v2/config/ha               reads from TOML
+PUT    /api/v2/config/ha               writes to TOML
+GET    /api/v2/config/hooks
 PUT    /api/v2/config/hooks
+GET    /api/v2/config/ddns
 PUT    /api/v2/config/ddns
+GET    /api/v2/config/dns
 PUT    /api/v2/config/dns
+GET    /api/v2/config/syslog
+PUT    /api/v2/config/syslog
+GET    /api/v2/config/fingerprint
+PUT    /api/v2/config/fingerprint
+GET    /api/v2/config/hostname-sanitisation
+PUT    /api/v2/config/hostname-sanitisation
+POST   /api/v2/config/import           TOML import
+GET    /api/v2/config/raw              running config as TOML
+POST   /api/v2/config/validate
 GET    /api/v2/ha/status
 POST   /api/v2/ha/failover
 GET    /api/v2/dns/stats
 GET    /api/v2/dns/records
 POST   /api/v2/dns/cache/flush
 GET    /api/v2/dns/lists
-GET    /api/v2/events/stream           (SSE)
-GET    /metrics                        (Prometheus)
+POST   /api/v2/dns/lists/refresh
+POST   /api/v2/dns/lists/test
+GET    /api/v2/dns/querylog
+GET    /api/v2/dns/querylog/stream     SSE
+GET    /api/v2/events                  recent events
+GET    /api/v2/events/stream           SSE live event stream
+GET    /api/v2/hooks
+POST   /api/v2/hooks/test
+GET    /api/v2/audit                   query audit log
+GET    /api/v2/audit/export            CSV export
+GET    /api/v2/audit/stats
+GET    /api/v2/fingerprints            device fingerprints
+GET    /api/v2/fingerprints/stats
+GET    /api/v2/fingerprints/{mac}
+GET    /api/v2/rogue                   rogue DHCP servers
+GET    /api/v2/rogue/stats
+POST   /api/v2/rogue/scan
+GET    /api/v2/topology                network topology tree
+GET    /api/v2/topology/stats
+GET    /api/v2/anomaly/weather         anomaly status
+GET    /api/v2/macvendor/{mac}         MAC vendor lookup
+GET    /api/v2/radius                  RADIUS config
+GET    /api/v2/portauto/rules          port automation rules
+GET    /api/v2/setup/status            setup wizard
+GET    /api/v2/backup                  full backup export
+POST   /api/v2/backup/restore
+GET    /metrics                        Prometheus
 ```
 
 theres more endpoints than that but you get the idea
@@ -289,8 +425,8 @@ if you're running as root you dont need any of this but running a network servic
 
 athena-dhcpd uses a two-layer config model:
 
-1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. this is what starts the server and web UI. see `configs/example.toml`
-2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy. managed through the web UI or API, synced between HA peers automatically
+1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. the API and web UI always start — no need to enable them. see `configs/example.toml`
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation. managed through the web UI or API, synced between HA peers automatically
 
 on first startup with no config in the database, the setup wizard walks you through the initial config. you can also import a full TOML config file from the web UI if you're migrating
 
@@ -318,18 +454,29 @@ the config parser actually validates things, unlike some DHCP servers I could na
 ```
 cmd/athena-dhcpd/       entry point
 internal/
+  anomaly/              anomaly detection (MAC flapping, lease storms)
   api/                  REST API + SSE + auth
-  config/               TOML parsing + validation  
+  audit/                audit log (BoltDB-backed)
+  config/               TOML parsing + validation
   conflict/             ARP/ICMP probing + conflict table
+  dbconfig/             BoltDB-backed dynamic config store
   ddns/                 dynamic DNS (RFC 2136, PowerDNS, Technitium)
-  dnsproxy/             built-in DNS proxy + filter lists
   dhcp/                 packet handling, options, server loop
+  dnsproxy/             built-in DNS proxy + filter lists
   events/               event bus, script hooks, webhooks
+  fingerprint/          DHCP fingerprinting + Fingerbank API client
   ha/                   peer sync, heartbeat, failover FSM
+  hostname/             hostname sanitisation + deduplication
   lease/                BoltDB store + manager + GC
   logging/              slog setup
+  macvendor/            OUI database for MAC vendor lookup
   metrics/              Prometheus metrics
   pool/                 bitmap allocator + pool matching
+  portauto/             port automation engine
+  radius/               RADIUS client for DHCP auth
+  rogue/                rogue DHCP server detector
+  syslog/               remote syslog forwarder (RFC 5424)
+  topology/             network topology map from relay data
   webui/                embedded frontend (go:embed)
 pkg/dhcpv4/             constants + encoding helpers
 web/                    React frontend source

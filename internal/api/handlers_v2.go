@@ -408,6 +408,33 @@ func (s *Server) handleV2SetHostnameSanitisation(w http.ResponseWriter, r *http.
 	JSONResponse(w, http.StatusOK, h)
 }
 
+// --- Syslog Config ---
+
+func (s *Server) handleV2GetSyslog(w http.ResponseWriter, r *http.Request) {
+	if s.cfgStore == nil {
+		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
+		return
+	}
+	JSONResponse(w, http.StatusOK, s.cfgStore.Syslog())
+}
+
+func (s *Server) handleV2SetSyslog(w http.ResponseWriter, r *http.Request) {
+	if s.cfgStore == nil {
+		JSONError(w, http.StatusServiceUnavailable, "no_config_store", "config store not available")
+		return
+	}
+	var sl config.SyslogConfig
+	if err := json.NewDecoder(r.Body).Decode(&sl); err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := s.cfgStore.SetSyslog(sl); err != nil {
+		JSONError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	JSONResponse(w, http.StatusOK, sl)
+}
+
 // --- Fingerprint Config ---
 
 func (s *Server) handleV2GetFingerprint(w http.ResponseWriter, r *http.Request) {

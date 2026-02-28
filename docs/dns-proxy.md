@@ -436,7 +436,7 @@ all three protocols go through the same query pipeline so behaviour is identical
 
 ## high availability
 
-if you're running two athena-dhcpd nodes in HA mode, you need a floating IP so DNS clients always have a stable address to query. see [HA with Floating IP for DNS Proxy](ha-floating-ip.md) for a full walkthrough using keepalived or event hook scripts
+if you're running two athena-dhcpd nodes in HA mode, you need a floating IP so DNS clients always have a stable address to query. athena-dhcpd has built-in floating VIP management — configure VIPs in the web UI or API and the active node holds them automatically. see [Floating Virtual IPs](ha-floating-ip.md) for the full setup guide
 
 ## practical tips
 

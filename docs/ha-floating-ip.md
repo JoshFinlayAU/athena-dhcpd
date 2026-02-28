@@ -1,8 +1,6 @@
-# HA with Floating IP for DNS Proxy
+# Floating Virtual IPs
 
-when running athena-dhcpd in HA mode, DHCP failover is straightforward — clients broadcast DHCPDISCOVER and whichever node is active will respond. but DNS is different. clients are configured with a specific IP address for their DNS server, so if that server dies, DNS breaks even though DHCP keeps working
-
-the fix is a **floating IP** (also called a virtual IP or VIP) that moves between the two nodes. whichever node is active owns the VIP. when failover happens, the VIP moves to the new active node. clients always point at the VIP and never know the difference
+athena-dhcpd has built-in floating VIP management. no keepalived, no external tools, no scripts. configure your virtual IPs in the web UI or API and the active HA node holds them automatically. on failover, the new active node acquires the VIPs and sends gratuitous ARPs to update switch MAC tables
 
 ## the problem
 
@@ -16,9 +14,9 @@ node A crashes. node B takes over DHCP — great, new clients get IPs. but every
 
 thats not good enough
 
-## the solution: floating IP with keepalived
+## the solution: built-in floating VIPs
 
-use a third IP address — the VIP — that floats between the two nodes. clients always use the VIP for DNS. keepalived handles moving the VIP automatically based on which athena-dhcpd node is active
+use a third IP address — the VIP — that floats between the two nodes. clients always use the VIP for DNS. athena-dhcpd manages the VIP itself based on the HA state machine
 
 ### network layout
 
@@ -28,177 +26,74 @@ use a third IP address — the VIP — that floats between the two nodes. client
 | node B | `10.0.0.2` | secondary |
 | VIP | `10.0.0.3` | floating (active node owns this) |
 
-### install keepalived
+## setup
+
+### 1. configure HA
+
+standard HA config on both nodes. peer addresses use the real IPs, not the VIP:
+
+```toml
+# node A
+[ha]
+enabled = true
+role = "primary"
+peer_address = "10.0.0.2:8067"
+listen_address = "0.0.0.0:8067"
+```
+
+```toml
+# node B
+[ha]
+enabled = true
+role = "secondary"
+peer_address = "10.0.0.1:8067"
+listen_address = "0.0.0.0:8067"
+```
+
+### 2. add floating VIPs
+
+VIPs are stored in the database, not the TOML file. configure them via:
+
+**web UI** — go to Configuration > High Availability, scroll down to "Floating Virtual IPs", click "Add VIP"
+
+**setup wizard** — the HA config step includes a VIP section
+
+**API** — `PUT /api/v2/vips`:
 
 ```bash
-# debian/ubuntu
-sudo apt install keepalived
-
-# rhel/centos/rocky
-sudo dnf install keepalived
+curl -X PUT http://localhost:8067/api/v2/vips \
+  -H "Authorization: Bearer mytoken" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"ip": "10.0.0.3", "cidr": 24, "interface": "eth0", "label": "DNS VIP"}
+  ]'
 ```
 
-### athena-dhcpd health check script
+each VIP entry has:
 
-create a script that keepalived uses to check if the local athena-dhcpd instance is active and healthy. keepalived will only assign the VIP to a node where this script exits 0
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ip` | string | yes | Virtual IP address |
+| `cidr` | int | yes | Prefix length (1-32) |
+| `interface` | string | yes | Network interface to add the IP to |
+| `label` | string | no | Human-readable label (shown in web UI) |
+
+### multiple VIPs
+
+you can configure multiple VIPs — useful when you need a VIP per VLAN so each subnet gets its own DNS server address:
 
 ```bash
-#!/bin/bash
-# /etc/keepalived/check_athena.sh
-
-# check if athena-dhcpd is running
-if ! systemctl is-active --quiet athena-dhcpd; then
-    exit 1
-fi
-
-# check if the API responds and reports healthy
-STATUS=$(curl -sf --max-time 2 http://127.0.0.1:8067/api/v1/health | grep -o '"status":"ok"')
-if [ -z "$STATUS" ]; then
-    exit 1
-fi
-
-# check if this node is the active HA node
-HA_STATE=$(curl -sf --max-time 2 http://127.0.0.1:8067/api/v1/ha/status | grep -o '"state":"ACTIVE"')
-if [ -z "$HA_STATE" ]; then
-    exit 1
-fi
-
-exit 0
+curl -X PUT http://localhost:8067/api/v2/vips \
+  -H "Authorization: Bearer mytoken" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"ip": "10.0.0.3", "cidr": 24, "interface": "eth0", "label": "Management VIP"},
+    {"ip": "10.1.0.3", "cidr": 24, "interface": "eth0.10", "label": "VLAN 10 DNS"},
+    {"ip": "10.2.0.3", "cidr": 24, "interface": "eth0.20", "label": "VLAN 20 DNS"}
+  ]'
 ```
 
-```bash
-sudo chmod +x /etc/keepalived/check_athena.sh
-```
-
-### keepalived config — node A (primary)
-
-```conf
-# /etc/keepalived/keepalived.conf on node A
-
-vrrp_script check_athena {
-    script "/etc/keepalived/check_athena.sh"
-    interval 2          # check every 2 seconds
-    weight 20           # add 20 to priority when check passes
-    fall 3              # require 3 failures before marking down
-    rise 2              # require 2 successes before marking up
-}
-
-vrrp_instance ATHENA_DNS {
-    state MASTER
-    interface eth0              # your network interface
-    virtual_router_id 51       # must match on both nodes (1-255)
-    priority 100               # higher = preferred (primary gets 100)
-
-    advert_int 1               # VRRP advertisement interval
-
-    authentication {
-        auth_type PASS
-        auth_pass somesecret   # must match on both nodes
-    }
-
-    virtual_ipaddress {
-        10.0.0.3/24            # the floating IP
-    }
-
-    track_script {
-        check_athena
-    }
-
-    # optional: notify script when VIP moves
-    notify_master "/etc/keepalived/notify.sh MASTER"
-    notify_backup "/etc/keepalived/notify.sh BACKUP"
-    notify_fault  "/etc/keepalived/notify.sh FAULT"
-}
-```
-
-### keepalived config — node B (secondary)
-
-same thing but with lower priority and `state BACKUP`:
-
-```conf
-# /etc/keepalived/keepalived.conf on node B
-
-vrrp_script check_athena {
-    script "/etc/keepalived/check_athena.sh"
-    interval 2
-    weight 20
-    fall 3
-    rise 2
-}
-
-vrrp_instance ATHENA_DNS {
-    state BACKUP
-    interface eth0
-    virtual_router_id 51       # same as node A
-    priority 90                # lower than node A
-
-    advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass somesecret   # same as node A
-    }
-
-    virtual_ipaddress {
-        10.0.0.3/24            # same VIP
-    }
-
-    track_script {
-        check_athena
-    }
-
-    notify_master "/etc/keepalived/notify.sh MASTER"
-    notify_backup "/etc/keepalived/notify.sh BACKUP"
-    notify_fault  "/etc/keepalived/notify.sh FAULT"
-}
-```
-
-### optional notify script
-
-useful for logging VIP transitions:
-
-```bash
-#!/bin/bash
-# /etc/keepalived/notify.sh
-
-STATE=$1
-TIMESTAMP=$(date -Iseconds)
-
-echo "$TIMESTAMP keepalived transitioning to $STATE" >> /var/log/keepalived-athena.log
-
-case $STATE in
-    MASTER)
-        logger -t keepalived "athena VIP acquired — this node is now DNS master"
-        ;;
-    BACKUP)
-        logger -t keepalived "athena VIP released — this node is now DNS backup"
-        ;;
-    FAULT)
-        logger -t keepalived "athena VIP fault — health check failing"
-        ;;
-esac
-```
-
-```bash
-sudo chmod +x /etc/keepalived/notify.sh
-```
-
-### start keepalived
-
-```bash
-sudo systemctl enable --now keepalived
-```
-
-verify the VIP is assigned on the primary:
-```bash
-ip addr show eth0 | grep 10.0.0.3
-```
-
-you should see `10.0.0.3/24` listed as a secondary address
-
-## athena-dhcpd config
-
-### DNS proxy — bind to all addresses
+### 3. configure DNS proxy
 
 make sure the DNS proxy binds to `0.0.0.0` (the default) so it responds on the VIP:
 
@@ -210,7 +105,7 @@ listen_udp = "0.0.0.0:53"
 
 if you bind to a specific IP, it wont answer queries on the VIP when it floats over
 
-### hand out the VIP as DNS server
+### 4. hand out the VIP as DNS server
 
 tell DHCP clients to use the floating IP for DNS:
 
@@ -225,109 +120,100 @@ or per-subnet:
 [[subnet]]
 network = "10.0.0.0/24"
 dns_servers = ["10.0.0.3"]
+
+[[subnet]]
+network = "10.1.0.0/24"
+dns_servers = ["10.1.0.3"]
 ```
 
-### HA config
+## how it works
 
-standard HA config on both nodes. the HA peer addresses use the real IPs, not the VIP:
+the VIP manager is integrated directly into the HA state machine. no health check scripts, no VRRP protocol, no external dependencies
 
-```toml
-# node A
-[ha]
-enabled = true
-role = "primary"
-peer_address = "10.0.0.2:8067"    # node B's real IP
-listen_address = "0.0.0.0:8067"
-```
-
-```toml
-# node B
-[ha]
-enabled = true
-role = "secondary"
-peer_address = "10.0.0.1:8067"    # node A's real IP
-listen_address = "0.0.0.0:8067"
-```
-
-## how it all works together
-
-normal operation:
+### normal operation
 1. node A is ACTIVE, node B is STANDBY
-2. keepalived health check passes on node A → node A holds VIP `10.0.0.3`
-3. clients send DNS queries to `10.0.0.3` → node A answers
-4. leases and conflict table continuously synced to node B
+2. node A holds all configured VIPs (added via `ip addr add`)
+3. gratuitous ARPs sent on acquire so switches learn the MAC immediately
+4. clients send DNS queries to `10.0.0.3` → node A answers
+5. leases, conflict table, and VIP config all continuously synced to node B
 
-failover:
+### failover
 1. node A crashes
-2. keepalived health check fails on node A (3 consecutive failures = 6 seconds)
-3. athena-dhcpd on node B detects peer down (`failover_timeout = 10s`)
-4. node B transitions to ACTIVE
-5. keepalived health check now passes on node B → node B acquires VIP
-6. gratuitous ARP sent for `10.0.0.3` → switches update their MAC tables
-7. DNS queries to `10.0.0.3` now reach node B
-8. total DNS downtime: roughly 6-12 seconds
+2. node B detects peer down after `failover_timeout` (default 10s)
+3. node B transitions to ACTIVE
+4. VIP manager acquires all VIPs on node B (`ip addr add`)
+5. gratuitous ARP sent for each VIP → switches update MAC tables
+6. DNS queries to `10.0.0.3` now reach node B
+7. total DNS downtime: roughly equal to `failover_timeout`
 
-recovery:
+### recovery
 1. node A comes back online
-2. athena-dhcpd peers reconnect, bulk sync happens
-3. node A goes back to ACTIVE, node B to STANDBY
-4. keepalived on node A sees health check pass → node A reclaims VIP (higher priority)
-5. gratuitous ARP announces VIP is back on node A
+2. peers reconnect, bulk sync happens
+3. node A transitions back to ACTIVE, node B to STANDBY
+4. node A acquires VIPs, node B releases them
+5. gratuitous ARPs announce VIPs are back on node A
 
-## alternative: floating IP without keepalived
+### shutdown
+VIPs are released (removed from interfaces) on graceful shutdown via `defer vipGroup.ReleaseAll()`. this ensures clean handoff when restarting a node
 
-if you dont want to run keepalived, you can manage the VIP yourself using athena-dhcpd's event hooks
+## monitoring VIP status
 
-### hook script approach
+### web UI
+the HA Status page shows a "Floating Virtual IPs" card with each VIP's held/released state, interface, and any errors
 
-create a script hook that runs on HA state changes:
+### API
+```bash
+# check VIP status
+curl http://localhost:8067/api/v2/vips/status \
+  -H "Authorization: Bearer mytoken"
+```
+
+response:
+```json
+{
+  "configured": true,
+  "active": true,
+  "entries": [
+    {
+      "ip": "10.0.0.3",
+      "cidr": 24,
+      "interface": "eth0",
+      "label": "DNS VIP",
+      "held": true,
+      "on_local": true,
+      "acquired_at": "2024-01-23T14:25:00Z"
+    }
+  ]
+}
+```
+
+- `held` — the VIP manager believes it owns the IP
+- `on_local` — live check of whether the IP is actually on the interface
+- `error` — present if something went wrong (e.g. missing capabilities)
+
+VIP status is also included in the `GET /api/v2/ha/status` response under the `vip` key
+
+## capabilities
+
+the VIP manager uses `ip addr add/del` and `arping` commands. the server needs:
+
+| Capability | Why |
+|------------|-----|
+| `CAP_NET_ADMIN` | Adding and removing IP addresses from interfaces |
+| `CAP_NET_RAW` | Sending gratuitous ARP packets via `arping` |
+
+if you're already running with `CAP_NET_RAW` for conflict detection, you just need to add `CAP_NET_ADMIN`:
 
 ```bash
-#!/bin/bash
-# /etc/athena-dhcpd/hooks/floating-ip.sh
-
-VIP="10.0.0.3/24"
-INTERFACE="eth0"
-
-case "$ATHENA_EVENT_TYPE" in
-    ha.failover)
-        if [ "$ATHENA_HA_NEW_STATE" = "ACTIVE" ]; then
-            # we're now active — claim the VIP
-            ip addr add $VIP dev $INTERFACE 2>/dev/null
-            # send gratuitous ARP to update switch MAC tables
-            arping -c 3 -U -I $INTERFACE ${VIP%/*}
-            logger -t athena "claimed floating IP $VIP"
-        else
-            # we're no longer active — release the VIP
-            ip addr del $VIP dev $INTERFACE 2>/dev/null
-            logger -t athena "released floating IP $VIP"
-        fi
-        ;;
-esac
+sudo setcap 'cap_net_raw,cap_net_bind_service,cap_net_admin+ep' /usr/local/bin/athena-dhcpd
 ```
 
-```bash
-sudo chmod +x /etc/athena-dhcpd/hooks/floating-ip.sh
+or in the systemd service file:
+```ini
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_NET_ADMIN
 ```
 
-configure the hook:
-
-```toml
-[[hooks.script]]
-name = "floating-ip"
-events = ["ha.failover"]
-command = "/etc/athena-dhcpd/hooks/floating-ip.sh"
-timeout = "5s"
-```
-
-this is simpler than keepalived but less robust — theres no independent health checking, no VRRP protocol, and no preemption. the VIP only moves when athena-dhcpd's own HA state machine fires. if the process is hung but not crashed, the VIP might not move
-
-**the hook script needs root privileges** (or `CAP_NET_ADMIN`) to add/remove IP addresses. if athena-dhcpd runs as a non-root user, you'll need to either:
-- give the script a sudo rule: `athena-dhcpd ALL=(root) NOPASSWD: /etc/athena-dhcpd/hooks/floating-ip.sh`
-- use `setcap cap_net_admin+ep` on `arping` and `ip`
-- wrap it in a small suid helper
-
-keepalived is the better option for production
+if `ip addr add` fails (missing capability), the error is logged and reported in the VIP status API but DHCP continues to function normally. you'll see the error on the HA Status page
 
 ## firewall considerations
 
@@ -337,15 +223,9 @@ the VIP needs the same firewall rules as the physical IPs:
 # allow DNS on the VIP
 sudo ufw allow in on eth0 to 10.0.0.3 port 53 proto udp
 sudo ufw allow in on eth0 to 10.0.0.3 port 53 proto tcp
-
-# if using keepalived, allow VRRP between nodes
-sudo ufw allow in on eth0 proto vrrp
-# or more specifically:
-sudo ufw allow from 10.0.0.1 to 224.0.0.18 proto vrrp
-sudo ufw allow from 10.0.0.2 to 224.0.0.18 proto vrrp
 ```
 
-keepalived uses VRRP (IP protocol 112) with multicast address `224.0.0.18`. if you block this, failover wont work
+no VRRP rules needed — there's no multicast protocol, just plain IP address management
 
 ## testing failover
 
@@ -354,53 +234,58 @@ keepalived uses VRRP (IP protocol 112) with multicast address `224.0.0.18`. if y
    ip addr show eth0 | grep 10.0.0.3
    ```
 
-2. query DNS through the VIP:
+2. check VIP status via API:
+   ```bash
+   curl -s http://localhost:8067/api/v2/vips/status | jq .
+   ```
+
+3. query DNS through the VIP:
    ```bash
    dig @10.0.0.3 google.com
    ```
 
-3. stop athena-dhcpd on node A:
+4. stop athena-dhcpd on node A:
    ```bash
    sudo systemctl stop athena-dhcpd
    ```
 
-4. wait ~10 seconds, then check VIP moved to node B:
+5. wait for failover_timeout (~10 seconds), then check VIP moved to node B:
    ```bash
    # on node B
    ip addr show eth0 | grep 10.0.0.3
+   curl -s http://node-b:8067/api/v2/vips/status | jq .
    ```
 
-5. verify DNS still works through the VIP:
+6. verify DNS still works through the VIP:
    ```bash
    dig @10.0.0.3 google.com
    ```
 
-6. restart node A and verify VIP moves back:
+7. restart node A and verify VIP moves back:
    ```bash
    sudo systemctl start athena-dhcpd
-   # wait for recovery + keepalived preemption
+   # wait for recovery + VIP re-acquisition
    ip addr show eth0 | grep 10.0.0.3
    ```
 
 ## troubleshooting
 
 **VIP not appearing on either node**
-- check keepalived is running: `systemctl status keepalived`
-- check the health script works manually: `/etc/keepalived/check_athena.sh; echo $?`
-- check VRRP traffic isnt blocked: `tcpdump -i eth0 vrrp`
+- check HA is enabled and both nodes are connected: `curl localhost:8067/api/v2/ha/status`
+- check VIPs are configured: `curl localhost:8067/api/v2/vips`
+- check VIP status for errors: `curl localhost:8067/api/v2/vips/status`
+- check the server has CAP_NET_ADMIN: `getcap /usr/local/bin/athena-dhcpd`
 
 **VIP on wrong node**
-- check priorities are correct (primary should be higher)
-- check health script passes on the correct node
-- force failover: `sudo systemctl restart keepalived`
+- check which node is ACTIVE: `curl localhost:8067/api/v2/ha/status | jq .state`
+- trigger manual failover if needed: `curl -X POST localhost:8067/api/v2/ha/failover`
 
 **DNS queries to VIP timing out**
-- verify athena-dhcpd DNS proxy is enabled and listening on 0.0.0.0
-- check: `ss -ulnp | grep :53`
-- make sure the VIP is on the correct interface
+- verify the DNS proxy is enabled and listening on 0.0.0.0: `ss -ulnp | grep :53`
+- verify the VIP is on the correct interface: `ip addr show eth0`
+- check that the VIP's CIDR and interface match the actual network
 
-**split brain — VIP on both nodes**
-- usually means VRRP traffic is blocked between nodes
-- check firewall rules for protocol 112 / multicast 224.0.0.18
-- check `virtual_router_id` matches on both nodes
-- check `auth_pass` matches on both nodes
+**VIP status shows error**
+- check the logs for the specific error message
+- most common: missing CAP_NET_ADMIN capability
+- verify `ip` and `arping` commands are available in PATH

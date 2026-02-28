@@ -67,6 +67,12 @@ Active-standby failover with lease synchronization
 - Explicit state machine: PARTNER_UP, PARTNER_DOWN, ACTIVE, STANDBY, RECOVERY
 - Optional TLS for peer communication
 - manual failover trigger via API
+- **Built-in floating VIP management** — configure virtual IPs that automatically move between nodes on failover. no keepalived or external tools needed
+  - multiple VIPs supported (one per VLAN/interface)
+  - active node acquires VIPs, standby releases them
+  - gratuitous ARP on acquire to update switch MAC tables
+  - VIP config stored in database, synced between peers
+  - real-time VIP status on the HA status page
 
 ### device fingerprinting
 know what's on your network without an agent on every device
@@ -251,6 +257,9 @@ GET    /api/v2/config/raw              running config as TOML
 POST   /api/v2/config/validate
 GET    /api/v2/ha/status
 POST   /api/v2/ha/failover
+GET    /api/v2/vips                  floating VIP config
+PUT    /api/v2/vips                  update VIP config
+GET    /api/v2/vips/status           VIP runtime status
 GET    /api/v2/dns/stats
 GET    /api/v2/dns/records
 POST   /api/v2/dns/cache/flush
@@ -466,6 +475,7 @@ internal/
   events/               event bus, script hooks, webhooks
   fingerprint/          DHCP fingerprinting + Fingerbank API client
   ha/                   peer sync, heartbeat, failover FSM
+  vip/                  floating VIP management (acquire/release on failover)
   hostname/             hostname sanitisation + deduplication
   lease/                BoltDB store + manager + GC
   logging/              slog setup

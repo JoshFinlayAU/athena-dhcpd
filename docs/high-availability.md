@@ -112,6 +112,7 @@ last-write-wins using millisecond timestamps. in practice this is fine because o
 | `hooks` | Script and webhook hook configurations |
 | `ddns` | Dynamic DNS zones, TSIG keys, API keys |
 | `dns` | DNS proxy settings, forwarders, filter lists, static records |
+| `vips` | Floating virtual IP configuration (IP, CIDR, interface, label) |
 
 bootstrap config (`[server]`, `[api]`, and `[ha]`) is NOT synced — each node keeps its own
 
@@ -319,9 +320,13 @@ these are available to hooks. good for alerting — you probably want to know wh
 - `athena_dhcpd_ha_sync_operations_total{type}` — sync ops (lease_update, conflict_update, config_sync)
 - `athena_dhcpd_ha_sync_errors_total` — sync failures
 
-## floating IP for DNS
+## floating virtual IPs
 
-if you're running the DNS proxy in HA, clients need a stable IP to send DNS queries to. see [HA with Floating IP for DNS Proxy](ha-floating-ip.md) for a full guide on using keepalived (or event hooks) to move a virtual IP between nodes on failover
+athena-dhcpd has built-in floating VIP management — no keepalived or external tools needed. configure one or more virtual IPs and the active node will hold them. on failover, the new active node acquires the VIPs and sends gratuitous ARPs to update switch MAC tables
+
+this is essential for the DNS proxy in HA — clients need a stable IP to send DNS queries to. hand out the VIP as the DNS server address and it follows whichever node is active
+
+VIP configuration is stored in the database (not TOML), managed via the web UI or API, and synced between peers. see [Floating Virtual IPs](ha-floating-ip.md) for the full setup guide
 
 ## things to know
 

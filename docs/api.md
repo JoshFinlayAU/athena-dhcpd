@@ -499,16 +499,77 @@ Current HA state
   "is_active": true,
   "last_heartbeat": "2024-01-23T14:30:22Z",
   "peer_address": "192.168.1.2:8067",
-  "listen_address": "0.0.0.0:8067"
+  "listen_address": "0.0.0.0:8067",
+  "vip": {
+    "configured": true,
+    "active": true,
+    "entries": [
+      {
+        "ip": "10.0.0.3",
+        "cidr": 24,
+        "interface": "eth0",
+        "label": "DNS VIP",
+        "held": true,
+        "on_local": true,
+        "acquired_at": "2024-01-23T14:25:00Z"
+      }
+    ]
+  }
 }
 ```
 
-if HA is disabled, returns `{"enabled": false}`
+if HA is disabled, returns `{"enabled": false}`. the `vip` key is only present when VIPs are configured
 
 #### POST /api/v2/ha/failover
 Trigger manual failover — forces this node to ACTIVE state. **admin only**
 
 be careful with this one
+
+---
+
+### Floating VIPs
+
+floating virtual IPs managed by the active HA node. configured via the web UI or API, stored in the database, synced between peers
+
+#### GET /api/v2/vips
+Get the configured VIP entries
+
+```json
+[
+  {"ip": "10.0.0.3", "cidr": 24, "interface": "eth0", "label": "DNS VIP"},
+  {"ip": "10.1.0.3", "cidr": 24, "interface": "eth0.10", "label": "VLAN 10 DNS"}
+]
+```
+
+returns `[]` if no VIPs configured
+
+#### PUT /api/v2/vips
+Replace the entire VIP list. **admin only**. the VIP group is hot-reloaded — old VIPs not in the new list are released, new ones are acquired if the node is active
+
+request body is the same format as the GET response
+
+#### GET /api/v2/vips/status
+Runtime status of all VIPs. shows whether each VIP is currently held and present on the interface
+
+```json
+{
+  "configured": true,
+  "active": true,
+  "entries": [
+    {
+      "ip": "10.0.0.3",
+      "cidr": 24,
+      "interface": "eth0",
+      "label": "DNS VIP",
+      "held": true,
+      "on_local": true,
+      "acquired_at": "2024-01-23T14:25:00Z"
+    }
+  ]
+}
+```
+
+`held` means the VIP manager believes it owns the IP. `on_local` is a live check of whether the IP is actually on the interface. if `error` is present, something went wrong acquiring/releasing
 
 ---
 

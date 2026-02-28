@@ -12,7 +12,7 @@ welcome to the docs. pick what you need
 
 - **[Conflict Detection](conflict-detection.md)** — ARP/ICMP probing, conflict table, probe cache, DHCPDECLINE, gratuitous ARP. the whole thing
 - **[Dynamic DNS](dynamic-dns.md)** — RFC 2136, PowerDNS API, Technitium API, FQDN construction, zone overrides, DHCID
-- **[High Availability](high-availability.md)** — active-standby failover, lease sync, state machine, recovery, wire protocol
+- **[High Availability](high-availability.md)** — active-standby failover, lease sync, state machine, recovery, wire protocol, built-in floating VIPs
 - **[DNS Proxy](dns-proxy.md)** — built-in DNS, local zone, caching, DoH, filter lists, zone overrides, DHCP lease registration
 - **[Event Hooks](event-hooks.md)** — script hooks, webhooks, HMAC signing, Slack/Teams templates, environment variables
 - **[Web UI](web-ui.md)** — pages, live updates, development workflow, building

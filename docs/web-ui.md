@@ -62,6 +62,7 @@ high availability cluster overview
 - current state (ACTIVE, STANDBY, PARTNER_UP, etc)
 - peer connection status
 - last heartbeat timestamp
+- **floating VIP status** — shows each configured VIP with held/released state, interface, on-local check, and any errors
 - **failover button** — triggers manual failover (admin only, be careful with this)
 
 if HA is disabled, shows a message saying so

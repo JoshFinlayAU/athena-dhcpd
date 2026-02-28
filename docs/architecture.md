@@ -116,6 +116,8 @@ internal/
     fsm.go                    — failover state machine (5 states)
     peer.go                   — TCP peer connection, heartbeat, reconnect
     protocol.go               — wire format (length-prefixed JSON messages)
+  vip/
+    manager.go                — floating VIP group (acquire/release on HA failover, GARP)
   hostname/
     sanitiser.go              — hostname cleanup and deduplication
   lease/

@@ -151,6 +151,47 @@ failover_timeout = "10s"
 
 ---
 
+## Floating Virtual IPs
+
+Floating IPs (VIPs) are managed by the active HA node. when failover occurs, the new active node acquires the VIPs and sends gratuitous ARPs. this is built into athena-dhcpd — no external tools like keepalived needed
+
+VIP configuration is stored in the **database** (not TOML) and managed via the web UI, setup wizard, or REST API. VIPs are synced between HA peers automatically
+
+### API
+
+```
+GET  /api/v2/vips           — get configured VIPs
+PUT  /api/v2/vips           — replace VIP list
+GET  /api/v2/vips/status    — runtime status (held, on_local, errors)
+```
+
+### VIP entry format
+
+each VIP entry has:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ip` | string | yes | Virtual IP address e.g. `"10.0.0.3"` |
+| `cidr` | int | yes | Prefix length (1-32) e.g. `24` |
+| `interface` | string | yes | Network interface e.g. `"eth0"` |
+| `label` | string | no | Human-readable label e.g. `"DNS VLAN 10"` |
+
+example (via API):
+```json
+[
+  {"ip": "10.0.0.3", "cidr": 24, "interface": "eth0", "label": "DNS VIP"},
+  {"ip": "10.1.0.3", "cidr": 24, "interface": "eth0.10", "label": "VLAN 10 DNS"}
+]
+```
+
+multiple VIPs are supported — useful when you need a VIP per VLAN so each VLAN can have its own DNS server address
+
+the active node adds VIPs via `ip addr add` and sends gratuitous ARPs via `arping`. on failover or shutdown, VIPs are removed via `ip addr del`. the server needs `CAP_NET_ADMIN` (or root) to manage VIPs. if the `ip` command fails, the error is logged and reported in the VIP status API but DHCP continues to function
+
+VIP status is also included in the `GET /api/v2/ha/status` response under the `vip` key
+
+---
+
 ## [hooks]
 
 Event hooks — run scripts or call webhooks when things happen. see [event-hooks.md](event-hooks.md) for details

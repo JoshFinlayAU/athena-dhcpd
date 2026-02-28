@@ -674,7 +674,7 @@ func main() {
 	if err != nil {
 		logger.Warn("failed to initialize audit log", "error", err)
 	} else {
-		auditLog.Start()
+		go auditLog.Start()
 		defer auditLog.Stop()
 	}
 

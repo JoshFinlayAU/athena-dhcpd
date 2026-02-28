@@ -360,9 +360,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v2/backup/restore", s.auth.RequireAdmin(s.handleBackupRestore))
 
 	// SPA fallback — serve index.html for all non-API paths
-	if s.cfg.API.WebUI {
-		mux.HandleFunc("/", s.handleSPA)
-	}
+	mux.HandleFunc("/", s.handleSPA)
 }
 
 // UpdateConfig updates the runtime config pointer (called on live config reload).

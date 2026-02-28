@@ -34,10 +34,8 @@ func newTestServer(t *testing.T) *Server {
 
 	cfg := &config.Config{
 		API: config.APIConfig{
-			Enabled: true,
-			Listen:  "127.0.0.1:0",
-			WebUI:   true,
-			Auth:    config.APIAuthConfig{},
+			Listen: "127.0.0.1:0",
+			Auth:   config.APIAuthConfig{},
 		},
 		Subnets: []config.SubnetConfig{
 			{

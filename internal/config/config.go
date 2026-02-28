@@ -268,10 +268,9 @@ type DefaultsConfig struct {
 }
 
 // APIConfig holds HTTP API and web UI settings.
+// The API server and web UI are always enabled — they are essential services.
 type APIConfig struct {
-	Enabled bool          `toml:"enabled"`
 	Listen  string        `toml:"listen"`
-	WebUI   bool          `toml:"web_ui"`
 	Auth    APIAuthConfig `toml:"auth"`
 	TLS     APITLSConfig  `toml:"tls"`
 	Session SessionConfig `toml:"session"`
@@ -374,9 +373,6 @@ func applyBootstrapDefaults(cfg *Config) {
 	if cfg.Server.PIDFile == "" {
 		cfg.Server.PIDFile = DefaultPIDFile
 	}
-	// API + WebUI are always on — they're core features of athena-dhcpd
-	cfg.API.Enabled = true
-	cfg.API.WebUI = true
 	if cfg.API.Listen == "" {
 		cfg.API.Listen = DefaultAPIListen
 	}
@@ -611,9 +607,6 @@ func applyDefaults(cfg *Config) {
 		cfg.Defaults.RebindTime = DefaultRebindTime.String()
 	}
 
-	// API + WebUI always on
-	cfg.API.Enabled = true
-	cfg.API.WebUI = true
 	if cfg.API.Listen == "" {
 		cfg.API.Listen = DefaultAPIListen
 	}

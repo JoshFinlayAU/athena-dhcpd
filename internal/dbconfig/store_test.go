@@ -223,7 +223,7 @@ func TestBuildConfig(t *testing.T) {
 
 	bootstrap := &config.Config{
 		Server: config.ServerConfig{Interface: "eth0", BindAddress: "0.0.0.0:67"},
-		API:    config.APIConfig{Enabled: true, Listen: ":8080"},
+		API:    config.APIConfig{Listen: ":8080"},
 	}
 
 	full := s.BuildConfig(bootstrap)

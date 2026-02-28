@@ -726,62 +726,56 @@ func main() {
 	// Initialize MAC vendor database
 	macVendorDB := macvendor.NewDB()
 
-	// Initialize API server
-	var apiServer *api.Server
-	if cfg.API.Enabled {
-		// Flatten pool map for API
-		var allPools []*pool.Pool
-		for _, subPools := range pools {
-			allPools = append(allPools, subPools...)
-		}
-
-		// Get conflict table if available
-		var conflictTable *conflict.Table
-		if detector != nil {
-			conflictTable = detector.Table()
-		}
-
-		apiOpts := []api.ServerOption{
-			api.WithConfigPath(*configPath),
-			api.WithConfigStore(cfgStore),
-			api.WithAnomalyDetector(anomalyDet),
-			api.WithMACVendorDB(macVendorDB),
-		}
-		if auditLog != nil {
-			apiOpts = append(apiOpts, api.WithAuditLog(auditLog))
-		}
-		if fpStore != nil {
-			apiOpts = append(apiOpts, api.WithFingerprintStore(fpStore))
-		}
-		if topoMap != nil {
-			apiOpts = append(apiOpts, api.WithTopologyMap(topoMap))
-		}
-		if dnsServer != nil {
-			apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
-		}
-		if haFSM != nil {
-			apiOpts = append(apiOpts, api.WithFSM(haFSM))
-		}
-		if haPeer != nil {
-			apiOpts = append(apiOpts, api.WithPeer(haPeer))
-		}
-		if rogueDetector != nil {
-			apiOpts = append(apiOpts, api.WithRogueDetector(rogueDetector))
-		}
-
-		apiServer = api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
-		go func() {
-			if err := apiServer.Start(); err != nil {
-				logger.Error("API server failed", "error", err)
-			}
-		}()
+	// Initialize API server (always on — essential service)
+	var allPools []*pool.Pool
+	for _, subPools := range pools {
+		allPools = append(allPools, subPools...)
 	}
+
+	var conflictTable *conflict.Table
+	if detector != nil {
+		conflictTable = detector.Table()
+	}
+
+	apiOpts := []api.ServerOption{
+		api.WithConfigPath(*configPath),
+		api.WithConfigStore(cfgStore),
+		api.WithAnomalyDetector(anomalyDet),
+		api.WithMACVendorDB(macVendorDB),
+	}
+	if auditLog != nil {
+		apiOpts = append(apiOpts, api.WithAuditLog(auditLog))
+	}
+	if fpStore != nil {
+		apiOpts = append(apiOpts, api.WithFingerprintStore(fpStore))
+	}
+	if topoMap != nil {
+		apiOpts = append(apiOpts, api.WithTopologyMap(topoMap))
+	}
+	if dnsServer != nil {
+		apiOpts = append(apiOpts, api.WithDNSProxy(dnsServer))
+	}
+	if haFSM != nil {
+		apiOpts = append(apiOpts, api.WithFSM(haFSM))
+	}
+	if haPeer != nil {
+		apiOpts = append(apiOpts, api.WithPeer(haPeer))
+	}
+	if rogueDetector != nil {
+		apiOpts = append(apiOpts, api.WithRogueDetector(rogueDetector))
+	}
+
+	apiServer := api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
+	go func() {
+		if err := apiServer.Start(); err != nil {
+			logger.Error("API server failed", "error", err)
+		}
+	}()
 
 	logger.Info("athena-dhcpd ready",
 		"subnets", len(cfg.Subnets),
 		"conflict_detection", cfg.ConflictDetection.Enabled,
 		"dns_proxy", cfg.DNS.Enabled,
-		"api", cfg.API.Enabled,
 		"ha", cfg.HA.Enabled)
 
 	// Wire local config changes → send to HA peer

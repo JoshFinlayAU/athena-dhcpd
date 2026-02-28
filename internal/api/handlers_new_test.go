@@ -45,10 +45,8 @@ func newTestServerWithConflicts(t *testing.T) (*Server, *conflict.Table) {
 
 	cfg := &config.Config{
 		API: config.APIConfig{
-			Enabled: true,
-			Listen:  "127.0.0.1:0",
-			WebUI:   true,
-			Auth:    config.APIAuthConfig{},
+			Listen: "127.0.0.1:0",
+			Auth:   config.APIAuthConfig{},
 		},
 		Subnets: []config.SubnetConfig{
 			{
@@ -537,7 +535,7 @@ func TestHandleHAStatusEnabled(t *testing.T) {
 	store, _ := lease.NewStore(storePath)
 
 	cfg := &config.Config{
-		API: config.APIConfig{Enabled: true, Listen: "127.0.0.1:0", Auth: config.APIAuthConfig{}},
+		API: config.APIConfig{Listen: "127.0.0.1:0", Auth: config.APIAuthConfig{}},
 		HA:  config.HAConfig{Enabled: true, PeerAddress: "10.0.0.2:6740", ListenAddress: "0.0.0.0:6740"},
 	}
 
@@ -588,7 +586,7 @@ func TestHandleHAFailoverEnabled(t *testing.T) {
 	store, _ := lease.NewStore(storePath)
 
 	cfg := &config.Config{
-		API: config.APIConfig{Enabled: true, Listen: "127.0.0.1:0", Auth: config.APIAuthConfig{}},
+		API: config.APIConfig{Listen: "127.0.0.1:0", Auth: config.APIAuthConfig{}},
 	}
 
 	srv := NewServer(cfg, store, nil, nil, nil, bus, logger, WithFSM(fsm))

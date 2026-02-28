@@ -95,35 +95,34 @@ curl -X PUT http://localhost:8067/api/v2/vips \
 
 ### 3. configure DNS proxy
 
-make sure the DNS proxy binds to `0.0.0.0` (the default) so it responds on the VIP:
+make sure the DNS proxy binds to `0.0.0.0` (the default) so it responds on the VIP. set this in **Configuration > DNS Proxy** or via `PUT /api/v2/config/dns`:
 
-```toml
-[dns]
-enabled = true
-listen_udp = "0.0.0.0:53"
+```json
+{
+  "enabled": true,
+  "listen_udp": "0.0.0.0:53"
+}
 ```
 
 if you bind to a specific IP, it wont answer queries on the VIP when it floats over
 
 ### 4. hand out the VIP as DNS server
 
-tell DHCP clients to use the floating IP for DNS:
+tell DHCP clients to use the floating IP for DNS. set this in **Configuration > Defaults** or per-subnet in **Configuration > Subnets**:
 
-```toml
-[defaults]
-dns_servers = ["10.0.0.3"]    # the VIP, not a physical IP
-domain_name = "home.lan"
+```json
+{
+  "dns_servers": ["10.0.0.3"],
+  "domain_name": "home.lan"
+}
 ```
 
-or per-subnet:
-```toml
-[[subnet]]
-network = "10.0.0.0/24"
-dns_servers = ["10.0.0.3"]
-
-[[subnet]]
-network = "10.1.0.0/24"
-dns_servers = ["10.1.0.3"]
+or per-subnet (in the subnet config):
+```json
+[
+  {"network": "10.0.0.0/24", "dns_servers": ["10.0.0.3"]},
+  {"network": "10.1.0.0/24", "dns_servers": ["10.1.0.3"]}
+]
 ```
 
 ## how it works

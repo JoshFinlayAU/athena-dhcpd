@@ -1492,6 +1492,2012 @@
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
+    },
+    "/api/v2/config/subnets": {
+      "get": {
+        "tags": ["Config - Subnets"],
+        "summary": "List configured subnets",
+        "description": "Returns all subnets from the database config store.",
+        "responses": {
+          "200": {
+            "description": "Subnet config list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SubnetConfig" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "post": {
+        "tags": ["Config - Subnets"],
+        "summary": "Create subnet",
+        "description": "Creates a new subnet configuration. Requires admin role. Blocked on HA standby nodes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SubnetConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subnet created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SubnetConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/subnets/{network}": {
+      "put": {
+        "tags": ["Config - Subnets"],
+        "summary": "Update subnet",
+        "description": "Updates an existing subnet by network CIDR. Supports partial updates. Requires admin role. Blocked on HA standby.",
+        "parameters": [{ "$ref": "#/components/parameters/networkPath" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SubnetConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subnet updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SubnetConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "delete": {
+        "tags": ["Config - Subnets"],
+        "summary": "Delete subnet",
+        "description": "Deletes a subnet by network CIDR. Requires admin role. Blocked on HA standby.",
+        "parameters": [{ "$ref": "#/components/parameters/networkPath" }],
+        "responses": {
+          "200": {
+            "description": "Subnet deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "deleted" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/subnets/{network}/reservations": {
+      "get": {
+        "tags": ["Config - Subnets"],
+        "summary": "List reservations for subnet",
+        "description": "Returns reservations for a specific subnet by network CIDR.",
+        "parameters": [{ "$ref": "#/components/parameters/networkPath" }],
+        "responses": {
+          "200": {
+            "description": "Reservation list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ReservationConfig" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "post": {
+        "tags": ["Config - Subnets"],
+        "summary": "Create reservation in subnet",
+        "description": "Adds a reservation to a specific subnet. Requires admin role. Blocked on HA standby.",
+        "parameters": [{ "$ref": "#/components/parameters/networkPath" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReservationConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/subnets/{network}/reservations/{mac}": {
+      "delete": {
+        "tags": ["Config - Subnets"],
+        "summary": "Delete reservation from subnet",
+        "description": "Removes a reservation by MAC from a specific subnet. Requires admin role. Blocked on HA standby.",
+        "parameters": [
+          { "$ref": "#/components/parameters/networkPath" },
+          { "$ref": "#/components/parameters/macPath" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reservation deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/subnets/{network}/reservations/import": {
+      "post": {
+        "tags": ["Config - Subnets"],
+        "summary": "Import reservations into subnet",
+        "description": "Imports reservations from CSV or JSON into a specific subnet. Requires admin role. Blocked on HA standby.",
+        "parameters": [{ "$ref": "#/components/parameters/networkPath" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/csv": { "schema": { "type": "string" } },
+            "application/json": {
+              "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ReservationConfig" } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imported": { "type": "integer" },
+                    "errors": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/defaults": {
+      "get": {
+        "tags": ["Config - Defaults"],
+        "summary": "Get global defaults",
+        "description": "Returns global default DHCP options.",
+        "responses": {
+          "200": {
+            "description": "Defaults config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DefaultsConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Defaults"],
+        "summary": "Update global defaults",
+        "description": "Updates global default DHCP options. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DefaultsConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated defaults",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DefaultsConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/conflict": {
+      "get": {
+        "tags": ["Config - Conflict Detection"],
+        "summary": "Get conflict detection config",
+        "description": "Returns conflict detection settings.",
+        "responses": {
+          "200": {
+            "description": "Conflict detection config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConflictDetectionConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Conflict Detection"],
+        "summary": "Update conflict detection config",
+        "description": "Updates conflict detection settings. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ConflictDetectionConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConflictDetectionConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/ha": {
+      "get": {
+        "tags": ["Config - HA"],
+        "summary": "Get HA config",
+        "description": "Returns high availability configuration. Read from TOML config file (not database).",
+        "responses": {
+          "200": {
+            "description": "HA config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HAConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "put": {
+        "tags": ["Config - HA"],
+        "summary": "Update HA config",
+        "description": "Updates HA configuration. Writes directly to the TOML config file. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HAConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated HA config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HAConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" }
+        }
+      }
+    },
+    "/api/v2/config/hooks": {
+      "get": {
+        "tags": ["Config - Hooks"],
+        "summary": "Get hooks config",
+        "description": "Returns event hook configuration.",
+        "responses": {
+          "200": {
+            "description": "Hooks config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HooksConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Hooks"],
+        "summary": "Update hooks config",
+        "description": "Updates event hook configuration. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HooksConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated hooks config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HooksConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/ddns": {
+      "get": {
+        "tags": ["Config - DDNS"],
+        "summary": "Get DDNS config",
+        "description": "Returns dynamic DNS configuration.",
+        "responses": {
+          "200": {
+            "description": "DDNS config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DDNSConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - DDNS"],
+        "summary": "Update DDNS config",
+        "description": "Updates dynamic DNS configuration. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DDNSConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated DDNS config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DDNSConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/dns": {
+      "get": {
+        "tags": ["Config - DNS"],
+        "summary": "Get DNS proxy config",
+        "description": "Returns DNS proxy configuration.",
+        "responses": {
+          "200": {
+            "description": "DNS proxy config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DNSProxyConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - DNS"],
+        "summary": "Update DNS proxy config",
+        "description": "Updates DNS proxy configuration. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DNSProxyConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated DNS proxy config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DNSProxyConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/hostname-sanitisation": {
+      "get": {
+        "tags": ["Config - Hostname Sanitisation"],
+        "summary": "Get hostname sanitisation config",
+        "description": "Returns hostname sanitisation pipeline settings.",
+        "responses": {
+          "200": {
+            "description": "Hostname sanitisation config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HostnameSanitisationConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Hostname Sanitisation"],
+        "summary": "Update hostname sanitisation config",
+        "description": "Updates hostname sanitisation settings. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HostnameSanitisationConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HostnameSanitisationConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/syslog": {
+      "get": {
+        "tags": ["Config - Syslog"],
+        "summary": "Get syslog config",
+        "description": "Returns remote syslog forwarding configuration.",
+        "responses": {
+          "200": {
+            "description": "Syslog config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyslogConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Syslog"],
+        "summary": "Update syslog config",
+        "description": "Updates remote syslog forwarding configuration. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SyslogConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated syslog config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyslogConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/fingerprint": {
+      "get": {
+        "tags": ["Config - Fingerprint"],
+        "summary": "Get fingerprint config",
+        "description": "Returns device fingerprinting configuration.",
+        "responses": {
+          "200": {
+            "description": "Fingerprint config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FingerprintConfig" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Config - Fingerprint"],
+        "summary": "Update fingerprint config",
+        "description": "Updates device fingerprinting configuration. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FingerprintConfig" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated fingerprint config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FingerprintConfig" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/import": {
+      "post": {
+        "tags": ["Config - Import/Export"],
+        "summary": "Import TOML config",
+        "description": "Imports a full TOML configuration into the database config store. Requires admin role. Blocked on HA standby.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["toml"],
+                "properties": {
+                  "toml": { "type": "string", "description": "Full TOML config as string" }
+                }
+              },
+              "example": { "toml": "[defaults]\nlease_time = \"12h\"\n\n[[subnet]]\nnetwork = \"10.0.1.0/24\"\n" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "imported" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/HAStandby" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/config/raw": {
+      "get": {
+        "tags": ["Config - Import/Export"],
+        "summary": "Get raw TOML config",
+        "description": "Returns the running configuration as raw TOML text.",
+        "responses": {
+          "200": {
+            "description": "TOML config text",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": {
+            "description": "Failed to read config file",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/config/validate": {
+      "post": {
+        "tags": ["Config - Import/Export"],
+        "summary": "Validate TOML config",
+        "description": "Validates a TOML config string without applying it. Returns validation errors if any.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["toml"],
+                "properties": {
+                  "toml": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": { "type": "boolean" },
+                    "errors": { "type": "array", "items": { "type": "string" } }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Config is valid",
+                    "value": { "valid": true, "errors": [] }
+                  },
+                  "invalid": {
+                    "summary": "Config has errors",
+                    "value": { "valid": false, "errors": ["subnet[0]: network is required"] }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/events": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "List recent events",
+        "description": "Returns recent events from the event bus.",
+        "responses": {
+          "200": {
+            "description": "Event list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": { "type": "array", "items": { "type": "object" } }
+                  }
+                },
+                "example": { "events": [] }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/events/stream": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "Live event stream (SSE)",
+        "description": "Server-Sent Events stream of live events. Sends a stream.hello message on connect and keepalive comments every 30s. Use EventSource API or query parameter token for auth.",
+        "security": [
+          { "bearerAuth": [] },
+          { "sessionCookie": [] },
+          { "queryToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" },
+                "example": "data: {\"type\":\"stream.hello\",\"timestamp\":\"2025-01-15T10:30:00Z\"}\n\ndata: {\"type\":\"lease.ack\",\"ip\":\"10.0.1.100\",\"mac\":\"aa:bb:cc:dd:ee:ff\"}\n\n"
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/hooks": {
+      "get": {
+        "tags": ["Hooks"],
+        "summary": "List configured hooks",
+        "description": "Returns all configured hooks and their status.",
+        "responses": {
+          "200": {
+            "description": "Hook list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hooks": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/hooks/test": {
+      "post": {
+        "tags": ["Hooks"],
+        "summary": "Fire test event",
+        "description": "Fires a test event through the event bus to verify webhooks. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "Test event fired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "test event fired" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v2/audit": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "Query audit log",
+        "description": "Returns audit log entries with optional filtering.",
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string" }, "description": "Filter by action type" },
+          { "name": "user", "in": "query", "schema": { "type": "string" }, "description": "Filter by user" },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "Start time" },
+          { "name": "until", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "End time" },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "records": { "type": "array", "items": { "type": "object" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/audit/export": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "Export audit log as CSV",
+        "description": "Exports audit log records as CSV. Supports same query filters as audit query.",
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string" } },
+          { "name": "user", "in": "query", "schema": { "type": "string" } },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "until", "in": "query", "schema": { "type": "string", "format": "date-time" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV export",
+            "content": {
+              "text/csv": { "schema": { "type": "string" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/audit/stats": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "Audit log statistics",
+        "description": "Returns summary statistics about the audit log.",
+        "responses": {
+          "200": {
+            "description": "Audit stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": { "total_records": 1250 }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/fingerprints": {
+      "get": {
+        "tags": ["Fingerprints"],
+        "summary": "List device fingerprints",
+        "description": "Returns all known device fingerprints.",
+        "responses": {
+          "200": {
+            "description": "Fingerprint list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/fingerprints/stats": {
+      "get": {
+        "tags": ["Fingerprints"],
+        "summary": "Fingerprint statistics",
+        "description": "Returns fingerprint statistics including total devices, breakdown by type and OS.",
+        "responses": {
+          "200": {
+            "description": "Fingerprint stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "total_devices": 150,
+                  "by_type": { "Computer": 80, "Phone": 50, "Printer": 20 },
+                  "has_fingerbank_key": false
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/fingerprints/{mac}": {
+      "get": {
+        "tags": ["Fingerprints"],
+        "summary": "Get fingerprint by MAC",
+        "description": "Returns the device fingerprint for a specific MAC address.",
+        "parameters": [{ "$ref": "#/components/parameters/macPath" }],
+        "responses": {
+          "200": {
+            "description": "Fingerprint details",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/rogue": {
+      "get": {
+        "tags": ["Rogue Detection"],
+        "summary": "List rogue DHCP servers",
+        "description": "Returns all detected rogue DHCP servers.",
+        "responses": {
+          "200": {
+            "description": "Rogue server list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/rogue/stats": {
+      "get": {
+        "tags": ["Rogue Detection"],
+        "summary": "Rogue detection statistics",
+        "description": "Returns rogue detection statistics.",
+        "responses": {
+          "200": {
+            "description": "Rogue stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/rogue/acknowledge": {
+      "post": {
+        "tags": ["Rogue Detection"],
+        "summary": "Acknowledge rogue server",
+        "description": "Acknowledges a rogue DHCP server to suppress repeated alerts. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["server_ip"],
+                "properties": {
+                  "server_ip": { "type": "string", "format": "ipv4" }
+                }
+              },
+              "example": { "server_ip": "10.0.1.50" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rogue acknowledged",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/rogue/remove": {
+      "post": {
+        "tags": ["Rogue Detection"],
+        "summary": "Remove rogue server entry",
+        "description": "Removes a rogue server entry by server IP. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["server_ip"],
+                "properties": {
+                  "server_ip": { "type": "string", "format": "ipv4" }
+                }
+              },
+              "example": { "server_ip": "10.0.1.50" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rogue removed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/rogue/scan": {
+      "post": {
+        "tags": ["Rogue Detection"],
+        "summary": "Trigger rogue scan",
+        "description": "Triggers an immediate scan for rogue DHCP servers. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "Scan results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/topology": {
+      "get": {
+        "tags": ["Topology"],
+        "summary": "Get topology tree",
+        "description": "Returns the full network topology tree built from relay agent data.",
+        "responses": {
+          "200": {
+            "description": "Topology tree",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/topology/stats": {
+      "get": {
+        "tags": ["Topology"],
+        "summary": "Topology statistics",
+        "description": "Returns topology summary statistics.",
+        "responses": {
+          "200": {
+            "description": "Topology stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/topology/label": {
+      "post": {
+        "tags": ["Topology"],
+        "summary": "Set topology node label",
+        "description": "Sets a custom label on a topology node (switch or port). Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["node_id", "label"],
+                "properties": {
+                  "node_id": { "type": "string" },
+                  "label": { "type": "string" }
+                }
+              },
+              "example": { "node_id": "switch-10.0.0.1", "label": "Core Switch A" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Label set",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/anomaly/weather": {
+      "get": {
+        "tags": ["Anomaly Detection"],
+        "summary": "Anomaly weather indicator",
+        "description": "Returns the current anomaly detection status as a network weather-style indicator.",
+        "responses": {
+          "200": {
+            "description": "Anomaly weather status",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/macvendor/stats": {
+      "get": {
+        "tags": ["MAC Vendor"],
+        "summary": "MAC vendor database statistics",
+        "description": "Returns statistics about the OUI database.",
+        "responses": {
+          "200": {
+            "description": "MAC vendor stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/macvendor/{mac}": {
+      "get": {
+        "tags": ["MAC Vendor"],
+        "summary": "Lookup MAC vendor",
+        "description": "Returns the manufacturer for a MAC address from the built-in OUI database.",
+        "parameters": [{ "$ref": "#/components/parameters/macPath" }],
+        "responses": {
+          "200": {
+            "description": "Vendor info",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": { "mac": "aa:bb:cc:dd:ee:ff", "vendor": "Dell Inc." }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/radius": {
+      "get": {
+        "tags": ["RADIUS"],
+        "summary": "List RADIUS configurations",
+        "description": "Returns all configured RADIUS subnets.",
+        "responses": {
+          "200": {
+            "description": "RADIUS config list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/radius/test": {
+      "post": {
+        "tags": ["RADIUS"],
+        "summary": "Test RADIUS connectivity",
+        "description": "Tests connectivity to a RADIUS server. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["server", "secret"],
+                "properties": {
+                  "server": { "type": "string", "description": "RADIUS server address (host:port)" },
+                  "secret": { "type": "string" },
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              },
+              "example": { "server": "10.0.0.5:1812", "secret": "testing123", "username": "testuser", "password": "testpass" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/radius/{subnet}": {
+      "get": {
+        "tags": ["RADIUS"],
+        "summary": "Get RADIUS config for subnet",
+        "description": "Returns RADIUS configuration for a specific subnet with secret redacted.",
+        "parameters": [{ "$ref": "#/components/parameters/subnetPath" }],
+        "responses": {
+          "200": {
+            "description": "RADIUS subnet config",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["RADIUS"],
+        "summary": "Set RADIUS config for subnet",
+        "description": "Sets RADIUS configuration for a subnet. Requires admin role.",
+        "parameters": [{ "$ref": "#/components/parameters/subnetPath" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "RADIUS config saved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "delete": {
+        "tags": ["RADIUS"],
+        "summary": "Delete RADIUS config for subnet",
+        "description": "Removes RADIUS configuration for a subnet. Requires admin role.",
+        "parameters": [{ "$ref": "#/components/parameters/subnetPath" }],
+        "responses": {
+          "200": {
+            "description": "RADIUS config removed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/portauto/rules": {
+      "get": {
+        "tags": ["Port Automation"],
+        "summary": "Get port automation rules",
+        "description": "Returns all port automation rules.",
+        "responses": {
+          "200": {
+            "description": "Port automation rules",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Port Automation"],
+        "summary": "Set port automation rules",
+        "description": "Replaces all port automation rules. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": { "type": "object" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rules saved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/portauto/test": {
+      "post": {
+        "tags": ["Port Automation"],
+        "summary": "Test port automation rules",
+        "description": "Tests port automation rules against a sample lease context. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/ha/status": {
+      "get": {
+        "tags": ["HA Status"],
+        "summary": "HA runtime status",
+        "description": "Returns current HA state including role, state, active status, last heartbeat, peer connection, and VIP status.",
+        "responses": {
+          "200": {
+            "description": "HA status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "role": { "type": "string", "enum": ["primary", "secondary"] },
+                    "state": { "type": "string" },
+                    "active": { "type": "boolean" },
+                    "last_heartbeat": { "type": "string", "format": "date-time" },
+                    "peer_connected": { "type": "boolean" },
+                    "vip_held": { "type": "boolean" }
+                  }
+                },
+                "example": {
+                  "enabled": true,
+                  "role": "primary",
+                  "state": "PARTNER_UP",
+                  "active": true,
+                  "last_heartbeat": "2025-01-15T10:30:00Z",
+                  "peer_connected": true,
+                  "vip_held": true
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/ha/failover": {
+      "post": {
+        "tags": ["HA Status"],
+        "summary": "Trigger manual failover",
+        "description": "Triggers a manual HA failover to make this node active. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "Failover triggered",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "failover triggered" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/vips": {
+      "get": {
+        "tags": ["Floating VIPs"],
+        "summary": "Get VIP entries",
+        "description": "Returns configured floating VIP entries.",
+        "responses": {
+          "200": {
+            "description": "VIP list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/VIPEntry" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "put": {
+        "tags": ["Floating VIPs"],
+        "summary": "Set VIP entries",
+        "description": "Replaces the entire VIP list. Validates entries and hot-reloads the VIP group. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/VIPEntry" }
+              },
+              "example": [
+                { "vip": "10.0.0.100/24", "interface": "eth0" },
+                { "vip": "10.0.0.101/24", "interface": "eth0" }
+              ]
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VIPs updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "vips updated" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/vips/status": {
+      "get": {
+        "tags": ["Floating VIPs"],
+        "summary": "Get VIP runtime status",
+        "description": "Returns the runtime status of all VIPs including whether each is held and present on the interface.",
+        "responses": {
+          "200": {
+            "description": "VIP status",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/stats": {
+      "get": {
+        "tags": ["DNS Proxy"],
+        "summary": "DNS proxy statistics",
+        "description": "Returns DNS proxy statistics including queries, cache, and filter lists.",
+        "responses": {
+          "200": {
+            "description": "DNS stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/cache/flush": {
+      "post": {
+        "tags": ["DNS Proxy"],
+        "summary": "Flush DNS cache",
+        "description": "Flushes the DNS response cache. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "Cache flushed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "cache flushed" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/records": {
+      "get": {
+        "tags": ["DNS Proxy"],
+        "summary": "List DNS local zone records",
+        "description": "Returns all local DNS zone records with name, type, value, and TTL.",
+        "responses": {
+          "200": {
+            "description": "DNS records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "type": { "type": "string" },
+                          "value": { "type": "string" },
+                          "ttl": { "type": "integer" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "records": [
+                    { "name": "workstation-1.example.local.", "type": "A", "value": "10.0.1.100", "ttl": 60 },
+                    { "name": "100.1.0.10.in-addr.arpa.", "type": "PTR", "value": "workstation-1.example.local.", "ttl": 60 }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/lists": {
+      "get": {
+        "tags": ["DNS Proxy"],
+        "summary": "DNS filter list status",
+        "description": "Returns status of all DNS filter lists including loaded status and domain counts.",
+        "responses": {
+          "200": {
+            "description": "Filter list status",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/lists/refresh": {
+      "post": {
+        "tags": ["DNS Proxy"],
+        "summary": "Refresh DNS filter lists",
+        "description": "Forces refresh of all or specific DNS filter lists. Requires admin role.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "Optional: specific list name to refresh. Omit to refresh all." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lists refreshed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/lists/test": {
+      "post": {
+        "tags": ["DNS Proxy"],
+        "summary": "Test domain against filter lists",
+        "description": "Tests a domain against DNS filter lists and returns the result.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["domain"],
+                "properties": {
+                  "domain": { "type": "string" }
+                }
+              },
+              "example": { "domain": "ads.example.com" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/querylog": {
+      "get": {
+        "tags": ["DNS Proxy"],
+        "summary": "DNS query log",
+        "description": "Returns recent DNS query log entries with pagination.",
+        "parameters": [
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query log entries",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/dns/querylog/stream": {
+      "get": {
+        "tags": ["DNS Proxy"],
+        "summary": "Live DNS query log stream (SSE)",
+        "description": "Streams live DNS query log entries via Server-Sent Events.",
+        "security": [
+          { "bearerAuth": [] },
+          { "sessionCookie": [] },
+          { "queryToken": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of DNS query log entries",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/setup/status": {
+      "get": {
+        "tags": ["Setup Wizard"],
+        "summary": "Setup wizard status",
+        "description": "Returns whether setup is needed. No authentication required.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Setup status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "setup_complete": { "type": "boolean" },
+                    "needs_setup": { "type": "boolean" }
+                  }
+                },
+                "example": { "setup_complete": false, "needs_setup": true }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/setup/ha": {
+      "post": {
+        "tags": ["Setup Wizard"],
+        "summary": "Setup HA configuration",
+        "description": "Saves HA configuration during setup wizard. Optionally writes TLS certificate files. Locked after setup is complete.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mode"],
+                "properties": {
+                  "mode": { "type": "string", "enum": ["standalone", "primary", "secondary"] },
+                  "role": { "type": "string", "enum": ["primary", "secondary"] },
+                  "peer_address": { "type": "string" },
+                  "listen_address": { "type": "string" },
+                  "tls_enabled": { "type": "boolean" },
+                  "tls_cert": { "type": "string", "description": "PEM certificate content" },
+                  "tls_key": { "type": "string", "description": "PEM private key content" },
+                  "tls_ca": { "type": "string", "description": "PEM CA certificate content" }
+                }
+              },
+              "example": {
+                "mode": "primary",
+                "role": "primary",
+                "peer_address": "10.0.0.2:9467",
+                "listen_address": "0.0.0.0:9467"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HA config saved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "ha configured" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": {
+            "description": "Setup already complete",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "setup wizard is locked — setup already complete", "code": "setup_complete" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/setup/config": {
+      "post": {
+        "tags": ["Setup Wizard"],
+        "summary": "Apply initial configuration",
+        "description": "Applies initial DHCP/DNS configuration during setup. Includes defaults, subnets, conflict detection, DNS, and DDNS settings. Locked after setup is complete.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "defaults": { "$ref": "#/components/schemas/DefaultsConfig" },
+                  "subnets": { "type": "array", "items": { "$ref": "#/components/schemas/SubnetConfig" } },
+                  "conflict_detection": { "$ref": "#/components/schemas/ConflictDetectionConfig" },
+                  "dns": { "$ref": "#/components/schemas/DNSProxyConfig" },
+                  "ddns": { "$ref": "#/components/schemas/DDNSConfig" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Config applied",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "config applied" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": {
+            "description": "Setup already complete",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/setup/complete": {
+      "post": {
+        "tags": ["Setup Wizard"],
+        "summary": "Complete setup",
+        "description": "Marks setup as complete and triggers service startup. Locked after setup is complete.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Setup complete",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "setup complete" }
+              }
+            }
+          },
+          "403": {
+            "description": "Setup already complete",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/backup": {
+      "get": {
+        "tags": ["Backup"],
+        "summary": "Export full backup",
+        "description": "Exports a full backup including config sections, leases, and users as JSON. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "Backup JSON file",
+            "headers": {
+              "Content-Disposition": {
+                "schema": { "type": "string" },
+                "description": "attachment; filename=athena-backup-<timestamp>.json"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BackupPayload" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/backup/restore": {
+      "post": {
+        "tags": ["Backup"],
+        "summary": "Restore from backup",
+        "description": "Restores config sections and users from a backup JSON file. HA config is skipped. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BackupPayload" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restore successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "restore complete" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
     }
   }
 }

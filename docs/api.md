@@ -1,5 +1,7 @@
 # API Reference
 
+> **OpenAPI Spec:** The full machine-readable API specification is available at [`docs/openapi.json`](openapi.json) (OpenAPI 3.1.0). You can load it into [Swagger Editor](https://editor.swagger.io/), [Redocly](https://redocly.com/), or any OpenAPI-compatible tool.
+
 the REST API runs on whatever you set `api.listen` to (default `0.0.0.0:8067`). all responses are JSON unless noted otherwise. all endpoints are under `/api/v2/`
 
 ## Authentication
@@ -138,7 +140,7 @@ List all reservations across all subnets
 ]
 ```
 
-the `id` is a global sequential ID across all subnets. `subnet_index` tells you which `[[subnet]]` block it belongs to
+the `id` is a global sequential ID across all subnets. `subnet_index` tells you which subnet it belongs to
 
 #### POST /api/v2/reservations
 Create a new reservation. **admin only**

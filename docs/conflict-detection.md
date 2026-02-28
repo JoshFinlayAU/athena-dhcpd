@@ -41,10 +41,13 @@ worst case latency: one `probe_timeout` period regardless of how many conflicts
 
 good for: networks with lots of conflicts (messy environments, migration scenarios) where you want to minimize offer latency
 
-```toml
-[conflict_detection]
-probe_strategy = "parallel"
-parallel_probe_count = 4
+configure via **Configuration > Conflict Detection** in the web UI or `PUT /api/v2/config/conflict`:
+
+```json
+{
+  "probe_strategy": "parallel",
+  "parallel_probe_count": 4
+}
 ```
 
 ## the conflict table

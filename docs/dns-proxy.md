@@ -18,31 +18,39 @@ every step is skipped if it doesn't match, falling through to the next one
 
 ## basic setup
 
-```toml
-[dns]
-enabled = true
-listen_udp = "0.0.0.0:53"
-domain = "example.com"
-ttl = 60
-register_leases = true
-register_leases_ptr = true
-forwarders = ["1.1.1.1", "8.8.8.8"]
-cache_size = 10000
-cache_ttl = "5m"
+**Web UI:** Configuration > DNS Proxy
+**API:** `PUT /api/v2/config/dns`
+
+enable the DNS proxy and configure forwarders — either through the setup wizard on first boot, the web UI config page, or the API:
+
+```json
+{
+  "enabled": true,
+  "listen_udp": "0.0.0.0:53",
+  "domain": "example.com",
+  "ttl": 60,
+  "register_leases": true,
+  "register_leases_ptr": true,
+  "forwarders": ["1.1.1.1", "8.8.8.8"],
+  "cache_size": 10000,
+  "cache_ttl": "5m"
+}
 ```
 
-then point your DHCP clients at the server:
-```toml
-[defaults]
-dns_servers = ["10.0.0.1"]  # your athena-dhcpd server IP
-domain_name = "example.com"
+then point your DHCP clients at the server — set `dns_servers` in Configuration > Defaults (or per-subnet) to your server's IP:
+
+```json
+{
+  "dns_servers": ["10.0.0.1"],
+  "domain_name": "example.com"
+}
 ```
 
 thats it. clients get IPs via DHCP, get told to use this server for DNS, and can resolve each other by hostname
 
 ## configuration reference
 
-### [dns]
+### DNS settings
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -58,7 +66,7 @@ thats it. clients get IPs via DHCP, get told to use this server for DNS, and can
 | `cache_size` | int | `10000` | Max cached responses |
 | `cache_ttl` | duration | `"5m"` | How long to cache responses |
 
-### [dns.doh_tls]
+### DoH TLS
 
 TLS config for DNS-over-HTTPS. only needed if `listen_doh` is set
 
@@ -69,9 +77,9 @@ TLS config for DNS-over-HTTPS. only needed if `listen_doh` is set
 
 if no TLS config is provided and DoH is enabled, it runs plain HTTP (useful behind a reverse proxy)
 
-### [[dns.record]]
+### Static DNS records
 
-Static DNS records. for stuff that isn't a DHCP client
+Static DNS records. for stuff that isn't a DHCP client. add these in the DNS config via the web UI or API (in the `records` array):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -80,31 +88,18 @@ Static DNS records. for stuff that isn't a DHCP client
 | `value` | string | Record value |
 | `ttl` | int | Optional TTL override |
 
-```toml
-[[dns.record]]
-name = "nas.home.lan"
-type = "A"
-value = "10.0.0.50"
-
-[[dns.record]]
-name = "mail.home.lan"
-type = "MX"
-value = "10 smtp.home.lan"
-
-[[dns.record]]
-name = "vpn.home.lan"
-type = "CNAME"
-value = "gateway.home.lan."
-
-[[dns.record]]
-name = "_http._tcp.home.lan"
-type = "SRV"
-value = "10 0 8080 webserver.home.lan"
+```json
+[
+  {"name": "nas.home.lan", "type": "A", "value": "10.0.0.50"},
+  {"name": "mail.home.lan", "type": "MX", "value": "10 smtp.home.lan"},
+  {"name": "vpn.home.lan", "type": "CNAME", "value": "gateway.home.lan."},
+  {"name": "_http._tcp.home.lan", "type": "SRV", "value": "10 0 8080 webserver.home.lan"}
+]
 ```
 
-### [[dns.zone_override]]
+### Zone overrides
 
-Route queries for specific domains to specific nameservers. useful for split-horizon DNS, internal corporate zones, or forwarding `.local` somewhere specific
+Route queries for specific domains to specific nameservers. useful for split-horizon DNS, internal corporate zones, or forwarding `.local` somewhere specific. configure in the DNS config via the web UI or API (in the `zone_overrides` array):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -113,22 +108,18 @@ Route queries for specific domains to specific nameservers. useful for split-hor
 | `doh` | bool | Use DNS-over-HTTPS to reach this nameserver |
 | `doh_url` | string | DoH URL e.g. `"https://dns.example.com/dns-query"` |
 
-```toml
-[[dns.zone_override]]
-zone = "corp.example.com"
-nameserver = "10.0.0.2"
-
-[[dns.zone_override]]
-zone = "internal.dev"
-doh = true
-doh_url = "https://internal-dns.dev/dns-query"
+```json
+[
+  {"zone": "corp.example.com", "nameserver": "10.0.0.2"},
+  {"zone": "internal.dev", "doh": true, "doh_url": "https://internal-dns.dev/dns-query"}
+]
 ```
 
 the override matching walks up the domain labels. a query for `host.corp.example.com` matches the `corp.example.com` override. most specific match wins
 
-### [[dns.list]]
+### Filter lists
 
-Dynamic filter lists for blocking domains. see [filter lists](#filter-lists) below
+Dynamic filter lists for blocking domains. configure in the DNS config via the web UI or API (in the `lists` array). see [filter lists](#filter-lists) below
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -168,24 +159,26 @@ the proxy supports RFC 8484 DNS-over-HTTPS, both as a server (accepting DoH quer
 
 ### as a server
 
-```toml
-[dns]
-listen_doh = "0.0.0.0:443"
+set `listen_doh` and the DoH TLS cert/key in the DNS config (Configuration > DNS Proxy or `PUT /api/v2/config/dns`):
 
-  [dns.doh_tls]
-  cert_file = "/etc/athena-dhcpd/tls/dns.crt"
-  key_file = "/etc/athena-dhcpd/tls/dns.key"
+```json
+{
+  "listen_doh": "0.0.0.0:443",
+  "doh_tls": {
+    "cert_file": "/etc/athena-dhcpd/tls/dns.crt",
+    "key_file": "/etc/athena-dhcpd/tls/dns.key"
+  }
+}
 ```
 
 supports both GET (`?dns=` base64url parameter) and POST (`application/dns-message` body) methods per the RFC
 
 ### as a client (zone overrides)
 
-```toml
-[[dns.zone_override]]
-zone = "secure.example.com"
-doh = true
-doh_url = "https://dns.cloudflare.com/dns-query"
+add a zone override with `doh: true` in the DNS config:
+
+```json
+{"zone": "secure.example.com", "doh": true, "doh_url": "https://dns.cloudflare.com/dns-query"}
 ```
 
 ---
@@ -257,37 +250,39 @@ lists are downloaded on startup and then refreshed at the configured `refresh_in
 
 you can also trigger a manual refresh via the API or web UI at any time
 
-### example config
+### example filter list config
 
-```toml
-# block ads and trackers
-[[dns.list]]
-name = "steven-black-hosts"
-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-type = "block"
-format = "hosts"
-action = "nxdomain"
-enabled = true
-refresh_interval = "24h"
+add these via the web UI (Configuration > DNS Proxy > Filter Lists) or the API (`PUT /api/v2/config/dns` with a `lists` array):
 
-# block malware/threats
-[[dns.list]]
-name = "hagezi-threat"
-url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/multi.txt"
-type = "block"
-format = "domains"
-action = "nxdomain"
-enabled = true
-refresh_interval = "12h"
-
-# but allow some stuff that blocklists are too aggressive about
-[[dns.list]]
-name = "my-allowlist"
-url = "https://example.com/my-allowlist.txt"
-type = "allow"
-format = "domains"
-enabled = true
-refresh_interval = "6h"
+```json
+[
+  {
+    "name": "steven-black-hosts",
+    "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+    "type": "block",
+    "format": "hosts",
+    "action": "nxdomain",
+    "enabled": true,
+    "refresh_interval": "24h"
+  },
+  {
+    "name": "hagezi-threat",
+    "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/multi.txt",
+    "type": "block",
+    "format": "domains",
+    "action": "nxdomain",
+    "enabled": true,
+    "refresh_interval": "12h"
+  },
+  {
+    "name": "my-allowlist",
+    "url": "https://example.com/my-allowlist.txt",
+    "type": "allow",
+    "format": "domains",
+    "enabled": true,
+    "refresh_interval": "6h"
+  }
+]
 ```
 
 ### popular blocklists

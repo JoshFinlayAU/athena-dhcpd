@@ -27,18 +27,23 @@ hostnames get sanitized: only alphanumeric chars and hyphens allowed, converted 
 
 ## supported DNS backends
 
+all DDNS config is managed via **Configuration > Dynamic DNS** in the web UI, or `PUT /api/v2/config/ddns`
+
 ### RFC 2136 (BIND, Knot, Windows DNS, CoreDNS)
 
 the standard dynamic update protocol. works with basically any DNS server that supports it
 
-```toml
-[ddns.forward]
-zone = "example.com."
-method = "rfc2136"
-server = "ns1.example.com:53"
-tsig_name = "dhcp-update."
-tsig_algorithm = "hmac-sha256"
-tsig_secret = "base64-encoded-tsig-secret"
+```json
+{
+  "forward": {
+    "zone": "example.com.",
+    "method": "rfc2136",
+    "server": "ns1.example.com:53",
+    "tsig_name": "dhcp-update.",
+    "tsig_algorithm": "hmac-sha256",
+    "tsig_secret": "base64-encoded-tsig-secret"
+  }
+}
 ```
 
 TSIG signing is used for authentication. you need to set up a TSIG key on your DNS server and share the secret. supported algorithms: `hmac-md5`, `hmac-sha1`, `hmac-sha256`, `hmac-sha512`
@@ -80,12 +85,15 @@ zone:
 
 uses the PowerDNS HTTP API directly. no TSIG needed, authenticates with an API key
 
-```toml
-[ddns.forward]
-zone = "example.com."
-method = "powerdns_api"
-server = "http://pdns-server:8081"
-api_key = "your-pdns-api-key"
+```json
+{
+  "forward": {
+    "zone": "example.com.",
+    "method": "powerdns_api",
+    "server": "http://pdns-server:8081",
+    "api_key": "your-pdns-api-key"
+  }
+}
 ```
 
 make sure the PowerDNS API is enabled:
@@ -101,12 +109,15 @@ webserver-port=8081
 
 uses the Technitium DNS Server HTTP API
 
-```toml
-[ddns.forward]
-zone = "example.com."
-method = "technitium_api"
-server = "http://technitium:5380"
-api_key = "your-technitium-api-token"
+```json
+{
+  "forward": {
+    "zone": "example.com.",
+    "method": "technitium_api",
+    "server": "http://technitium:5380",
+    "api_key": "your-technitium-api-token"
+  }
+}
 ```
 
 ## forward and reverse zones
@@ -116,45 +127,53 @@ most setups want both:
 - **Forward zone** — A records mapping `hostname.example.com → 192.168.1.100`
 - **Reverse zone** — PTR records mapping `100.1.168.192.in-addr.arpa → hostname.example.com`
 
-reverse zone is optional. if you don't configure `[ddns.reverse]`, only forward records get created
+reverse zone is optional. if you don't configure a reverse zone, only forward records get created
 
-```toml
-[ddns.forward]
-zone = "example.com."
-method = "rfc2136"
-server = "ns1.example.com:53"
-tsig_name = "dhcp-update."
-tsig_algorithm = "hmac-sha256"
-tsig_secret = "forward-zone-secret"
-
-[ddns.reverse]
-zone = "1.168.192.in-addr.arpa."
-method = "rfc2136"
-server = "ns1.example.com:53"
-tsig_name = "dhcp-update."
-tsig_algorithm = "hmac-sha256"
-tsig_secret = "reverse-zone-secret"
+```json
+{
+  "forward": {
+    "zone": "example.com.",
+    "method": "rfc2136",
+    "server": "ns1.example.com:53",
+    "tsig_name": "dhcp-update.",
+    "tsig_algorithm": "hmac-sha256",
+    "tsig_secret": "forward-zone-secret"
+  },
+  "reverse": {
+    "zone": "1.168.192.in-addr.arpa.",
+    "method": "rfc2136",
+    "server": "ns1.example.com:53",
+    "tsig_name": "dhcp-update.",
+    "tsig_algorithm": "hmac-sha256",
+    "tsig_secret": "reverse-zone-secret"
+  }
+}
 ```
 
 forward and reverse zones can use different servers, methods, and credentials. useful if your forward zone is in PowerDNS but reverse is in BIND or whatever
 
 ## per-subnet zone overrides
 
-if you have different subnets in different DNS zones (common in larger networks):
+if you have different subnets in different DNS zones (common in larger networks), add zone overrides in the DDNS config:
 
-```toml
-[[ddns.zone_override]]
-subnet = "10.0.0.0/24"
-forward_zone = "lab.example.com."
-reverse_zone = "0.0.10.in-addr.arpa."
-method = "rfc2136"
-server = "ns2.example.com:53"
-tsig_name = "lab-update."
-tsig_algorithm = "hmac-sha256"
-tsig_secret = "lab-zone-secret"
+```json
+{
+  "zone_overrides": [
+    {
+      "subnet": "10.0.0.0/24",
+      "forward_zone": "lab.example.com.",
+      "reverse_zone": "0.0.10.in-addr.arpa.",
+      "method": "rfc2136",
+      "server": "ns2.example.com:53",
+      "tsig_name": "lab-update.",
+      "tsig_algorithm": "hmac-sha256",
+      "tsig_secret": "lab-zone-secret"
+    }
+  ]
+}
 ```
 
-any field you specify in the override replaces the default. fields you leave out fall back to the main `[ddns.forward]` / `[ddns.reverse]` config
+any field you specify in the override replaces the default. fields you leave out fall back to the main `forward` / `reverse` zone config
 
 ## DHCID records
 
@@ -173,7 +192,7 @@ when a lease expires or gets released:
 
 - TSIG secrets and API keys are **never logged** — they're redacted in all log output
 - the `/api/v1/config` endpoint redacts secrets as `"***REDACTED***"`
-- secrets should have restrictive file permissions on the config file (0600)
+- TSIG secrets and API keys are stored in the database and only accessible through the authenticated API
 - the systemd service file sets up `ProtectSystem=strict` which helps
 
 ## metrics

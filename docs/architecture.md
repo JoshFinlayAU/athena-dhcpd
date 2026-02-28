@@ -15,12 +15,12 @@ client sends DHCPDISCOVER
          │
          ▼
 ┌───────────────────────────────────────┐
-│  dhcp.Handler                               │
-│  DORA cycle + Decline, Release, Inform       │
-│  + fingerprint extraction on DISCOVER         │
-└──┬───┬───┬──────┬───────────────────────┘
+│  dhcp.Handler                         │
+│  DORA cycle + Decline, Release, Inform│
+│  + fingerprint extraction on DISCOVER │
+└──┬───┬───┬──────┬──────────────────────┘
    │   │   │      │
-   │   │   │      └────────────────┐
+   │   │   │      └──────────────────┐
    │   │   │                         │
    ▼   ▼   ▼                         ▼
 ┌────────┐ ┌─────────────┐ ┌────────────┐ ┌─────────────┐
@@ -32,14 +32,14 @@ client sends DHCPDISCOVER
                   ▼
           ┌───────────────┐
           │  events.Bus   │  buffered channel, fan-out to subscribers
-          └──┬──┬──┬──┬──┘
-             │  │  │  │
-    ┌───────┘  │  │  └──────────┐
-    ▼         ▼  ▼              ▼
-┌─────────┐ ┌────┐ ┌───────┐ ┌─────────────┐
-│ Dispatch│ │ DDNS │ │ SSE   │ │ syslog fwd  │
-│ (hooks) │ │ Mgr  │ │ Hub   │ │ (RFC 5424) │
-└─────────┘ └────┘ └───────┘ └─────────────┘
+          └──┬──┬─────┬──┬┘
+             │  │     │  │
+    ┌───────┘   │     │  └──────────┐
+    ▼           ▼     ▼             ▼
+┌─────────┐ ┌─────┐ ┌───────┐ ┌─────────────┐
+│ Dispatch│ │ DDNS| │ │ SSE   │ │ syslog fwd  │
+│ (hooks) │ │ Mgr |│ │ Hub   │ │ (RFC 5424) │
+└─────────┘ └─────┘ └───────┘ └─────────────┘
 
          ┌────────────────────┐
          │  dbconfig.Store    │  BoltDB-backed dynamic config

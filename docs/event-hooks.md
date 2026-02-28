@@ -89,13 +89,16 @@ scripts are executed via `/bin/sh -c` with a configurable concurrency pool (defa
 
 ### configuration
 
-```toml
-[[hooks.script]]
-name = "log-leases"
-events = ["lease.ack", "lease.release", "lease.expire"]
-command = "/usr/local/bin/athena-hook.sh"
-timeout = "10s"
-subnets = ["192.168.1.0/24"]   # optional — only fire for these subnets
+configure script hooks via **Configuration > Hooks** in the web UI, or `PUT /api/v2/config/hooks`:
+
+```json
+{
+  "name": "log-leases",
+  "events": ["lease.ack", "lease.release", "lease.expire"],
+  "command": "/usr/local/bin/athena-hook.sh",
+  "timeout": "10s",
+  "subnets": ["192.168.1.0/24"]
+}
 ```
 
 ### event matching
@@ -183,20 +186,23 @@ HTTP webhooks with retries, backoff, HMAC signing, and built-in templates for sl
 
 ### configuration
 
-```toml
-[[hooks.webhook]]
-name = "slack-alerts"
-events = ["conflict.detected", "conflict.permanent", "ha.failover"]
-url = "https://hooks.slack.com/services/T00/B00/XXXXX"
-method = "POST"
-timeout = "5s"
-retries = 3
-retry_backoff = "1s"
-template = "slack"
-secret = "my-hmac-secret"
+configure webhook hooks via **Configuration > Hooks** in the web UI, or `PUT /api/v2/config/hooks`:
 
-[hooks.webhook.headers]
-X-Custom-Header = "whatever"
+```json
+{
+  "name": "slack-alerts",
+  "events": ["conflict.detected", "conflict.permanent", "ha.failover"],
+  "url": "https://hooks.slack.com/services/T00/B00/XXXXX",
+  "method": "POST",
+  "timeout": "5s",
+  "retries": 3,
+  "retry_backoff": "1s",
+  "template": "slack",
+  "secret": "my-hmac-secret",
+  "headers": {
+    "X-Custom-Header": "whatever"
+  }
+}
 ```
 
 ### request format

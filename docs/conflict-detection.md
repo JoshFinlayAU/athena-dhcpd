@@ -64,10 +64,10 @@ if an IP hits `max_conflict_count` detections (default 3), its permanently flagg
 permanently flagged IPs are never offered. you have to manually clear them via the API:
 ```bash
 # clear a single conflict
-curl -X DELETE http://localhost:8080/api/v1/conflicts/192.168.1.50 -H "Authorization: Bearer mytoken"
+curl -X DELETE http://localhost:8067/api/v1/conflicts/192.168.1.50 -H "Authorization: Bearer mytoken"
 
 # or permanently exclude it
-curl -X POST http://localhost:8080/api/v1/conflicts/192.168.1.50/exclude -H "Authorization: Bearer mytoken"
+curl -X POST http://localhost:8067/api/v1/conflicts/192.168.1.50/exclude -H "Authorization: Bearer mytoken"
 ```
 
 or use the web UI conflicts page, which is honestly easier

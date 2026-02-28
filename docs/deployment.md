@@ -194,8 +194,8 @@ the binary runs as a non-root `athena` user. the image is about 15MB
 |------|----------|---------|
 | 67 | UDP | DHCP server |
 | 53 | UDP/TCP | DNS proxy (if enabled) |
-| 8067 | TCP | HA peer communication (if enabled) |
-| 8080 | TCP | API + Web UI (configurable via `api.listen`) |
+| 8067 | TCP | API + Web UI (configurable via `api.listen`) |
+| 8068 | TCP | HA peer communication (if enabled) |
 
 ## firewall rules
 
@@ -210,10 +210,10 @@ sudo ufw allow 53/udp
 sudo ufw allow 53/tcp
 
 # API/Web UI (if using)
-sudo ufw allow 8080/tcp
+sudo ufw allow 8067/tcp
 
 # HA peer (if using, only from peer IP)
-sudo ufw allow from 192.168.1.2 to any port 8067 proto tcp
+sudo ufw allow from 192.168.1.2 to any port 8068 proto tcp
 ```
 
 or with iptables:
@@ -221,8 +221,8 @@ or with iptables:
 iptables -A INPUT -p udp --dport 67 -j ACCEPT
 iptables -A INPUT -p udp --dport 53 -j ACCEPT
 iptables -A INPUT -p tcp --dport 53 -j ACCEPT
-iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
-iptables -A INPUT -p tcp --dport 8067 -s 192.168.1.2 -j ACCEPT
+iptables -A INPUT -p tcp --dport 8067 -j ACCEPT
+iptables -A INPUT -p tcp --dport 8068 -s 192.168.1.2 -j ACCEPT
 ```
 
 ## security checklist

@@ -153,8 +153,8 @@ High availability / failover settings. this is a **bootstrap section** — it li
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable HA |
 | `role` | string | required | `"primary"` or `"secondary"` |
-| `peer_address` | string | required | Address of the other node e.g. `"192.168.1.2:8067"` |
-| `listen_address` | string | required | Address to listen for peer connections e.g. `"0.0.0.0:8067"` |
+| `peer_address` | string | required | Address of the other node e.g. `"192.168.1.2:8068"` |
+| `listen_address` | string | required | Address to listen for peer connections e.g. `"0.0.0.0:8068"` |
 | `heartbeat_interval` | duration | `"1s"` | How often to send heartbeats |
 | `failover_timeout` | duration | `"10s"` | How long before declaring peer dead |
 | `sync_batch_size` | int | `100` | Leases per batch during bulk sync |
@@ -174,8 +174,8 @@ Optional TLS for peer communication. recommended if peers are on untrusted netwo
 [ha]
 enabled = true
 role = "primary"
-peer_address = "192.168.1.2:8067"
-listen_address = "0.0.0.0:8067"
+peer_address = "192.168.1.2:8068"
+listen_address = "0.0.0.0:8068"
 
   [ha.tls]
   enabled = true

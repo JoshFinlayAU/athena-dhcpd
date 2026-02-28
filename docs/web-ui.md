@@ -6,7 +6,7 @@ dark mode React SPA baked into the Go binary. no Node.js runtime, no separate we
 
 ```toml
 [api]
-listen = "127.0.0.1:8080"
+listen = "127.0.0.1:8067"
 ```
 
 the API server and web UI always start. just set the listen address and open it in a browser. thats it
@@ -211,7 +211,7 @@ make dev
 cd web && npm run dev
 ```
 
-Vite proxies `/api/*` and `/metrics` to `http://localhost:8080` (the Go backend) and `/ws` connections get proxied as WebSocket. hot module replacement works so you see changes instantly
+Vite proxies `/api/*` and `/metrics` to `http://localhost:8067` (the Go backend) and `/ws` connections get proxied as WebSocket. hot module replacement works so you see changes instantly
 
 ## building for production
 

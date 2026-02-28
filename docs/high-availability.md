@@ -19,8 +19,8 @@ you need two instances of athena-dhcpd, each with its own TOML config file. the 
 [ha]
 enabled = true
 role = "primary"
-peer_address = "10.0.0.2:8067"    # node B's address
-listen_address = "0.0.0.0:8067"
+peer_address = "10.0.0.2:8068"    # node B's address
+listen_address = "0.0.0.0:8068"
 heartbeat_interval = "1s"
 failover_timeout = "10s"
 sync_batch_size = 100
@@ -31,8 +31,8 @@ sync_batch_size = 100
 [ha]
 enabled = true
 role = "secondary"
-peer_address = "10.0.0.1:8067"    # node A's address
-listen_address = "0.0.0.0:8067"
+peer_address = "10.0.0.1:8068"    # node A's address
+listen_address = "0.0.0.0:8068"
 heartbeat_interval = "1s"
 failover_timeout = "10s"
 sync_batch_size = 100

@@ -10,7 +10,7 @@ for a full walkthrough on installing prometheus, configuring grafana dashboards,
 scrape_configs:
   - job_name: 'athena-dhcpd'
     static_configs:
-      - targets: ['dhcp-server:8080']
+      - targets: ['dhcp-server:8067']
     scrape_interval: 15s
 ```
 

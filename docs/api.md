@@ -498,8 +498,8 @@ Current HA state
   "state": "ACTIVE",
   "is_active": true,
   "last_heartbeat": "2024-01-23T14:30:22Z",
-  "peer_address": "192.168.1.2:8067",
-  "listen_address": "0.0.0.0:8067",
+  "peer_address": "192.168.1.2:8068",
+  "listen_address": "0.0.0.0:8068",
   "vip": {
     "configured": true,
     "active": true,

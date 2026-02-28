@@ -37,8 +37,8 @@ standard HA config on both nodes. peer addresses use the real IPs, not the VIP:
 [ha]
 enabled = true
 role = "primary"
-peer_address = "10.0.0.2:8067"
-listen_address = "0.0.0.0:8067"
+peer_address = "10.0.0.2:8068"
+listen_address = "0.0.0.0:8068"
 ```
 
 ```toml
@@ -46,8 +46,8 @@ listen_address = "0.0.0.0:8067"
 [ha]
 enabled = true
 role = "secondary"
-peer_address = "10.0.0.1:8067"
-listen_address = "0.0.0.0:8067"
+peer_address = "10.0.0.1:8068"
+listen_address = "0.0.0.0:8068"
 ```
 
 ### 2. add floating VIPs

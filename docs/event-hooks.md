@@ -247,7 +247,7 @@ sends the raw event JSON. use this for custom integrations
 
 hit the test endpoint:
 ```bash
-curl -X POST http://localhost:8080/api/v1/hooks/test \
+curl -X POST http://localhost:8067/api/v1/hooks/test \
   -H "Authorization: Bearer mytoken"
 ```
 

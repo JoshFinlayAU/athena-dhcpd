@@ -1,0 +1,1497 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "athena-dhcpd API",
+    "description": "REST API for athena-dhcpd — an RFC-compliant DHCPv4 server with built-in high availability, conflict detection, dynamic DNS, DNS proxy, and web management.",
+    "version": "2.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8067",
+      "description": "Default local server"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Server health check" },
+    { "name": "Auth", "description": "Authentication and session management" },
+    { "name": "Users", "description": "User account management" },
+    { "name": "Leases", "description": "DHCP lease management" },
+    { "name": "Reservations", "description": "DHCP reservation (static lease) management" },
+    { "name": "Subnets", "description": "Runtime subnet and pool views" },
+    { "name": "Conflicts", "description": "IP conflict detection and management" },
+    { "name": "Config - Subnets", "description": "Database-backed subnet configuration CRUD" },
+    { "name": "Config - Defaults", "description": "Global default DHCP options" },
+    { "name": "Config - Conflict Detection", "description": "Conflict detection settings" },
+    { "name": "Config - HA", "description": "High availability configuration (TOML-backed)" },
+    { "name": "Config - Hooks", "description": "Event hook configuration" },
+    { "name": "Config - DDNS", "description": "Dynamic DNS configuration" },
+    { "name": "Config - DNS", "description": "DNS proxy configuration" },
+    { "name": "Config - Hostname Sanitisation", "description": "Hostname sanitisation pipeline settings" },
+    { "name": "Config - Syslog", "description": "Remote syslog forwarding settings" },
+    { "name": "Config - Fingerprint", "description": "Device fingerprinting settings" },
+    { "name": "Config - Import/Export", "description": "TOML config import, raw view, and validation" },
+    { "name": "Events", "description": "Event log and SSE streaming" },
+    { "name": "Hooks", "description": "Configured hooks and testing" },
+    { "name": "Audit", "description": "Audit log queries and export" },
+    { "name": "Fingerprints", "description": "Device fingerprint data" },
+    { "name": "Rogue Detection", "description": "Rogue DHCP server detection" },
+    { "name": "Topology", "description": "Network topology discovery" },
+    { "name": "Anomaly Detection", "description": "Anomaly detection weather indicator" },
+    { "name": "MAC Vendor", "description": "MAC address vendor/OUI lookup" },
+    { "name": "RADIUS", "description": "RADIUS authentication configuration" },
+    { "name": "Port Automation", "description": "Port automation rules engine" },
+    { "name": "HA Status", "description": "High availability runtime status and failover" },
+    { "name": "Floating VIPs", "description": "Floating virtual IP management" },
+    { "name": "DNS Proxy", "description": "DNS proxy runtime operations" },
+    { "name": "Stats", "description": "Server statistics" },
+    { "name": "Setup Wizard", "description": "Initial setup wizard" },
+    { "name": "Backup", "description": "Backup and restore" },
+    { "name": "Metrics", "description": "Prometheus metrics" }
+  ],
+  "security": [
+    { "bearerAuth": [] },
+    { "sessionCookie": [] },
+    { "basicAuth": [] }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token configured in api.auth.auth_token"
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "athena_session",
+        "description": "Session cookie set by POST /api/v2/auth/login"
+      },
+      "basicAuth": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "HTTP Basic auth against configured users"
+      },
+      "queryToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "token",
+        "description": "Query parameter token for SSE/streaming connections"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error", "code"],
+        "properties": {
+          "error": { "type": "string", "description": "Human-readable error message" },
+          "code": { "type": "string", "description": "Machine-readable error code" }
+        },
+        "example": {
+          "error": "authentication required",
+          "code": "unauthorized"
+        }
+      },
+      "StandbyError": {
+        "type": "object",
+        "required": ["error", "code", "primary_url"],
+        "properties": {
+          "error": { "type": "string" },
+          "code": { "type": "string", "enum": ["ha_standby"] },
+          "primary_url": { "type": "string", "format": "uri", "description": "URL of the primary node to redirect to" }
+        },
+        "example": {
+          "error": "this node is standby — config changes must be made on the primary",
+          "code": "ha_standby",
+          "primary_url": "http://10.0.0.1:8067"
+        }
+      },
+      "StatusMessage": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" }
+        },
+        "example": { "status": "ok" }
+      },
+      "LeaseResponse": {
+        "type": "object",
+        "properties": {
+          "ip": { "type": "string", "format": "ipv4" },
+          "mac": { "type": "string", "description": "MAC address" },
+          "hostname": { "type": "string" },
+          "subnet": { "type": "string", "description": "Subnet CIDR" },
+          "pool": { "type": "string", "description": "Pool range" },
+          "state": { "type": "string", "enum": ["active", "expired", "released"] },
+          "start": { "type": "string", "format": "date-time" },
+          "expiry": { "type": "string", "format": "date-time" },
+          "remaining": { "type": "string", "description": "Human-readable remaining time" },
+          "vendor": { "type": "string", "description": "MAC vendor from OUI database" },
+          "fingerprint": { "type": "string", "description": "Device fingerprint if available" },
+          "relay_agent": { "type": "string", "description": "Relay agent IP if present" },
+          "circuit_id": { "type": "string" },
+          "remote_id": { "type": "string" }
+        },
+        "example": {
+          "ip": "10.0.1.100",
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "hostname": "workstation-1",
+          "subnet": "10.0.1.0/24",
+          "pool": "10.0.1.100-10.0.1.200",
+          "state": "active",
+          "start": "2025-01-15T10:30:00Z",
+          "expiry": "2025-01-15T22:30:00Z",
+          "remaining": "11h59m",
+          "vendor": "Dell Inc.",
+          "fingerprint": "Windows 11",
+          "relay_agent": "",
+          "circuit_id": "",
+          "remote_id": ""
+        }
+      },
+      "SubnetResponse": {
+        "type": "object",
+        "properties": {
+          "network": { "type": "string", "description": "CIDR notation" },
+          "interface": { "type": "string" },
+          "routers": { "type": "array", "items": { "type": "string", "format": "ipv4" } },
+          "dns_servers": { "type": "array", "items": { "type": "string", "format": "ipv4" } },
+          "domain_name": { "type": "string" },
+          "lease_time": { "type": "string" },
+          "pools": { "type": "array", "items": { "$ref": "#/components/schemas/PoolConfig" } },
+          "total_ips": { "type": "integer" },
+          "active_leases": { "type": "integer" },
+          "utilization": { "type": "number", "format": "float" }
+        },
+        "example": {
+          "network": "10.0.1.0/24",
+          "interface": "eth0",
+          "routers": ["10.0.1.1"],
+          "dns_servers": ["10.0.1.1", "8.8.8.8"],
+          "domain_name": "example.local",
+          "lease_time": "12h0m0s",
+          "pools": [{ "range_start": "10.0.1.100", "range_end": "10.0.1.200" }],
+          "total_ips": 101,
+          "active_leases": 42,
+          "utilization": 41.58
+        }
+      },
+      "ReservationResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "Global reservation ID" },
+          "subnet_index": { "type": "integer" },
+          "subnet": { "type": "string", "description": "Subnet CIDR" },
+          "mac": { "type": "string" },
+          "identifier": { "type": "string" },
+          "ip": { "type": "string", "format": "ipv4" },
+          "hostname": { "type": "string" },
+          "dns_servers": { "type": "array", "items": { "type": "string" } },
+          "ddns_hostname": { "type": "string" }
+        },
+        "example": {
+          "id": 0,
+          "subnet_index": 0,
+          "subnet": "10.0.1.0/24",
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "identifier": "",
+          "ip": "10.0.1.10",
+          "hostname": "printer-1",
+          "dns_servers": null,
+          "ddns_hostname": ""
+        }
+      },
+      "ReservationRequest": {
+        "type": "object",
+        "required": ["subnet_index", "ip"],
+        "properties": {
+          "subnet_index": { "type": "integer", "description": "Index of the target subnet" },
+          "mac": { "type": "string" },
+          "identifier": { "type": "string" },
+          "ip": { "type": "string", "format": "ipv4" },
+          "hostname": { "type": "string" },
+          "dns_servers": { "type": "array", "items": { "type": "string" } },
+          "ddns_hostname": { "type": "string" }
+        },
+        "example": {
+          "subnet_index": 0,
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "ip": "10.0.1.10",
+          "hostname": "printer-1"
+        }
+      },
+      "SubnetConfig": {
+        "type": "object",
+        "required": ["network"],
+        "properties": {
+          "network": { "type": "string", "description": "CIDR notation, e.g. 10.0.1.0/24" },
+          "interface": { "type": "string" },
+          "routers": { "type": "array", "items": { "type": "string", "format": "ipv4" } },
+          "dns_servers": { "type": "array", "items": { "type": "string", "format": "ipv4" } },
+          "domain_name": { "type": "string" },
+          "lease_time": { "type": "string", "description": "Go duration, e.g. 12h" },
+          "renewal_time": { "type": "string" },
+          "rebind_time": { "type": "string" },
+          "ntp_servers": { "type": "array", "items": { "type": "string" } },
+          "pool": { "type": "array", "items": { "$ref": "#/components/schemas/PoolConfig" } },
+          "reservation": { "type": "array", "items": { "$ref": "#/components/schemas/ReservationConfig" } },
+          "option": { "type": "array", "items": { "$ref": "#/components/schemas/OptionConfig" } },
+          "hostname_sanitisation": { "$ref": "#/components/schemas/HostnameSanitisationConfig" }
+        },
+        "example": {
+          "network": "10.0.1.0/24",
+          "interface": "eth0",
+          "routers": ["10.0.1.1"],
+          "dns_servers": ["10.0.1.1"],
+          "domain_name": "office.local",
+          "lease_time": "12h",
+          "pool": [{ "range_start": "10.0.1.100", "range_end": "10.0.1.200" }]
+        }
+      },
+      "PoolConfig": {
+        "type": "object",
+        "required": ["range_start", "range_end"],
+        "properties": {
+          "range_start": { "type": "string", "format": "ipv4" },
+          "range_end": { "type": "string", "format": "ipv4" },
+          "lease_time": { "type": "string" },
+          "match_circuit_id": { "type": "string" },
+          "match_remote_id": { "type": "string" },
+          "match_vendor_class": { "type": "string" },
+          "match_user_class": { "type": "string" }
+        },
+        "example": {
+          "range_start": "10.0.1.100",
+          "range_end": "10.0.1.200"
+        }
+      },
+      "ReservationConfig": {
+        "type": "object",
+        "required": ["ip"],
+        "properties": {
+          "mac": { "type": "string" },
+          "identifier": { "type": "string" },
+          "ip": { "type": "string", "format": "ipv4" },
+          "hostname": { "type": "string" },
+          "dns_servers": { "type": "array", "items": { "type": "string" } },
+          "ddns_hostname": { "type": "string" }
+        }
+      },
+      "OptionConfig": {
+        "type": "object",
+        "required": ["code", "type", "value"],
+        "properties": {
+          "code": { "type": "integer" },
+          "type": { "type": "string" },
+          "value": {}
+        }
+      },
+      "DefaultsConfig": {
+        "type": "object",
+        "properties": {
+          "lease_time": { "type": "string", "description": "Go duration" },
+          "renewal_time": { "type": "string" },
+          "rebind_time": { "type": "string" },
+          "dns_servers": { "type": "array", "items": { "type": "string" } },
+          "domain_name": { "type": "string" }
+        },
+        "example": {
+          "lease_time": "12h0m0s",
+          "renewal_time": "6h0m0s",
+          "rebind_time": "10h30m0s",
+          "dns_servers": ["8.8.8.8", "8.8.4.4"],
+          "domain_name": "example.local"
+        }
+      },
+      "ConflictDetectionConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "probe_strategy": { "type": "string", "enum": ["sequential", "parallel"] },
+          "probe_timeout": { "type": "string" },
+          "max_probes_per_discover": { "type": "integer" },
+          "parallel_probe_count": { "type": "integer" },
+          "conflict_hold_time": { "type": "string" },
+          "max_conflict_count": { "type": "integer" },
+          "probe_cache_ttl": { "type": "string" },
+          "send_gratuitous_arp": { "type": "boolean" },
+          "icmp_fallback": { "type": "boolean" },
+          "probe_log_level": { "type": "string" }
+        },
+        "example": {
+          "enabled": true,
+          "probe_strategy": "parallel",
+          "probe_timeout": "500ms",
+          "max_probes_per_discover": 3,
+          "parallel_probe_count": 4,
+          "conflict_hold_time": "1h0m0s",
+          "max_conflict_count": 3,
+          "probe_cache_ttl": "10s",
+          "send_gratuitous_arp": true,
+          "icmp_fallback": true,
+          "probe_log_level": "debug"
+        }
+      },
+      "HAConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "role": { "type": "string", "enum": ["primary", "secondary"] },
+          "peer_address": { "type": "string", "description": "host:port of HA peer" },
+          "listen_address": { "type": "string", "description": "host:port to listen for HA sync" },
+          "heartbeat_interval": { "type": "string" },
+          "failover_timeout": { "type": "string" },
+          "sync_batch_size": { "type": "integer" },
+          "tls": { "$ref": "#/components/schemas/HATLSConfig" }
+        },
+        "example": {
+          "enabled": true,
+          "role": "primary",
+          "peer_address": "10.0.0.2:9467",
+          "listen_address": "0.0.0.0:9467",
+          "heartbeat_interval": "1s",
+          "failover_timeout": "10s",
+          "sync_batch_size": 100,
+          "tls": { "enabled": false, "cert_file": "", "key_file": "", "ca_file": "" }
+        }
+      },
+      "HATLSConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "cert_file": { "type": "string" },
+          "key_file": { "type": "string" },
+          "ca_file": { "type": "string" }
+        }
+      },
+      "HooksConfig": {
+        "type": "object",
+        "properties": {
+          "event_buffer_size": { "type": "integer" },
+          "script_concurrency": { "type": "integer" },
+          "script_timeout": { "type": "string" },
+          "script": { "type": "array", "items": { "$ref": "#/components/schemas/ScriptHook" } },
+          "webhook": { "type": "array", "items": { "$ref": "#/components/schemas/WebhookHook" } }
+        },
+        "example": {
+          "event_buffer_size": 1000,
+          "script_concurrency": 4,
+          "script_timeout": "30s",
+          "script": [],
+          "webhook": [{
+            "name": "slack-alerts",
+            "events": ["lease.ack", "conflict.detected"],
+            "url": "https://hooks.slack.com/services/XXX",
+            "method": "POST",
+            "timeout": "10s",
+            "retries": 3,
+            "retry_backoff": "5s",
+            "template": "slack"
+          }]
+        }
+      },
+      "ScriptHook": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "events": { "type": "array", "items": { "type": "string" } },
+          "command": { "type": "string" },
+          "timeout": { "type": "string" },
+          "subnets": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "WebhookHook": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "events": { "type": "array", "items": { "type": "string" } },
+          "url": { "type": "string", "format": "uri" },
+          "method": { "type": "string" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "timeout": { "type": "string" },
+          "retries": { "type": "integer" },
+          "retry_backoff": { "type": "string" },
+          "secret": { "type": "string" },
+          "template": { "type": "string" }
+        }
+      },
+      "DDNSConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "allow_client_fqdn": { "type": "boolean" },
+          "fallback_to_mac": { "type": "boolean" },
+          "ttl": { "type": "integer" },
+          "update_on_renew": { "type": "boolean" },
+          "conflict_policy": { "type": "string" },
+          "use_dhcid": { "type": "boolean" },
+          "forward": { "$ref": "#/components/schemas/DDNSZoneConfig" },
+          "reverse": { "$ref": "#/components/schemas/DDNSZoneConfig" },
+          "zone_override": { "type": "array", "items": { "$ref": "#/components/schemas/DDNSZoneOverride" } }
+        },
+        "example": {
+          "enabled": true,
+          "allow_client_fqdn": true,
+          "fallback_to_mac": false,
+          "ttl": 300,
+          "update_on_renew": false,
+          "conflict_policy": "client-wins",
+          "use_dhcid": true,
+          "forward": {
+            "zone": "example.local",
+            "method": "rfc2136",
+            "server": "10.0.0.1:53",
+            "tsig_name": "dhcp-update",
+            "tsig_algorithm": "hmac-sha256"
+          },
+          "reverse": {
+            "zone": "1.0.10.in-addr.arpa",
+            "method": "rfc2136",
+            "server": "10.0.0.1:53",
+            "tsig_name": "dhcp-update",
+            "tsig_algorithm": "hmac-sha256"
+          },
+          "zone_override": []
+        }
+      },
+      "DDNSZoneConfig": {
+        "type": "object",
+        "properties": {
+          "zone": { "type": "string" },
+          "method": { "type": "string", "enum": ["rfc2136", "powerdns_api", "technitium_api"] },
+          "server": { "type": "string" },
+          "tsig_name": { "type": "string" },
+          "tsig_algorithm": { "type": "string" },
+          "tsig_secret": { "type": "string" },
+          "api_key": { "type": "string" }
+        }
+      },
+      "DDNSZoneOverride": {
+        "type": "object",
+        "properties": {
+          "subnet": { "type": "string" },
+          "forward_zone": { "type": "string" },
+          "reverse_zone": { "type": "string" },
+          "method": { "type": "string" },
+          "server": { "type": "string" },
+          "api_key": { "type": "string" },
+          "tsig_name": { "type": "string" },
+          "tsig_algorithm": { "type": "string" },
+          "tsig_secret": { "type": "string" }
+        }
+      },
+      "DNSProxyConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "listen_udp": { "type": "string" },
+          "listen_doh": { "type": "string" },
+          "doh_tls": { "$ref": "#/components/schemas/DoHTLSConfig" },
+          "domain": { "type": "string" },
+          "ttl": { "type": "integer" },
+          "register_leases": { "type": "boolean" },
+          "register_leases_ptr": { "type": "boolean" },
+          "forwarders": { "type": "array", "items": { "type": "string" } },
+          "use_root_servers": { "type": "boolean" },
+          "cache_size": { "type": "integer" },
+          "cache_ttl": { "type": "string" },
+          "zone_override": { "type": "array", "items": { "$ref": "#/components/schemas/DNSZoneOverride" } },
+          "record": { "type": "array", "items": { "$ref": "#/components/schemas/DNSStaticRecord" } },
+          "list": { "type": "array", "items": { "$ref": "#/components/schemas/DNSListConfig" } }
+        },
+        "example": {
+          "enabled": true,
+          "listen_udp": "0.0.0.0:53",
+          "domain": "example.local",
+          "ttl": 60,
+          "register_leases": true,
+          "register_leases_ptr": true,
+          "forwarders": ["8.8.8.8", "8.8.4.4"],
+          "cache_size": 10000,
+          "cache_ttl": "5m0s"
+        }
+      },
+      "DoHTLSConfig": {
+        "type": "object",
+        "properties": {
+          "cert_file": { "type": "string" },
+          "key_file": { "type": "string" }
+        }
+      },
+      "DNSZoneOverride": {
+        "type": "object",
+        "properties": {
+          "zone": { "type": "string" },
+          "nameserver": { "type": "string" },
+          "doh": { "type": "boolean" },
+          "doh_url": { "type": "string" }
+        }
+      },
+      "DNSStaticRecord": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "value": { "type": "string" },
+          "ttl": { "type": "integer" }
+        }
+      },
+      "DNSListConfig": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "type": { "type": "string", "enum": ["block", "allow"] },
+          "format": { "type": "string", "enum": ["hosts", "domains", "adblock"] },
+          "action": { "type": "string", "enum": ["nxdomain", "zero", "refuse"] },
+          "enabled": { "type": "boolean" },
+          "refresh_interval": { "type": "string" }
+        }
+      },
+      "HostnameSanitisationConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "allow_regex": { "type": "string" },
+          "deny_patterns": { "type": "array", "items": { "type": "string" } },
+          "dedup_suffix": { "type": "boolean" },
+          "max_length": { "type": "integer" },
+          "strip_emoji": { "type": "boolean" },
+          "lowercase": { "type": "boolean" },
+          "fallback_template": { "type": "string" }
+        },
+        "example": {
+          "enabled": true,
+          "allow_regex": "^[a-zA-Z0-9.-]+$",
+          "deny_patterns": [],
+          "dedup_suffix": true,
+          "max_length": 63,
+          "strip_emoji": true,
+          "lowercase": true,
+          "fallback_template": "host-{{.MAC}}"
+        }
+      },
+      "SyslogConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "address": { "type": "string", "description": "host:port" },
+          "protocol": { "type": "string", "enum": ["udp", "tcp"] },
+          "facility": { "type": "integer" },
+          "tag": { "type": "string" }
+        },
+        "example": {
+          "enabled": true,
+          "address": "syslog.example.com:514",
+          "protocol": "udp",
+          "facility": 16,
+          "tag": "athena-dhcpd"
+        }
+      },
+      "FingerprintConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "fingerbank_api_key": { "type": "string" },
+          "fingerbank_url": { "type": "string" }
+        },
+        "example": {
+          "enabled": true,
+          "fingerbank_api_key": "",
+          "fingerbank_url": ""
+        }
+      },
+      "VIPEntry": {
+        "type": "object",
+        "required": ["vip", "interface"],
+        "properties": {
+          "vip": { "type": "string", "description": "Virtual IP in CIDR notation, e.g. 10.0.0.100/24" },
+          "interface": { "type": "string", "description": "Network interface name" }
+        },
+        "example": {
+          "vip": "10.0.0.100/24",
+          "interface": "eth0"
+        }
+      },
+      "BackupPayload": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "integer" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "config": {
+            "type": "object",
+            "properties": {
+              "subnets": { "type": "array", "items": { "$ref": "#/components/schemas/SubnetConfig" } },
+              "defaults": { "$ref": "#/components/schemas/DefaultsConfig" },
+              "conflict_detection": { "$ref": "#/components/schemas/ConflictDetectionConfig" },
+              "hooks": { "$ref": "#/components/schemas/HooksConfig" },
+              "ddns": { "$ref": "#/components/schemas/DDNSConfig" },
+              "dns": { "$ref": "#/components/schemas/DNSProxyConfig" },
+              "hostname_sanitisation": { "$ref": "#/components/schemas/HostnameSanitisationConfig" },
+              "syslog": { "$ref": "#/components/schemas/SyslogConfig" },
+              "fingerprint": { "$ref": "#/components/schemas/FingerprintConfig" }
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "username": { "type": "string" },
+                "password_hash": { "type": "string" },
+                "role": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication required",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "authentication required", "code": "unauthorized" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Admin role required",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "admin role required", "code": "forbidden" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "not found", "code": "not_found" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "invalid request body", "code": "bad_request" }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Subsystem not available",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "config store not available", "code": "no_config_store" }
+          }
+        }
+      },
+      "HAStandby": {
+        "description": "Node is HA standby — writes must go to primary",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/StandbyError" }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "ipPath": {
+        "name": "ip",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "ipv4" },
+        "description": "IPv4 address"
+      },
+      "macPath": {
+        "name": "mac",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "MAC address (colon-separated)"
+      },
+      "networkPath": {
+        "name": "network",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Subnet CIDR (URL-encoded, e.g. 10.0.1.0%2F24)"
+      },
+      "subnetPath": {
+        "name": "subnet",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Subnet CIDR"
+      }
+    }
+  },
+  "paths": {
+    "/metrics": {
+      "get": {
+        "tags": ["Metrics"],
+        "summary": "Prometheus metrics",
+        "description": "Returns Prometheus-formatted metrics. No authentication required.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus metrics in text exposition format",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "description": "Returns server health status. No authentication required.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" }
+                  }
+                },
+                "example": { "status": "ok" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login",
+        "description": "Authenticates a user and sets a session cookie. No prior authentication required.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              },
+              "example": { "username": "admin", "password": "secret" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful. Session cookie is set.",
+            "headers": {
+              "Set-Cookie": {
+                "schema": { "type": "string" },
+                "description": "Session cookie (athena_session)"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": { "type": "string" },
+                    "role": { "type": "string", "enum": ["admin", "viewer"] }
+                  }
+                },
+                "example": { "username": "admin", "role": "admin" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "invalid username or password", "code": "invalid_credentials" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Logout",
+        "description": "Destroys the session and clears the cookie. No prior authentication required.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Logged out",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "logged_out" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Current user info",
+        "description": "Returns the current authentication state. If no users are configured, returns needs_user_setup. No prior authentication required — this endpoint self-reports auth state.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Current auth state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authenticated": { "type": "boolean" },
+                    "auth_required": { "type": "boolean" },
+                    "username": { "type": "string" },
+                    "role": { "type": "string", "enum": ["admin", "viewer"] },
+                    "needs_user_setup": { "type": "boolean" }
+                  }
+                },
+                "examples": {
+                  "authenticated": {
+                    "summary": "Authenticated user",
+                    "value": { "authenticated": true, "username": "admin", "role": "admin", "auth_required": true }
+                  },
+                  "not_authenticated": {
+                    "summary": "Not authenticated",
+                    "value": { "authenticated": false, "auth_required": true }
+                  },
+                  "needs_setup": {
+                    "summary": "No users configured yet",
+                    "value": { "authenticated": false, "auth_required": true, "needs_user_setup": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "List users",
+        "description": "Returns all configured users without password hashes. Requires admin role.",
+        "responses": {
+          "200": {
+            "description": "User list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "username": { "type": "string" },
+                          "role": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "users": [
+                    { "username": "admin", "role": "admin" },
+                    { "username": "viewer1", "role": "viewer" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      },
+      "post": {
+        "tags": ["Users"],
+        "summary": "Create user",
+        "description": "Creates a new user or updates an existing one. If NO users exist yet, this endpoint does not require auth (allows initial admin account creation). Otherwise requires admin role.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" },
+                  "role": { "type": "string", "enum": ["admin", "viewer"], "default": "admin" }
+                }
+              },
+              "example": { "username": "admin", "password": "strongpassword", "role": "admin" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": { "type": "string" },
+                    "role": { "type": "string" },
+                    "status": { "type": "string" }
+                  }
+                },
+                "example": { "username": "admin", "role": "admin", "status": "created" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/auth/users/{username}": {
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Delete user",
+        "description": "Removes a user account. Requires admin role.",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "deleted" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/api/v2/leases": {
+      "get": {
+        "tags": ["Leases"],
+        "summary": "List leases",
+        "description": "Returns all DHCP leases with optional filtering by subnet, MAC, hostname, state, and IP range. Supports pagination.",
+        "parameters": [
+          { "name": "subnet", "in": "query", "schema": { "type": "string" }, "description": "Filter by subnet CIDR" },
+          { "name": "mac", "in": "query", "schema": { "type": "string" }, "description": "Filter by MAC address" },
+          { "name": "hostname", "in": "query", "schema": { "type": "string" }, "description": "Filter by hostname (substring match)" },
+          { "name": "state", "in": "query", "schema": { "type": "string", "enum": ["active", "expired", "released"] }, "description": "Filter by lease state" },
+          { "name": "ip_start", "in": "query", "schema": { "type": "string", "format": "ipv4" }, "description": "Filter by IP range start" },
+          { "name": "ip_end", "in": "query", "schema": { "type": "string", "format": "ipv4" }, "description": "Filter by IP range end" },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string" }, "description": "Sort field" },
+          { "name": "order", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lease list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "leases": { "type": "array", "items": { "$ref": "#/components/schemas/LeaseResponse" } },
+                    "total": { "type": "integer" }
+                  }
+                },
+                "example": {
+                  "leases": [{
+                    "ip": "10.0.1.100",
+                    "mac": "aa:bb:cc:dd:ee:ff",
+                    "hostname": "workstation-1",
+                    "subnet": "10.0.1.0/24",
+                    "pool": "10.0.1.100-10.0.1.200",
+                    "state": "active",
+                    "start": "2025-01-15T10:30:00Z",
+                    "expiry": "2025-01-15T22:30:00Z",
+                    "remaining": "11h59m",
+                    "vendor": "Dell Inc.",
+                    "fingerprint": "",
+                    "relay_agent": "",
+                    "circuit_id": "",
+                    "remote_id": ""
+                  }],
+                  "total": 1
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/leases/export": {
+      "get": {
+        "tags": ["Leases"],
+        "summary": "Export leases as CSV",
+        "description": "Exports all leases in CSV format. Supports the same query filters as list leases.",
+        "parameters": [
+          { "name": "subnet", "in": "query", "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV export",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/leases/{ip}": {
+      "get": {
+        "tags": ["Leases"],
+        "summary": "Get lease by IP",
+        "description": "Returns a single DHCP lease by IP address.",
+        "parameters": [{ "$ref": "#/components/parameters/ipPath" }],
+        "responses": {
+          "200": {
+            "description": "Lease details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LeaseResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Leases"],
+        "summary": "Delete (force-release) lease",
+        "description": "Removes a DHCP lease by IP address. Requires admin role.",
+        "parameters": [{ "$ref": "#/components/parameters/ipPath" }],
+        "responses": {
+          "200": {
+            "description": "Lease deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "lease deleted" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v2/reservations": {
+      "get": {
+        "tags": ["Reservations"],
+        "summary": "List all reservations",
+        "description": "Returns all DHCP reservations across all subnets with global IDs.",
+        "responses": {
+          "200": {
+            "description": "Reservation list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reservations": { "type": "array", "items": { "$ref": "#/components/schemas/ReservationResponse" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Reservations"],
+        "summary": "Create reservation",
+        "description": "Creates a new DHCP reservation. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReservationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "reservation created" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v2/reservations/{id}": {
+      "put": {
+        "tags": ["Reservations"],
+        "summary": "Update reservation",
+        "description": "Updates an existing reservation by global ID. Supports partial updates. Requires admin role.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Global reservation ID" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReservationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "reservation updated" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Reservations"],
+        "summary": "Delete reservation",
+        "description": "Deletes a reservation by global ID. Requires admin role.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reservation deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "reservation deleted" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v2/reservations/import": {
+      "post": {
+        "tags": ["Reservations"],
+        "summary": "Import reservations",
+        "description": "Imports reservations from CSV or JSON. Requires admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/csv": {
+              "schema": { "type": "string" },
+              "example": "subnet_index,mac,ip,hostname\n0,aa:bb:cc:dd:ee:ff,10.0.1.10,printer-1"
+            },
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ReservationRequest" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imported": { "type": "integer" },
+                    "errors": { "type": "array", "items": { "type": "string" } }
+                  }
+                },
+                "example": { "imported": 5, "errors": [] }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v2/reservations/export": {
+      "get": {
+        "tags": ["Reservations"],
+        "summary": "Export reservations as CSV",
+        "description": "Exports all reservations in CSV format.",
+        "responses": {
+          "200": {
+            "description": "CSV export",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/subnets": {
+      "get": {
+        "tags": ["Subnets"],
+        "summary": "List runtime subnets",
+        "description": "Returns all configured subnets with runtime statistics (utilization, active leases).",
+        "responses": {
+          "200": {
+            "description": "Subnet list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "subnets": { "type": "array", "items": { "$ref": "#/components/schemas/SubnetResponse" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/pools": {
+      "get": {
+        "tags": ["Subnets"],
+        "summary": "List runtime pools",
+        "description": "Returns all IP pools with allocation statistics.",
+        "responses": {
+          "200": {
+            "description": "Pool list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pools": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/conflicts": {
+      "get": {
+        "tags": ["Conflicts"],
+        "summary": "List active conflicts",
+        "description": "Returns all currently active IP conflicts.",
+        "responses": {
+          "200": {
+            "description": "Conflict list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conflicts": { "type": "array", "items": { "type": "object" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/conflicts/history": {
+      "get": {
+        "tags": ["Conflicts"],
+        "summary": "Conflict history",
+        "description": "Returns historical conflict detection records.",
+        "responses": {
+          "200": {
+            "description": "Conflict history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "history": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/conflicts/stats": {
+      "get": {
+        "tags": ["Conflicts"],
+        "summary": "Conflict statistics",
+        "description": "Returns summary statistics about IP conflicts.",
+        "responses": {
+          "200": {
+            "description": "Conflict stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v2/conflicts/{ip}": {
+      "get": {
+        "tags": ["Conflicts"],
+        "summary": "Get conflict by IP",
+        "description": "Returns conflict details for a specific IP address.",
+        "parameters": [{ "$ref": "#/components/parameters/ipPath" }],
+        "responses": {
+          "200": {
+            "description": "Conflict details",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Conflicts"],
+        "summary": "Clear conflict",
+        "description": "Removes a conflict entry for the given IP. Requires admin role.",
+        "parameters": [{ "$ref": "#/components/parameters/ipPath" }],
+        "responses": {
+          "200": {
+            "description": "Conflict cleared",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "conflict cleared" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v2/conflicts/{ip}/exclude": {
+      "post": {
+        "tags": ["Conflicts"],
+        "summary": "Exclude IP from allocation",
+        "description": "Permanently excludes an IP from the allocation pool. Requires admin role.",
+        "parameters": [{ "$ref": "#/components/parameters/ipPath" }],
+        "responses": {
+          "200": {
+            "description": "IP excluded",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusMessage" },
+                "example": { "status": "ip excluded" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v2/stats": {
+      "get": {
+        "tags": ["Stats"],
+        "summary": "Server statistics",
+        "description": "Returns overall server statistics including lease counts, uptime, and DHCP message counters.",
+        "responses": {
+          "200": {
+            "description": "Server stats",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "uptime": "48h15m30s",
+                  "total_leases": 150,
+                  "active_leases": 120,
+                  "total_discovers": 5000,
+                  "total_offers": 4990,
+                  "total_requests": 4800,
+                  "total_acks": 4780
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  }
+}

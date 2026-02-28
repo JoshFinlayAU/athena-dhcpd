@@ -4,6 +4,77 @@ A DHCPv4 server that actually works. Written in Go because life is too short for
 
 ships as a single binary. no java, no python, no "install these 47 dependencies first". just a binary and a config file. you could probably run it on a toaster
 
+## screenshots
+
+### dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### leases
+![Leases](screenshots/leases.png)
+
+### reservations
+![Reservations](screenshots/reservations.png)
+
+### conflicts
+![Conflicts](screenshots/conflicts.png)
+
+### events
+![Events](screenshots/events.png)
+
+### dns query log
+![DNS Query Log](screenshots/dns_query_log.png)
+
+### dns filtering
+![DNS Filtering](screenshots/dns_filtering.png)
+
+### ha status
+![HA Status](screenshots/ha_status.png)
+
+### device fingerprints
+![Device Fingerprints](screenshots/device_fingerprints.png)
+
+### rogue server detection
+![Rogue Servers](screenshots/rogue_servers.png)
+
+### network weather
+![Network Weather](screenshots/network_weather.png)
+
+### audit log
+![Audit Log](screenshots/audit_log.png)
+
+### port automation
+![Port Automation](screenshots/port_automation.png)
+
+### configuration — subnets
+![Config Subnets](screenshots/config_subnets.png)
+
+### configuration — conflict detection
+![Config Conflict Detection](screenshots/config_conflict_detection.png)
+
+### configuration — dynamic dns
+![Config DDNS](screenshots/config_ddns.png)
+
+### configuration — dns proxy
+![Config DNS Proxy](screenshots/config_dns_proxy.png)
+
+### configuration — ha
+![Config HA](screenshots/config_ha.png)
+
+### configuration — hooks
+![Config Hooks](screenshots/config_hooks.png)
+
+### configuration — defaults
+![Config Defaults](screenshots/config_defaults.png)
+
+### configuration — hostname sanitisation
+![Config Hostname Sanitisation](screenshots/config_hostname_sanitisation.png)
+
+### configuration — users
+![Config Users](screenshots/config_users.png)
+
+### configuration — backup & restore
+![Config Backup & Restore](screenshots/config_backuprestore.png)
+
 ## why does this exist
 
 because every time I looked at ISC dhcpd's config syntax I lost the will to live. and Kea needs a PhD in YAML to configure. I wanted something that:

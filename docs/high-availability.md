@@ -2,6 +2,8 @@
 
 active-standby failover with lease synchronisation so your network doesn't go dark when a server decides to take a nap
 
+![HA Status](../screenshots/ha_status.png)
+
 ## overview
 
 two athena-dhcpd nodes talk to each other over TCP. one is active (serving DHCP), the other is standby (ready to take over). leases and conflict table entries are synced in real-time so if the active node dies, the standby has everything it needs
@@ -321,6 +323,8 @@ these are available to hooks. good for alerting — you probably want to know wh
 - `athena_dhcpd_ha_sync_errors_total` — sync failures
 
 ## floating virtual IPs
+
+![Config — HA](../screenshots/config_ha.png)
 
 athena-dhcpd has built-in floating VIP management — no keepalived or external tools needed. configure one or more virtual IPs and the active node will hold them. on failover, the new active node acquires the VIPs and sends gratuitous ARPs to update switch MAC tables
 

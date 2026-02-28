@@ -2,6 +2,8 @@
 
 DDNS in athena-dhcpd is a first-class feature, not some script hook afterthought. when a client gets a lease, the server automatically registers A and PTR records. when the lease expires or gets released, it cleans them up (best effort — DNS is like that)
 
+![Config — Dynamic DNS](../screenshots/config_ddns.png)
+
 ## how it works
 
 the DDNS manager subscribes to the event bus and watches for:

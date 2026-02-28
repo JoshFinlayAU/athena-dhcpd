@@ -72,6 +72,12 @@ curl -X POST http://localhost:8080/api/v1/conflicts/192.168.1.50/exclude -H "Aut
 
 or use the web UI conflicts page, which is honestly easier
 
+![Conflicts](../screenshots/conflicts.png)
+
+the conflict detection config is managed through the web UI Configuration page:
+
+![Config — Conflict Detection](../screenshots/config_conflict_detection.png)
+
 ## DHCPDECLINE handling
 
 if a client sends DHCPDECLINE (meaning the client itself detected a conflict after we offered the IP — oops), the IP gets added to the conflict table with `detection_method: "client_decline"`. the probe cache for that IP is immediately invalidated

@@ -87,6 +87,8 @@ Authentication config. if both `auth_token` and `users` are empty, auth is disab
 
 ### [[api.auth.users]]
 
+![Config — Users](../screenshots/config_users.png)
+
 Web UI user accounts. passwords MUST be bcrypt hashes
 
 | Field | Type | Description |
@@ -195,6 +197,8 @@ These sections are stored in the database and managed through the **web UI Confi
 **Web UI:** Configuration > Conflict Detection
 **API:** `GET/PUT /api/v2/config/conflict`
 
+![Config — Conflict Detection](../screenshots/config_conflict_detection.png)
+
 IP conflict detection via ARP and ICMP probing. the server checks if an IP is already in use before handing it out. see [conflict-detection.md](conflict-detection.md) for the full story
 
 | Field | Type | Default | Description |
@@ -259,6 +263,8 @@ VIP status is also included in the `GET /api/v2/ha/status` response under the `v
 **Web UI:** Configuration > Hooks
 **API:** `GET/PUT /api/v2/config/hooks`
 
+![Config — Hooks](../screenshots/config_hooks.png)
+
 Event hooks — run scripts or call webhooks when things happen. see [event-hooks.md](event-hooks.md) for details
 
 | Field | Type | Default | Description |
@@ -302,6 +308,8 @@ can have multiple
 
 **Web UI:** Configuration > Dynamic DNS
 **API:** `GET/PUT /api/v2/config/ddns`
+
+![Config — Dynamic DNS](../screenshots/config_ddns.png)
 
 Built-in DDNS, not a script hook. see [dynamic-dns.md](dynamic-dns.md) for setup guides
 
@@ -351,6 +359,8 @@ Per-subnet zone overrides. useful if different subnets live in different DNS zon
 
 **Web UI:** Configuration > DNS
 **API:** `GET/PUT /api/v2/config/dns`
+
+![Config — DNS Proxy](../screenshots/config_dns_proxy.png)
 
 Built-in DNS proxy. see [dns-proxy.md](dns-proxy.md) for the full deep-dive including filter lists, DoH, zone overrides, and lease registration
 
@@ -448,6 +458,8 @@ Device fingerprinting. extracts DHCP fingerprint data from DISCOVER packets and 
 **Web UI:** Configuration > Hostname Sanitisation
 **API:** `GET/PUT /api/v2/config/hostname-sanitisation`
 
+![Config — Hostname Sanitisation](../screenshots/config_hostname_sanitisation.png)
+
 Hostname cleanup and deduplication. clients send all kinds of garbage as hostnames — this cleans it up
 
 | Field | Type | Default | Description |
@@ -462,6 +474,8 @@ Hostname cleanup and deduplication. clients send all kinds of garbage as hostnam
 
 **Web UI:** Configuration > Defaults
 **API:** `GET/PUT /api/v2/config/defaults`
+
+![Config — Defaults](../screenshots/config_defaults.png)
 
 Global default options applied to all subnets unless overridden
 
@@ -479,6 +493,8 @@ Global default options applied to all subnets unless overridden
 
 **Web UI:** Configuration > Subnets
 **API:** `GET/POST /api/v2/config/subnets`, `PUT/DELETE /api/v2/config/subnets/{network}`
+
+![Config — Subnets](../screenshots/config_subnets.png)
 
 Subnet definitions. you need at least one or the server has nothing to do. configured during the setup wizard and managed through the web UI config page
 

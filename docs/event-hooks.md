@@ -4,6 +4,12 @@ things happen on your DHCP server. clients get IPs, conflicts get detected, fail
 
 athena-dhcpd has two types of hooks: **scripts** and **webhooks**. both are driven by the same event bus. hook failures never affect DHCP processing — if your slack webhook is down, leases still get handed out. thats the deal
 
+![Events](../screenshots/events.png)
+
+hook configuration is managed through the web UI Configuration page:
+
+![Config — Hooks](../screenshots/config_hooks.png)
+
 ## the event bus
 
 all events flow through a buffered Go channel. the buffer size is configurable (`event_buffer_size`, default 10000). if the buffer fills up (your hooks are too slow), events get dropped with a warning log and a metric increment. the DHCP hot path never blocks waiting for hooks

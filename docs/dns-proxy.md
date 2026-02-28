@@ -418,7 +418,15 @@ the DNS Filtering page in the web UI gives you:
 - **list management** — view all lists with domain counts, last refresh, errors. refresh individual lists or all at once
 - **cache flush** — one click to clear the DNS cache
 
+![DNS Filtering](../screenshots/dns_filtering.png)
+
+the DNS Query Log page shows live streaming queries with source device identification from DHCP leases:
+
+![DNS Query Log](../screenshots/dns_query_log.png)
+
 filter list configuration (add/remove/edit lists) is in the Config page under the DNS section
+
+![Config — DNS Proxy](../screenshots/config_dns_proxy.png)
 
 ---
 

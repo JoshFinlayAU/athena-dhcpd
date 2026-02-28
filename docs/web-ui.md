@@ -20,6 +20,13 @@ the landing page. shows at a glance:
 - **recent events** — live feed from the WebSocket, updates in real time without refreshing
 - **conflict summary** — breakdown by subnet and detection method
 
+![Dashboard](../screenshots/dashboard.png)
+
+#### Network Weather
+anomalies and network health at a glance — weather-style status indicator (calm, advisory, watch, warning, critical)
+
+![Network Weather](../screenshots/network_weather.png)
+
 ### Leases
 searchable, filterable, paginated table of all leases
 
@@ -29,6 +36,8 @@ searchable, filterable, paginated table of all leases
 - click delete to force-release a lease (admin only)
 - export to CSV
 
+![Leases](../screenshots/leases.png)
+
 ### Reservations
 CRUD interface for static IP reservations
 
@@ -37,6 +46,8 @@ CRUD interface for static IP reservations
 - delete with confirmation
 - all changes go through the API, which updates the in-memory config
 
+![Reservations](../screenshots/reservations.png)
+
 ### Conflicts
 active IP conflicts table
 
@@ -44,6 +55,8 @@ active IP conflicts table
 - **clear** button — removes the conflict, makes the IP available again
 - **exclude** button — permanently flags the IP so it never gets allocated
 - auto-updates when conflict events arrive
+
+![Conflicts](../screenshots/conflicts.png)
 
 ### Events
 live event stream
@@ -54,6 +67,8 @@ live event stream
 - pause/resume the stream
 - clear the display
 - each event expandable to see full JSON payload
+
+![Events](../screenshots/events.png)
 
 ### HA Status
 high availability cluster overview
@@ -67,6 +82,8 @@ high availability cluster overview
 
 if HA is disabled, shows a message saying so
 
+![HA Status](../screenshots/ha_status.png)
+
 ### Device Fingerprints
 DHCP fingerprinting and device classification
 
@@ -75,6 +92,8 @@ DHCP fingerprinting and device classification
 - search and filter by any field
 - if Fingerbank API key is not configured, shows an alert banner with inline key setup
 - supports both local heuristic classification and Fingerbank API enrichment
+
+![Device Fingerprints](../screenshots/device_fingerprints.png)
 
 ### Rogue DHCP Servers
 detected rogue DHCP servers on your network
@@ -85,6 +104,8 @@ detected rogue DHCP servers on your network
 - **scan** button — trigger an active scan
 - stats summary
 
+![Rogue Servers](../screenshots/rogue_servers.png)
+
 ### Audit Log
 who did what and when
 
@@ -93,12 +114,29 @@ who did what and when
 - export to CSV
 - stats breakdown by event type
 
+![Audit Log](../screenshots/audit_log.png)
+
 ### Topology
 network topology tree built from relay agent data
 
 - tree view showing switches, ports, and connected clients
 - custom labels for topology nodes
 - stats summary
+
+### Port Automation
+rule-based switch port automation driven by DHCP events
+
+![Port Automation](../screenshots/port_automation.png)
+
+### DNS Query Log
+live streaming DNS queries with device identification
+
+![DNS Query Log](../screenshots/dns_query_log.png)
+
+### DNS Filtering
+built-in DNS blocklist/allowlist management
+
+![DNS Filtering](../screenshots/dns_filtering.png)
 
 ### Configuration
 DB-backed config editor with per-section pages
@@ -108,6 +146,17 @@ DB-backed config editor with per-section pages
 - all changes go through the API and take effect immediately
 - TOML import for migration from other DHCP servers
 - raw config view
+
+![Config — Subnets](../screenshots/config_subnets.png)
+![Config — Conflict Detection](../screenshots/config_conflict_detection.png)
+![Config — Dynamic DNS](../screenshots/config_ddns.png)
+![Config — DNS Proxy](../screenshots/config_dns_proxy.png)
+![Config — HA](../screenshots/config_ha.png)
+![Config — Hooks](../screenshots/config_hooks.png)
+![Config — Defaults](../screenshots/config_defaults.png)
+![Config — Hostname Sanitisation](../screenshots/config_hostname_sanitisation.png)
+![Config — Users](../screenshots/config_users.png)
+![Config — Backup & Restore](../screenshots/config_backuprestore.png)
 
 ### Setup Wizard
 first-boot guided setup

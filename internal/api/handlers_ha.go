@@ -38,9 +38,9 @@ func (s *Server) handleHAStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// VRRP/keepalived detection (independent of HA FSM)
-	if s.cfg.HA.VRRP.Enabled {
-		resp["vrrp"] = vrrp.Detect(s.cfg.HA.VRRP)
+	// VRRP/keepalived auto-detection (independent of HA FSM, no config needed)
+	if v := vrrp.Detect(); v != nil {
+		resp["vrrp"] = v
 	}
 
 	JSONResponse(w, http.StatusOK, resp)

@@ -3,7 +3,7 @@ import { Shield, Heart, ArrowRightLeft, Server, Radio, Wifi, WifiOff } from 'luc
 import { Card, StatCard } from '@/components/Card'
 import StatusBadge from '@/components/StatusBadge'
 import { usePolling } from '@/hooks/useApi'
-import { getHAStatus, triggerFailover, type VRRPStatus } from '@/lib/api'
+import { getHAStatus, triggerFailover, type VRRPStatus, type VRRPInstance } from '@/lib/api'
 import { timeAgo } from '@/lib/utils'
 
 function vrrpStateColor(state: string): string {
@@ -118,40 +118,55 @@ function VRRPCard({ vrrp }: { vrrp: VRRPStatus }) {
         <h2 className="text-sm font-semibold flex items-center gap-2">
           <Radio className="w-4 h-4" /> VRRP / Keepalived
         </h2>
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${vrrpStateColor(vrrp.state)}`}>
-          {vrrp.state}
+        <div className="flex items-center gap-1.5 text-sm">
+          {vrrp.running
+            ? <><Wifi className="w-3.5 h-3.5 text-success" /><span className="text-success">Running</span></>
+            : <><WifiOff className="w-3.5 h-3.5 text-danger" /><span className="text-danger">Stopped</span></>
+          }
+        </div>
+      </div>
+
+      {vrrp.instances && vrrp.instances.length > 0 ? (
+        <div className="space-y-4">
+          {vrrp.instances.map((inst) => (
+            <VRRPInstanceRow key={inst.name} inst={inst} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted">Keepalived detected but no VRRP instance data available.</p>
+      )}
+    </Card>
+  )
+}
+
+function VRRPInstanceRow({ inst }: { inst: VRRPInstance }) {
+  return (
+    <div className="border border-border/50 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium font-mono">{inst.name}</span>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${vrrpStateColor(inst.state)}`}>
+          {inst.state}
         </span>
       </div>
-      <div className="space-y-3">
-        <DetailRow label="Keepalived" value={vrrp.running ? 'Running' : 'Stopped'}>
-          <div className="flex items-center gap-1.5 text-sm">
-            {vrrp.running
-              ? <><Wifi className="w-3.5 h-3.5 text-success" /><span className="text-success">Running</span></>
-              : <><WifiOff className="w-3.5 h-3.5 text-danger" /><span className="text-danger">Stopped</span></>
-            }
-          </div>
-        </DetailRow>
-        {vrrp.instance_name && (
-          <DetailRow label="Instance" value={vrrp.instance_name} mono />
+      <div className="space-y-1.5">
+        {inst.interface && (
+          <DetailRow label="Interface" value={inst.interface} mono />
         )}
-        {vrrp.vip && (
-          <DetailRow label="Virtual IP" value={vrrp.vip} mono>
+        {inst.priority != null && inst.priority > 0 && (
+          <DetailRow label="Priority" value={String(inst.priority)} />
+        )}
+        {inst.vips && inst.vips.length > 0 && (
+          <DetailRow label="Virtual IPs" value={inst.vips.join(', ')} mono>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-sm">{vrrp.vip}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${vrrp.vip_on_local ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'}`}>
-                {vrrp.vip_on_local ? 'local' : 'not local'}
+              <span className="font-mono text-sm">{inst.vips.join(', ')}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${inst.vip_on_local ? 'bg-success/15 text-success' : 'bg-text-muted/15 text-text-muted'}`}>
+                {inst.vip_on_local ? 'local' : 'not local'}
               </span>
             </div>
           </DetailRow>
         )}
-        {vrrp.interface && (
-          <DetailRow label="Interface" value={vrrp.interface} mono />
-        )}
-        {vrrp.priority != null && vrrp.priority > 0 && (
-          <DetailRow label="Priority" value={String(vrrp.priority)} />
-        )}
       </div>
-    </Card>
+    </div>
   )
 }
 

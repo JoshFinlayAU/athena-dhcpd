@@ -1,4 +1,6 @@
-// Package vrrp detects keepalived/VRRP state for HA status reporting.
+// Package vrrp auto-detects keepalived/VRRP state for HA status reporting.
+// No configuration is needed — the package discovers keepalived by checking
+// for the running process and parsing its data dump file.
 package vrrp
 
 import (
@@ -8,8 +10,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 )
 
 // State represents the VRRP instance state.
@@ -30,74 +30,50 @@ var defaultDataPaths = []string{
 	"/var/lib/keepalived/keepalived.data",
 }
 
-// Status holds the detected VRRP/keepalived status.
+// Instance holds the detected state of a single VRRP instance.
+type Instance struct {
+	Name       string   `json:"name"`
+	State      State    `json:"state"`
+	Interface  string   `json:"interface,omitempty"`
+	VIPs       []string `json:"vips,omitempty"`
+	VIPOnLocal bool     `json:"vip_on_local"`
+	Priority   int      `json:"priority,omitempty"`
+}
+
+// Status holds the auto-detected VRRP/keepalived status.
 type Status struct {
-	Detected     bool   `json:"detected"`
-	Running      bool   `json:"running"`
-	State        State  `json:"state"`
-	InstanceName string `json:"instance_name,omitempty"`
-	VIP          string `json:"vip,omitempty"`
-	VIPOnLocal   bool   `json:"vip_on_local"`
-	Interface    string `json:"interface,omitempty"`
-	Priority     int    `json:"priority,omitempty"`
-	DataFile     string `json:"data_file,omitempty"`
+	Detected  bool       `json:"detected"`
+	Running   bool       `json:"running"`
+	Instances []Instance `json:"instances,omitempty"`
 }
 
 // Detect checks for keepalived/VRRP presence and returns current status.
-func Detect(cfg config.VRRPConfig) Status {
-	s := Status{}
-
-	if !cfg.Enabled {
-		return s
+// Requires no configuration — fully automatic.
+func Detect() *Status {
+	running := isKeepalivedRunning()
+	if !running {
+		return nil
 	}
 
-	s.Detected = true
-	s.Interface = cfg.Interface
-	s.VIP = cfg.VIP
-
-	// Check if keepalived process is running
-	s.Running = isKeepalivedRunning()
-
-	// Try to parse VRRP state from keepalived data file
-	dataFile := cfg.DataFile
-	if dataFile == "" {
-		dataFile = findDataFile()
+	s := &Status{
+		Detected: true,
+		Running:  true,
 	}
-	if dataFile != "" {
-		s.DataFile = dataFile
-		instanceName := cfg.InstanceName
-		if inst, state, priority, err := parseDataFile(dataFile, instanceName); err == nil {
-			s.State = state
-			s.Priority = priority
-			if inst != "" {
-				s.InstanceName = inst
+
+	// Try to parse VRRP instances from keepalived data file
+	if dataFile := findDataFile(); dataFile != "" {
+		if instances, err := parseDataFile(dataFile); err == nil {
+			// Check which VIPs are on local interfaces
+			for i := range instances {
+				for _, vip := range instances[i].VIPs {
+					if isIPLocal(vip) {
+						instances[i].VIPOnLocal = true
+						break
+					}
+				}
 			}
+			s.Instances = instances
 		}
-	}
-
-	// Check if VIP is present on a local interface
-	if cfg.VIP != "" {
-		s.VIPOnLocal = isIPLocal(cfg.VIP)
-		// If we couldn't parse state from data file, infer from VIP presence
-		if s.State == "" || s.State == StateUnknown {
-			if s.VIPOnLocal {
-				s.State = StateMaster
-			} else if s.Running {
-				s.State = StateBackup
-			} else {
-				s.State = StateStopped
-			}
-		}
-	} else if s.State == "" {
-		if s.Running {
-			s.State = StateUnknown
-		} else {
-			s.State = StateStopped
-		}
-	}
-
-	if cfg.InstanceName != "" && s.InstanceName == "" {
-		s.InstanceName = cfg.InstanceName
 	}
 
 	return s
@@ -157,74 +133,104 @@ func findDataFile() string {
 	return ""
 }
 
-// parseDataFile reads a keepalived data dump and extracts VRRP instance info.
-// If instanceName is empty, returns the first instance found.
+// parseDataFile reads a keepalived data dump and extracts all VRRP instances.
 // Format example:
 //
 //	------< VRRP Topology >------
 //	 VRRP Instance = VI_1
 //	   State = MASTER
-//	   ...
+//	   Interface = eth0
 //	   Priority = 100
-func parseDataFile(path, instanceName string) (name string, state State, priority int, err error) {
+//	   Virtual IP = 1
+//	     10.0.0.1/32 dev eth0
+func parseDataFile(path string) ([]Instance, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", StateUnknown, 0, err
+		return nil, err
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	var inInstance bool
-	var currentInstance string
+	var instances []Instance
+	var cur *Instance
+	var inVIPs bool
 
+	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
+		// New instance block
 		if strings.HasPrefix(line, "VRRP Instance =") {
-			currentInstance = strings.TrimSpace(strings.TrimPrefix(line, "VRRP Instance ="))
-			if instanceName == "" || currentInstance == instanceName {
-				inInstance = true
-				name = currentInstance
-			} else {
-				inInstance = false
+			if cur != nil {
+				instances = append(instances, *cur)
 			}
+			cur = &Instance{
+				Name: strings.TrimSpace(strings.TrimPrefix(line, "VRRP Instance =")),
+			}
+			inVIPs = false
 			continue
 		}
 
-		if !inInstance {
+		if cur == nil {
 			continue
+		}
+
+		// Entering VIP list section
+		if strings.HasPrefix(line, "Virtual IP =") {
+			inVIPs = true
+			continue
+		}
+
+		// VIP lines are indented IPs like "10.0.0.1/32 dev eth0" or just "10.0.0.1"
+		if inVIPs {
+			if line == "" || strings.HasPrefix(line, "------") || strings.Contains(line, "=") {
+				inVIPs = false
+				// fall through to parse this line normally
+			} else {
+				// Extract just the IP (strip /mask and "dev ..." suffix)
+				ip := strings.Fields(line)[0]
+				if idx := strings.Index(ip, "/"); idx != -1 {
+					ip = ip[:idx]
+				}
+				if net.ParseIP(ip) != nil {
+					cur.VIPs = append(cur.VIPs, ip)
+				}
+				continue
+			}
 		}
 
 		if strings.HasPrefix(line, "State =") {
 			val := strings.TrimSpace(strings.TrimPrefix(line, "State ="))
 			switch strings.ToUpper(val) {
 			case "MASTER":
-				state = StateMaster
+				cur.State = StateMaster
 			case "BACKUP":
-				state = StateBackup
+				cur.State = StateBackup
 			case "FAULT":
-				state = StateFault
+				cur.State = StateFault
 			default:
-				state = StateUnknown
+				cur.State = StateUnknown
 			}
+		}
+
+		if strings.HasPrefix(line, "Interface =") {
+			cur.Interface = strings.TrimSpace(strings.TrimPrefix(line, "Interface ="))
 		}
 
 		if strings.HasPrefix(line, "Priority =") {
 			val := strings.TrimSpace(strings.TrimPrefix(line, "Priority ="))
-			fmt.Sscanf(val, "%d", &priority)
-		}
-
-		// If we found both state and priority, we're done
-		if state != "" && state != StateUnknown && priority > 0 {
-			return name, state, priority, nil
+			fmt.Sscanf(val, "%d", &cur.Priority)
 		}
 	}
 
-	if name != "" {
-		return name, state, priority, nil
+	// Don't forget the last instance
+	if cur != nil {
+		instances = append(instances, *cur)
 	}
 
-	return "", StateUnknown, 0, fmt.Errorf("no matching VRRP instance found")
+	if len(instances) == 0 {
+		return nil, fmt.Errorf("no VRRP instances found in %s", path)
+	}
+	return instances, nil
 }
 
 // isIPLocal checks if an IP address is assigned to any local interface.

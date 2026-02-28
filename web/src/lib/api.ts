@@ -56,16 +56,19 @@ export interface ConflictStats {
   by_method: Record<string, number>
 }
 
+export interface VRRPInstance {
+  name: string
+  state: string
+  interface?: string
+  vips?: string[]
+  vip_on_local: boolean
+  priority?: number
+}
+
 export interface VRRPStatus {
   detected: boolean
   running: boolean
-  state: string
-  instance_name?: string
-  vip?: string
-  vip_on_local: boolean
-  interface?: string
-  priority?: number
-  data_file?: string
+  instances?: VRRPInstance[]
 }
 
 export interface HAStatus {

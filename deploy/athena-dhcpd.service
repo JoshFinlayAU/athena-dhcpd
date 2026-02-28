@@ -22,9 +22,12 @@ RuntimeDirectory=athena-dhcpd
 StateDirectory=athena-dhcpd
 PIDFile=/run/athena-dhcpd/athena-dhcpd.pid
 
-# Required capabilities for raw sockets (ARP/ICMP conflict detection)
-AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+# Required capabilities:
+# CAP_NET_RAW    — ARP/ICMP conflict detection + gratuitous ARP
+# CAP_NET_BIND_SERVICE — binding to ports 53 (DNS) and 67 (DHCP)
+# CAP_NET_ADMIN  — floating VIP management (ip addr add/del)
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_NET_ADMIN
 
 # Additional hardening
 PrivateTmp=yes

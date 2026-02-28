@@ -29,7 +29,7 @@ case "$1" in
 
         # Set capabilities on the binary for raw sockets and privileged port binding
         if command -v setcap >/dev/null 2>&1; then
-            setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/bin/athena-dhcpd || true
+            setcap 'cap_net_raw,cap_net_bind_service,cap_net_admin+ep' /usr/bin/athena-dhcpd || true
         fi
 
         # Enable and start systemd service if systemd is running

@@ -791,29 +791,31 @@ func main() {
 		apiOpts = append(apiOpts, api.WithPortAutoEngine(portAutoEngine))
 	}
 
-	// Initialize floating VIP group from database
-	var vipGroup *vip.Group
+	// Initialize floating VIP group — always create one (even empty)
+	// so hot-reload works when VIPs are added via API without restart.
+	var vipEntries []vip.Entry
 	if vipData := cfgStore.VIPs(); vipData != nil {
 		entries, err := vip.ParseEntries(vipData)
 		if err != nil {
 			logger.Warn("failed to parse VIP entries from database", "error", err)
-		} else if len(entries) > 0 {
-			g, err := vip.NewGroup(entries, logger)
-			if err != nil {
-				logger.Warn("failed to create VIP group", "error", err)
-			} else {
-				vipGroup = g
-				// If we're already active (primary on startup), acquire VIPs now
-				if haFSM != nil && haFSM.IsActive() {
-					vipGroup.AcquireAll()
-				}
-				defer vipGroup.ReleaseAll()
-			}
+		} else {
+			vipEntries = entries
 		}
+	}
+	vipGroup, err := vip.NewGroup(vipEntries, logger)
+	if err != nil {
+		logger.Warn("failed to create VIP group", "error", err)
+		vipGroup, _ = vip.NewGroup(nil, logger)
+	}
+	defer vipGroup.ReleaseAll()
+
+	// If we already have VIPs and are active, acquire now
+	if len(vipEntries) > 0 && haFSM != nil && haFSM.IsActive() {
+		vipGroup.AcquireAll()
 	}
 
 	// Wire VIP acquire/release to HA state transitions
-	if haFSM != nil && vipGroup != nil {
+	if haFSM != nil {
 		haFSM.OnStateChange(func(oldState, newState dhcpv4.HAState) {
 			isNowActive := newState == dhcpv4.HAStateActive || newState == dhcpv4.HAStatePartnerDown
 			wasActive := oldState == dhcpv4.HAStateActive || oldState == dhcpv4.HAStatePartnerDown
@@ -827,9 +829,7 @@ func main() {
 		})
 	}
 
-	if vipGroup != nil {
-		apiOpts = append(apiOpts, api.WithVIPGroup(vipGroup))
-	}
+	apiOpts = append(apiOpts, api.WithVIPGroup(vipGroup))
 
 	apiServer := api.NewServer(cfg, store, leaseMgr, conflictTable, allPools, bus, logger, apiOpts...)
 	apiLn, err := apiServer.Listen()

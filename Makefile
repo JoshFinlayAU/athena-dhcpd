@@ -83,10 +83,10 @@ install: build
 		systemctl daemon-reload; \
 		echo "    Installed systemd service"; \
 	fi
-	@# Capabilities for raw sockets and binding port 53/67
+	@# Capabilities for raw sockets, port binding, and VIP management
 	@if command -v setcap >/dev/null 2>&1; then \
-		setcap 'cap_net_raw,cap_net_bind_service+ep' /usr/local/bin/$(BINARY_NAME); \
-		echo "    Set CAP_NET_RAW and CAP_NET_BIND_SERVICE on binary"; \
+		setcap 'cap_net_raw,cap_net_bind_service,cap_net_admin+ep' /usr/local/bin/$(BINARY_NAME); \
+		echo "    Set CAP_NET_RAW, CAP_NET_BIND_SERVICE, CAP_NET_ADMIN on binary"; \
 	else \
 		echo "    WARNING: setcap not found, install libcap2-bin or run as root"; \
 	fi

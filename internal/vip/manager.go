@@ -1,6 +1,7 @@
 // Package vip manages floating virtual IP addresses for HA failover.
 // The active node holds the VIPs; on failover the new active acquires them
 // and the old active releases them. Uses `ip addr` commands on Linux.
+// Falls back to sudo if direct execution fails with permission errors.
 package vip
 
 import (
@@ -14,6 +15,22 @@ import (
 	"sync"
 	"time"
 )
+
+// runCmd tries to run a command directly. If it fails with a permission
+// error, it retries with sudo. This handles the case where CAP_NET_ADMIN
+// is not set on the binary but the user has passwordless sudo configured.
+func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	if err != nil {
+		outStr := strings.TrimSpace(string(out))
+		if strings.Contains(outStr, "Operation not permitted") || strings.Contains(outStr, "EPERM") {
+			// Retry with sudo
+			sudoArgs := append([]string{name}, args...)
+			return exec.CommandContext(ctx, "sudo", sudoArgs...).CombinedOutput()
+		}
+	}
+	return out, err
+}
 
 // Entry is a single VIP configuration as stored in the database.
 type Entry struct {
@@ -212,7 +229,7 @@ func (g *Group) acquireOne(e *entry) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "ip", "addr", "add", addr, "dev", e.cfg.Interface).CombinedOutput()
+	out, err := runCmd(ctx, "ip", "addr", "add", addr, "dev", e.cfg.Interface)
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
 		// "RTNETLINK answers: File exists" means it's already there
@@ -252,7 +269,7 @@ func (g *Group) releaseOne(e *entry) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "ip", "addr", "del", addr, "dev", e.cfg.Interface).CombinedOutput()
+	out, err := runCmd(ctx, "ip", "addr", "del", addr, "dev", e.cfg.Interface)
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
 		if strings.Contains(outStr, "Cannot assign") || strings.Contains(outStr, "ADDRNOTAVAIL") {
@@ -278,8 +295,8 @@ func sendGratuitousARP(ipStr, iface string, logger *slog.Logger) {
 	defer cancel()
 
 	if path, err := exec.LookPath("arping"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "-U", "-c", "3", "-I", iface, ipStr)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := runCmd(ctx, path, "-U", "-c", "3", "-I", iface, ipStr)
+		if err != nil {
 			logger.Debug("arping GARP failed (non-fatal)", "error", err, "output", strings.TrimSpace(string(out)))
 		} else {
 			logger.Info("gratuitous ARP sent", "vip", ipStr, "interface", iface)
@@ -288,8 +305,7 @@ func sendGratuitousARP(ipStr, iface string, logger *slog.Logger) {
 	}
 
 	// Fallback
-	cmd := exec.CommandContext(ctx, "ip", "neigh", "change", ipStr, "dev", iface, "nud", "reachable")
-	cmd.CombinedOutput()
+	runCmd(ctx, "ip", "neigh", "change", ipStr, "dev", iface, "nud", "reachable")
 }
 
 // isIPOnInterface checks if an IP is assigned to a specific interface.

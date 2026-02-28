@@ -30,7 +30,6 @@ var (
 	keyDDNS          = []byte("ddns")
 	keyDNS           = []byte("dns")
 	keyHostSanit     = []byte("hostname_sanitisation")
-	keyImported      = []byte("v1_imported")
 	keySetupComplete = []byte("setup_complete")
 )
 
@@ -140,28 +139,6 @@ func (s *Store) MarkSetupComplete() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketMeta)
 		return b.Put(keySetupComplete, []byte("1"))
-	})
-}
-
-// IsV1Imported returns true if a v1 TOML config has already been imported.
-func (s *Store) IsV1Imported() bool {
-	var imported bool
-	s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketMeta)
-		if b == nil {
-			return nil
-		}
-		imported = b.Get(keyImported) != nil
-		return nil
-	})
-	return imported
-}
-
-// MarkV1Imported marks the v1 TOML import as complete.
-func (s *Store) MarkV1Imported() error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketMeta)
-		return b.Put(keyImported, []byte("1"))
 	})
 }
 

@@ -268,18 +268,5 @@ func TestImportFromConfig(t *testing.T) {
 	}
 }
 
-func TestV1ImportedFlag(t *testing.T) {
-	db := testDB(t)
-	s, _ := NewStore(db)
-
-	if s.IsV1Imported() {
-		t.Error("should not be marked imported initially")
-	}
-	s.MarkV1Imported()
-	if !s.IsV1Imported() {
-		t.Error("should be marked imported after MarkV1Imported")
-	}
-}
-
 // Suppress unused import warning
 var _ = os.TempDir

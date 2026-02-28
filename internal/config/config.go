@@ -347,18 +347,6 @@ func LoadBootstrap(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// HasDynamicConfig returns true if the TOML file contains any dynamic config
-// sections (subnets, defaults, hooks, etc.) — used for v1 auto-migration.
-func HasDynamicConfig(cfg *Config) bool {
-	return len(cfg.Subnets) > 0 ||
-		cfg.Defaults.LeaseTime != "" ||
-		cfg.ConflictDetection.Enabled ||
-		cfg.DDNS.Enabled ||
-		cfg.DNS.Enabled ||
-		len(cfg.Hooks.Scripts) > 0 ||
-		len(cfg.Hooks.Webhooks) > 0
-}
-
 // applyBootstrapDefaults fills defaults for server + api sections only.
 func applyBootstrapDefaults(cfg *Config) {
 	if cfg.Server.Interface == "" {

@@ -18,7 +18,7 @@ client sends DHCPDISCOVER
 │  dhcp.Handler                         │
 │  DORA cycle + Decline, Release, Inform│
 │  + fingerprint extraction on DISCOVER │
-└──┬───┬───┬──────┬──────────────────────┘
+└──┬───┬───┬──────┬─────────────────────┘
    │   │   │      │
    │   │   │      └──────────────────┐
    │   │   │                         │

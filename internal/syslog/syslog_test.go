@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
 	"github.com/athena-dhcpd/athena-dhcpd/internal/events"
 )
 
@@ -104,16 +105,23 @@ func TestEventSeverity(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
-	if cfg.Protocol != "udp" {
-		t.Errorf("protocol = %q", cfg.Protocol)
+func TestNewForwarderDefaults(t *testing.T) {
+	bus := events.NewBus(100, testLogger())
+	go bus.Start()
+	defer bus.Stop()
+
+	fwd := NewForwarder(config.SyslogConfig{}, bus, testLogger())
+	if fwd.cfg.Protocol != "udp" {
+		t.Errorf("protocol = %q", fwd.cfg.Protocol)
 	}
-	if cfg.Facility != FacilityLocal0 {
-		t.Errorf("facility = %d", cfg.Facility)
+	if fwd.cfg.Facility != FacilityLocal0 {
+		t.Errorf("facility = %d", fwd.cfg.Facility)
 	}
-	if cfg.Tag != "athena-dhcpd" {
-		t.Errorf("tag = %q", cfg.Tag)
+	if fwd.cfg.Tag != "athena-dhcpd" {
+		t.Errorf("tag = %q", fwd.cfg.Tag)
+	}
+	if fwd.cfg.Format != FormatRFC5424 {
+		t.Errorf("format = %q", fwd.cfg.Format)
 	}
 }
 
@@ -133,7 +141,8 @@ func TestForwarderUDP(t *testing.T) {
 	go bus.Start()
 	defer bus.Stop()
 
-	cfg := Config{
+	cfg := config.SyslogConfig{
+		Enabled:  true,
 		Address:  conn.LocalAddr().String(),
 		Protocol: "udp",
 		Facility: FacilityLocal0,
@@ -182,9 +191,9 @@ func TestForwarderNoAddress(t *testing.T) {
 	go bus.Start()
 	defer bus.Stop()
 
-	fwd := NewForwarder(Config{}, bus, testLogger())
+	fwd := NewForwarder(config.SyslogConfig{}, bus, testLogger())
 	if err := fwd.Start(); err == nil {
-		t.Error("expected error with empty address")
+		t.Error("expected error with no outputs configured")
 		fwd.Stop()
 	}
 }

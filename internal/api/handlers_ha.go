@@ -3,40 +3,44 @@ package api
 import (
 	"net/http"
 	"time"
+
+	"github.com/athena-dhcpd/athena-dhcpd/internal/vrrp"
 )
 
 // handleHAStatus returns the current HA state.
 func (s *Server) handleHAStatus(w http.ResponseWriter, r *http.Request) {
-	if s.fsm == nil {
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"enabled": false,
-		})
-		return
-	}
-
 	resp := map[string]interface{}{
-		"enabled":        true,
-		"role":           s.fsm.Role(),
-		"state":          string(s.fsm.State()),
-		"is_active":      s.fsm.IsActive(),
-		"last_heartbeat": s.fsm.LastHeartbeat().Format(time.RFC3339),
-		"peer_address":   s.cfg.HA.PeerAddress,
-		"listen_address": s.cfg.HA.ListenAddress,
+		"enabled": false,
 	}
 
-	if s.peer != nil {
-		resp["peer_connected"] = s.peer.Connected()
-		if errMsg, errAt := s.peer.LastConnError(); errMsg != "" {
-			resp["last_error"] = errMsg
-			resp["last_error_at"] = errAt.Format(time.RFC3339)
+	if s.fsm != nil {
+		resp["enabled"] = true
+		resp["role"] = s.fsm.Role()
+		resp["state"] = string(s.fsm.State())
+		resp["is_active"] = s.fsm.IsActive()
+		resp["last_heartbeat"] = s.fsm.LastHeartbeat().Format(time.RFC3339)
+		resp["peer_address"] = s.cfg.HA.PeerAddress
+		resp["listen_address"] = s.cfg.HA.ListenAddress
+
+		if s.peer != nil {
+			resp["peer_connected"] = s.peer.Connected()
+			if errMsg, errAt := s.peer.LastConnError(); errMsg != "" {
+				resp["last_error"] = errMsg
+				resp["last_error_at"] = errAt.Format(time.RFC3339)
+			}
+		} else {
+			resp["peer_connected"] = false
 		}
-	} else {
-		resp["peer_connected"] = false
+
+		resp["is_standby"] = !s.fsm.IsActive()
+		if primaryURL := s.primaryWebURL(); primaryURL != "" {
+			resp["primary_url"] = primaryURL
+		}
 	}
 
-	resp["is_standby"] = !s.fsm.IsActive()
-	if primaryURL := s.primaryWebURL(); primaryURL != "" {
-		resp["primary_url"] = primaryURL
+	// VRRP/keepalived detection (independent of HA FSM)
+	if s.cfg.HA.VRRP.Enabled {
+		resp["vrrp"] = vrrp.Detect(s.cfg.HA.VRRP)
 	}
 
 	JSONResponse(w, http.StatusOK, resp)

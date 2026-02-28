@@ -86,6 +86,16 @@ type HAConfig struct {
 	FailoverTimeout   string      `toml:"failover_timeout" json:"failover_timeout"`
 	SyncBatchSize     int         `toml:"sync_batch_size" json:"sync_batch_size"`
 	TLS               HATLSConfig `toml:"tls" json:"tls"`
+	VRRP              VRRPConfig  `toml:"vrrp" json:"vrrp"`
+}
+
+// VRRPConfig holds optional VRRP/keepalived detection settings.
+type VRRPConfig struct {
+	Enabled      bool   `toml:"enabled" json:"enabled"`
+	VIP          string `toml:"vip" json:"vip"`
+	Interface    string `toml:"interface" json:"interface"`
+	InstanceName string `toml:"instance_name" json:"instance_name"`
+	DataFile     string `toml:"data_file" json:"data_file"`
 }
 
 // HATLSConfig holds TLS settings for HA peer communication.

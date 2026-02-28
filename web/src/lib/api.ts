@@ -56,6 +56,18 @@ export interface ConflictStats {
   by_method: Record<string, number>
 }
 
+export interface VRRPStatus {
+  detected: boolean
+  running: boolean
+  state: string
+  instance_name?: string
+  vip?: string
+  vip_on_local: boolean
+  interface?: string
+  priority?: number
+  data_file?: string
+}
+
 export interface HAStatus {
   enabled: boolean
   role: string
@@ -65,6 +77,7 @@ export interface HAStatus {
   last_heartbeat: string
   is_standby: boolean
   primary_url?: string
+  vrrp?: VRRPStatus
 }
 
 export interface HealthResponse {

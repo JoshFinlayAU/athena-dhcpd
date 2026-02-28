@@ -310,6 +310,9 @@ export interface DNSQueryLogEntry {
   answer?: string
   list_name?: string
   action?: string
+  device_mac?: string
+  device_hostname?: string
+  device_type?: string
 }
 
 export const getDNSQueryLog = (limit?: number) =>

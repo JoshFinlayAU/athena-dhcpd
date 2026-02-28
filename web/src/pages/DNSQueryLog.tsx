@@ -100,9 +100,13 @@ export default function DNSQueryLog() {
   }, [live])
 
   const filtered = entries.filter(e => {
-    if (filter && !e.name.toLowerCase().includes(filter.toLowerCase()) &&
-        !e.source.toLowerCase().includes(filter.toLowerCase())) {
-      return false
+    if (filter) {
+      const f = filter.toLowerCase()
+      const matchesName = e.name.toLowerCase().includes(f)
+      const matchesSource = e.source.toLowerCase().includes(f)
+      const matchesMAC = e.device_mac?.toLowerCase().includes(f)
+      const matchesHostname = e.device_hostname?.toLowerCase().includes(f)
+      if (!matchesName && !matchesSource && !matchesMAC && !matchesHostname) return false
     }
     if (statusFilter && e.status !== statusFilter) return false
     return true
@@ -168,7 +172,7 @@ export default function DNSQueryLog() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
             type="text"
-            placeholder="Filter by domain or source..."
+            placeholder="Filter by domain, source, hostname, or MAC..."
             value={filter}
             onChange={e => setFilter(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-surface-raised text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
@@ -222,8 +226,17 @@ export default function DNSQueryLog() {
                 <TD>
                   <span className="text-xs font-medium text-text-secondary">{entry.type}</span>
                 </TD>
-                <TD mono>
-                  <span className="text-xs text-text-muted">{entry.source.split(':')[0]}</span>
+                <TD>
+                  <div className="flex flex-col">
+                    {entry.device_hostname ? (
+                      <>
+                        <span className="text-xs font-medium text-text-primary">{entry.device_hostname}</span>
+                        <span className="text-[10px] text-text-muted font-mono">{entry.source.split(':')[0]}{entry.device_mac ? ` · ${entry.device_mac}` : ''}</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-text-muted font-mono">{entry.source.split(':')[0]}</span>
+                    )}
+                  </div>
                 </TD>
                 <TD>
                   <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full ${statusBg[entry.status] || ''} ${statusColors[entry.status] || 'text-text-secondary'}`}>

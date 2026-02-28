@@ -366,6 +366,19 @@ func main() {
 				if dnsErr := svcDNS.Start(ctx); dnsErr != nil {
 					logger.Error("failed to start DNS proxy on failover", "error", dnsErr)
 					svcDNS = nil
+				} else {
+					// Populate device mapper from existing leases
+					dm := svcDNS.DeviceMap()
+					for _, l := range store.All() {
+						if l.State == "active" {
+							if l.Hostname != "" && cfg.DNS.RegisterLeases {
+								svcDNS.RegisterLease(l.Hostname, l.IP)
+							}
+							if dm != nil && l.IP != nil {
+								dm.Update(l.IP, l.MAC.String(), l.Hostname, "")
+							}
+						}
+					}
 				}
 			}
 
@@ -610,15 +623,22 @@ func main() {
 			dnsEventCh := bus.Subscribe(1000)
 			dnsServer.SubscribeToEvents(ctx, dnsEventCh)
 
-			// Register existing leases
-			if cfg.DNS.RegisterLeases {
-				for _, l := range store.All() {
-					if l.State == "active" && l.Hostname != "" {
+			// Register existing leases for DNS zone + device mapping
+			deviceMap := dnsServer.DeviceMap()
+			for _, l := range store.All() {
+				if l.State == "active" {
+					if l.Hostname != "" && cfg.DNS.RegisterLeases {
 						dnsServer.RegisterLease(l.Hostname, l.IP)
 					}
+					if deviceMap != nil && l.IP != nil {
+						deviceMap.Update(l.IP, l.MAC.String(), l.Hostname, "")
+					}
 				}
+			}
+			if cfg.DNS.RegisterLeases {
 				logger.Info("DNS proxy loaded existing leases", "zone_records", dnsServer.Zone().Count())
 			}
+			logger.Info("DNS device mapper loaded", "devices", deviceMap.Count())
 		}
 	}
 

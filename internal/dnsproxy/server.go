@@ -646,8 +646,14 @@ func (s *Server) handleEvent(evt events.Event) {
 	switch evt.Type {
 	case events.EventLeaseAck, events.EventLeaseRenew:
 		s.RegisterLease(hostname, ip)
+		if s.deviceMap != nil && ip != nil {
+			s.deviceMap.Update(ip, evt.Lease.MAC, hostname, "")
+		}
 	case events.EventLeaseRelease, events.EventLeaseExpire:
 		s.UnregisterLease(hostname, ip)
+		if s.deviceMap != nil && ip != nil {
+			s.deviceMap.Remove(ip)
+		}
 	}
 }
 

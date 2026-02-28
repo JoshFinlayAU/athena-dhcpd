@@ -37,8 +37,8 @@ client sends DHCPDISCOVER
     ┌───────┘   │     │  └──────────┐
     ▼           ▼     ▼             ▼
 ┌─────────┐ ┌─────┐ ┌───────┐ ┌─────────────┐
-│ Dispatch│ │ DDNS| │ │ SSE   │ │ syslog fwd  │
-│ (hooks) │ │ Mgr |│ │ Hub   │ │ (RFC 5424) │
+│ Dispatch│ │ DDNS| │ SSE   │ │ syslog fwd  │
+│ (hooks) │ │ Mgr | │ Hub   │ │ (RFC 5424)  │
 └─────────┘ └─────┘ └───────┘ └─────────────┘
 
          ┌────────────────────┐

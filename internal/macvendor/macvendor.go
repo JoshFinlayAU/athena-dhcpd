@@ -6,6 +6,7 @@ package macvendor
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -23,11 +24,13 @@ type DB struct {
 	mu      sync.RWMutex
 	vendors map[string]string // normalized prefix -> vendor name
 	count   int
+	logger  *slog.Logger
 }
 
 // NewDB creates a new empty MAC vendor database.
-func NewDB() *DB {
+func NewDB(logger *slog.Logger) *DB {
 	return &DB{
+		logger:  logger,
 		vendors: make(map[string]string),
 	}
 }
@@ -37,6 +40,8 @@ func (db *DB) Load(data []byte) error {
 	var entries []Entry
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return fmt.Errorf("parsing macdb.json: %w", err)
+	} else {
+		db.logger.Info("loaded macdb.json", "count", len(entries))
 	}
 
 	db.mu.Lock()

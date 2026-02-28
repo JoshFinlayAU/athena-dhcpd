@@ -680,23 +680,27 @@ func main() {
 
 	// Initialize anomaly detector
 	anomalyDet := anomaly.NewDetector(bus, anomaly.DefaultConfig(), logger)
-	anomalyDet.Start()
+	go anomalyDet.Start()
 	defer anomalyDet.Stop()
 
 	// Initialize fingerprint store
 	fpStore, err := fingerprint.NewStore(store.DB(), logger)
 	if err != nil {
 		logger.Warn("failed to initialize fingerprint store", "error", err)
+	} else {
+		logger.Info("fingerprint store initialized")
 	}
 
 	// Initialize topology map
 	topoMap, err := topology.NewMap(store.DB(), logger)
 	if err != nil {
 		logger.Warn("failed to initialize topology map", "error", err)
+	} else {
+		logger.Info("topology map initialized")
 	}
 
 	// Initialize MAC vendor database
-	macVendorDB := macvendor.NewDB()
+	macVendorDB := macvendor.NewDB(logger)
 
 	// Initialize API server (always on — essential service)
 	var allPools []*pool.Pool

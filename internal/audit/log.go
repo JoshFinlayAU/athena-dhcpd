@@ -84,10 +84,12 @@ func NewLog(db *bolt.DB, bus *events.Bus, serverID string, logger *slog.Logger) 
 		return nil, err
 	}
 
+	ch := bus.Subscribe(2000)
 	return &Log{
 		db:       db,
 		bus:      bus,
 		logger:   logger,
+		ch:       ch,
 		done:     make(chan struct{}),
 		serverID: serverID,
 	}, nil
@@ -102,7 +104,6 @@ func (l *Log) SetHARole(role string) {
 
 // Start subscribes to the event bus and begins recording audit entries.
 func (l *Log) Start() {
-	l.ch = l.bus.Subscribe(2000)
 	l.logger.Info("audit log started")
 
 	for {

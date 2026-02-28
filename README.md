@@ -434,12 +434,12 @@ if you're running as root you dont need any of this but running a network servic
 
 athena-dhcpd uses a two-layer config model:
 
-1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. the API and web UI always start — no need to enable them. see `configs/example.toml`
-2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, syslog, fingerprinting, hostname sanitisation. managed through the web UI or API, synced between HA peers automatically
+1. **Bootstrap TOML** (`/etc/athena-dhcpd/config.toml`) — just `[server]`, `[api]`, and optionally `[ha]`. the only file you create manually. see `configs/example.toml`
+2. **Database** (BoltDB) — everything else: subnets, pools, reservations, defaults, conflict detection, hooks, DDNS, DNS proxy, VIPs, syslog, fingerprinting, hostname sanitisation. configured through the **setup wizard** on first boot and managed ongoing through the **web UI** Configuration page or REST API. synced between HA peers automatically
 
-on first startup with no config in the database, the setup wizard walks you through the initial config. you can also import a full TOML config file from the web UI if you're migrating
+on first startup with no config in the database, the setup wizard walks you through everything — deployment mode, HA, subnets, pools, reservations, conflict detection, DNS proxy, and floating VIPs. after that, all database-backed config is managed through the web UI or API. no config files to edit, no restarts needed
 
-HA config (`[ha]`) stays in TOML because its node-identity — each node needs its own role and peer address. the web UI can still edit it (it writes directly to the TOML file)
+HA config (`[ha]`) stays in TOML because its node-identity — each node needs its own role and peer address. the web UI and setup wizard can still edit it (they write directly to the TOML file)
 
 hot-reload via SIGHUP:
 ```bash

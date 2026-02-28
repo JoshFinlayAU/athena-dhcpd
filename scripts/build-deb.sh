@@ -42,8 +42,11 @@ mkdir -p "$STAGING/lib/systemd/system"
 mkdir -p "$STAGING/usr/share/doc/athena-dhcpd"
 mkdir -p "$STAGING/var/lib/athena-dhcpd"
 
-# Install binary
+# Install binaries
 install -m 0755 "$BINARY" "$STAGING/usr/bin/athena-dhcpd"
+if [ -f "$PROJECT_DIR/build/athena-hashpw" ]; then
+    install -m 0755 "$PROJECT_DIR/build/athena-hashpw" "$STAGING/usr/bin/athena-hashpw"
+fi
 
 # Install config (example as default)
 install -m 0640 "$PROJECT_DIR/configs/example.toml" "$STAGING/etc/athena-dhcpd/config.toml"

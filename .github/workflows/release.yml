@@ -90,7 +90,7 @@ jobs:
           rm -rf internal/webui/dist && mkdir -p internal/webui/dist
           cp -r web/dist/* internal/webui/dist/
 
-      - name: Build Go binary
+      - name: Build Go binaries
         env:
           CGO_ENABLED: 0
           GOOS: linux
@@ -99,6 +99,8 @@ jobs:
           mkdir -p build
           go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
             -o build/athena-dhcpd ./cmd/athena-dhcpd
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o build/athena-hashpw ./cmd/athena-hashpw
 
       - name: Build .deb package
         run: |
@@ -162,7 +164,7 @@ jobs:
           rm -rf internal/webui/dist && mkdir -p internal/webui/dist
           cp -r web/dist/* internal/webui/dist/
 
-      - name: Build binary
+      - name: Build binaries
         env:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
@@ -171,12 +173,14 @@ jobs:
           mkdir -p build
           go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
             -o build/athena-dhcpd ./cmd/athena-dhcpd
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o build/athena-hashpw ./cmd/athena-hashpw
 
       - name: Create tarball
         run: |
           cd build
           tar czf athena-dhcpd-${{ steps.version.outputs.version }}-${{ matrix.suffix }}.tar.gz \
-            athena-dhcpd \
+            athena-dhcpd athena-hashpw \
             -C "$GITHUB_WORKSPACE" configs/example.toml deploy/athena-dhcpd.service
 
       - name: Upload binary artifact

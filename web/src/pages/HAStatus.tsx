@@ -140,6 +140,7 @@ function VRRPCard({ vrrp }: { vrrp: VRRPStatus }) {
 }
 
 function VRRPInstanceRow({ inst }: { inst: VRRPInstance }) {
+  const st = inst.stats
   return (
     <div className="border border-border/50 rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between">
@@ -166,6 +167,28 @@ function VRRPInstanceRow({ inst }: { inst: VRRPInstance }) {
           </DetailRow>
         )}
       </div>
+      {st && (
+        <div className="mt-3 pt-3 border-t border-border/30">
+          <p className="text-[10px] uppercase tracking-wider text-text-muted mb-2 font-semibold">Statistics</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <MiniStat label="Adverts TX" value={st.advertisements_tx} />
+            <MiniStat label="Adverts RX" value={st.advertisements_rx} />
+            <MiniStat label="Became Master" value={st.became_master} />
+            <MiniStat label="Released Master" value={st.released_master} />
+            {(st.packet_errors ?? 0) > 0 && <MiniStat label="Pkt Errors" value={st.packet_errors!} warn />}
+            {(st.auth_errors ?? 0) > 0 && <MiniStat label="Auth Errors" value={st.auth_errors!} warn />}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MiniStat({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className="text-center">
+      <p className={`text-sm font-semibold tabular-nums ${warn ? 'text-danger' : ''}`}>{value.toLocaleString()}</p>
+      <p className="text-[10px] text-text-muted">{label}</p>
     </div>
   )
 }

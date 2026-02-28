@@ -56,6 +56,15 @@ export interface ConflictStats {
   by_method: Record<string, number>
 }
 
+export interface VRRPInstanceStats {
+  advertisements_rx: number
+  advertisements_tx: number
+  became_master: number
+  released_master: number
+  packet_errors?: number
+  auth_errors?: number
+}
+
 export interface VRRPInstance {
   name: string
   state: string
@@ -63,11 +72,13 @@ export interface VRRPInstance {
   vips?: string[]
   vip_on_local: boolean
   priority?: number
+  stats?: VRRPInstanceStats
 }
 
 export interface VRRPStatus {
   detected: boolean
   running: boolean
+  pid?: number
   instances?: VRRPInstance[]
 }
 

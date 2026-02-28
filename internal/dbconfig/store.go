@@ -22,6 +22,7 @@ var (
 	bucketDNS       = []byte("config_dns")
 	bucketHostSanit = []byte("config_hostname_sanitisation")
 	bucketMeta      = []byte("config_meta")
+	bucketUsers     = []byte("config_users")
 
 	keyDefaults      = []byte("defaults")
 	keyConflict      = []byte("conflict_detection")
@@ -47,6 +48,7 @@ type Store struct {
 	ddns      config.DDNSConfig
 	dns       config.DNSProxyConfig
 	hostSanit config.HostnameSanitisationConfig
+	users     []config.UserConfig
 
 	// Listeners notified on config changes (fires for ALL changes, local + peer)
 	onChange []func()
@@ -65,7 +67,7 @@ func NewStore(db *bolt.DB) (*Store, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{
 			bucketSubnets, bucketDefaults, bucketConflict,
-			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketMeta,
+			bucketHooks, bucketDDNS, bucketDNS, bucketHostSanit, bucketMeta, bucketUsers,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("creating config bucket %s: %w", b, err)
@@ -470,6 +472,20 @@ func (s *Store) BuildConfig(bootstrap *config.Config) *config.Config {
 	cfg.DDNS = s.ddns
 	cfg.DNS = s.dns
 	cfg.HostnameSanitisation = s.hostSanit
+
+	// Merge DB users into API auth (TOML users take precedence by being first)
+	if len(s.users) > 0 {
+		existing := make(map[string]bool, len(cfg.API.Auth.Users))
+		for _, u := range cfg.API.Auth.Users {
+			existing[u.Username] = true
+		}
+		for _, u := range s.users {
+			if !existing[u.Username] {
+				cfg.API.Auth.Users = append(cfg.API.Auth.Users, u)
+			}
+		}
+	}
+
 	return &cfg
 }
 
@@ -693,8 +709,90 @@ func (s *Store) loadAll() error {
 
 		// HA config lives in TOML, not the database — see config.WriteHASection()
 
+		// Load users
+		ub := tx.Bucket(bucketUsers)
+		if ub != nil {
+			ub.ForEach(func(k, v []byte) error {
+				var u config.UserConfig
+				if err := json.Unmarshal(v, &u); err == nil {
+					s.users = append(s.users, u)
+				}
+				return nil
+			})
+		}
+
 		return nil
 	})
+}
+
+// --- User management ---
+
+// Users returns all configured users.
+func (s *Store) Users() []config.UserConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]config.UserConfig, len(s.users))
+	copy(out, s.users)
+	return out
+}
+
+// PutUser creates or updates a user in the database.
+func (s *Store) PutUser(u config.UserConfig) error {
+	data, err := json.Marshal(u)
+	if err != nil {
+		return fmt.Errorf("marshalling user: %w", err)
+	}
+
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketUsers).Put([]byte(u.Username), data)
+	}); err != nil {
+		return fmt.Errorf("storing user %s: %w", u.Username, err)
+	}
+
+	s.mu.Lock()
+	found := false
+	for i, existing := range s.users {
+		if existing.Username == u.Username {
+			s.users[i] = u
+			found = true
+			break
+		}
+	}
+	if !found {
+		s.users = append(s.users, u)
+	}
+	s.mu.Unlock()
+
+	s.notifyLocalChange("users", data)
+	return nil
+}
+
+// DeleteUser removes a user from the database.
+func (s *Store) DeleteUser(username string) error {
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketUsers).Delete([]byte(username))
+	}); err != nil {
+		return fmt.Errorf("deleting user %s: %w", username, err)
+	}
+
+	s.mu.Lock()
+	for i, u := range s.users {
+		if u.Username == username {
+			s.users = append(s.users[:i], s.users[i+1:]...)
+			break
+		}
+	}
+	s.mu.Unlock()
+
+	s.notifyLocalChange("users", nil)
+	return nil
+}
+
+// HasUsers returns true if at least one user is configured in the DB.
+func (s *Store) HasUsers() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.users) > 0
 }
 
 func loadJSON(tx *bolt.Tx, bucket, key []byte, dest interface{}) {

@@ -4,7 +4,8 @@ import { Card } from '@/components/Card'
 import { Section, Field, FieldGrid, TextInput, NumberInput, Toggle, Select, StringArrayInput } from '@/components/FormFields'
 import { Table, THead, TH, TD, TR, EmptyRow } from '@/components/Table'
 import {
-  Network, Settings, Shield, Zap, Globe, Radio, Upload, Save, Trash2, Plus, FileUp, AlertTriangle, Type,
+  Network, Settings, Shield, Zap, Globe, Radio, Save, Trash2, Plus, FileUp, AlertTriangle, Type,
+  Users, Download, Upload, Key,
 } from 'lucide-react'
 import {
   v2GetSubnets, v2CreateSubnet, v2UpdateSubnet, v2DeleteSubnet,
@@ -16,14 +17,14 @@ import {
   v2GetDDNSConfig, v2SetDDNSConfig,
   v2GetDNSConfig, v2SetDNSConfig,
   v2GetHostnameSanitisation, v2SetHostnameSanitisation,
-  v2ImportTOML,
+  listUsers, createUser, deleteUser, exportBackup, importBackup,
   type SubnetConfig, type ReservationConfig, type DefaultsConfig,
   type ConflictDetectionConfig, type HAConfigType, type HooksConfigType,
   type DDNSConfigType, type DDNSZoneType, type DNSConfigType, type PoolConfig,
   type HostnameSanitisationConfig,
 } from '@/lib/api'
 
-type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'import'
+type Tab = 'subnets' | 'defaults' | 'conflict' | 'ha' | 'hooks' | 'ddns' | 'dns' | 'hostname' | 'users' | 'backup'
 
 const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'subnets', label: 'Subnets', icon: Network },
@@ -34,7 +35,8 @@ const tabs: { id: Tab; label: string; icon: typeof Network }[] = [
   { id: 'ddns', label: 'Dynamic DNS', icon: Globe },
   { id: 'dns', label: 'DNS Proxy', icon: Radio },
   { id: 'hostname', label: 'Hostname Sanitisation', icon: Type },
-  { id: 'import', label: 'Import', icon: Upload },
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'backup', label: 'Backup & Restore', icon: Download },
 ]
 
 export default function ConfigV2() {
@@ -86,7 +88,8 @@ export default function ConfigV2() {
       {tab === 'ddns' && <DDNSTab onStatus={showStatus} />}
       {tab === 'dns' && <DNSTab onStatus={showStatus} />}
       {tab === 'hostname' && <HostnameSanitisationTab onStatus={showStatus} />}
-      {tab === 'import' && <ImportTab onStatus={showStatus} />}
+      {tab === 'users' && <UsersTab onStatus={showStatus} />}
+      {tab === 'backup' && <BackupTab onStatus={showStatus} />}
     </div>
   )
 }
@@ -1102,45 +1105,229 @@ function HostnameSanitisationTab({ onStatus }: { onStatus: StatusFn }) {
   )
 }
 
-// ============== IMPORT TAB ==============
+// ============== USERS TAB ==============
 
-function ImportTab({ onStatus }: { onStatus: StatusFn }) {
-  const [toml, setToml] = useState('')
-  const [importing, setImporting] = useState(false)
+function UsersTab({ onStatus }: { onStatus: StatusFn }) {
+  const { data, refetch } = useApi(useCallback(() => listUsers(), []))
+  const [showNew, setShowNew] = useState(false)
+  const [newUser, setNewUser] = useState({ username: '', password: '', confirmPassword: '', role: 'admin' })
+  const [saving, setSaving] = useState(false)
 
-  const handleImport = async () => {
-    if (!toml.trim()) return
-    setImporting(true)
-    try {
-      const result = await v2ImportTOML(toml)
-      onStatus('success', `Imported ${result.subnets} subnets from TOML`)
-      setToml('')
-    } catch (e) {
-      onStatus('error', e instanceof Error ? e.message : 'Import failed')
+  const users = data?.users || []
+
+  const handleCreate = async () => {
+    if (!newUser.username || !newUser.password) return
+    if (newUser.password.length < 8) {
+      onStatus('error', 'Password must be at least 8 characters')
+      return
     }
-    setImporting(false)
+    if (newUser.password !== newUser.confirmPassword) {
+      onStatus('error', 'Passwords do not match')
+      return
+    }
+    setSaving(true)
+    try {
+      await createUser(newUser.username, newUser.password, newUser.role)
+      onStatus('success', `User "${newUser.username}" created`)
+      setNewUser({ username: '', password: '', confirmPassword: '', role: 'admin' })
+      setShowNew(false)
+      refetch()
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Failed to create user')
+    }
+    setSaving(false)
+  }
+
+  const handleDelete = async (username: string) => {
+    if (!confirm(`Delete user "${username}"?`)) return
+    try {
+      await deleteUser(username)
+      onStatus('success', `User "${username}" deleted`)
+      refetch()
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Failed to delete user')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">User Accounts</h3>
+            <p className="text-xs text-text-muted mt-1">Manage web UI and API user accounts</p>
+          </div>
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Add User
+          </button>
+        </div>
+
+        <Table>
+          <THead>
+            <TH>Username</TH>
+            <TH>Role</TH>
+            <TH className="w-20"></TH>
+          </THead>
+          <tbody>
+            {users.length === 0 ? (
+              <EmptyRow cols={3} message="No users configured" />
+            ) : (
+              users.map(u => (
+                <TR key={u.username}>
+                  <TD>
+                    <div className="flex items-center gap-2">
+                      <Key className="w-3.5 h-3.5 text-text-muted" />
+                      <span className="font-mono text-sm">{u.username}</span>
+                    </div>
+                  </TD>
+                  <TD>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${
+                      u.role === 'admin' ? 'bg-accent/15 text-accent' : 'bg-info/15 text-info'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </TD>
+                  <TD>
+                    <button onClick={() => handleDelete(u.username)}
+                      className="p-1.5 rounded hover:bg-danger/10 text-text-muted hover:text-danger transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </TD>
+                </TR>
+              ))
+            )}
+          </tbody>
+        </Table>
+      </Card>
+
+      {showNew && (
+        <Card className="p-5 space-y-4">
+          <h3 className="text-sm font-semibold">Create User</h3>
+          <FieldGrid>
+            <Field label="Username">
+              <TextInput value={newUser.username} onChange={v => setNewUser({ ...newUser, username: v })} placeholder="admin" />
+            </Field>
+            <Field label="Role">
+              <Select value={newUser.role} onChange={v => setNewUser({ ...newUser, role: v })}
+                options={[{ value: 'admin', label: 'Admin' }, { value: 'viewer', label: 'Viewer' }]} />
+            </Field>
+            <Field label="Password">
+              <input type="password" value={newUser.password}
+                onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                placeholder="Minimum 8 characters"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface-raised text-text-primary focus:outline-none focus:border-accent" />
+            </Field>
+            <Field label="Confirm Password">
+              <input type="password" value={newUser.confirmPassword}
+                onChange={e => setNewUser({ ...newUser, confirmPassword: e.target.value })}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface-raised text-text-primary focus:outline-none focus:border-accent" />
+            </Field>
+          </FieldGrid>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowNew(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-surface-overlay transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleCreate} disabled={saving || !newUser.username || !newUser.password}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors">
+              <Save className="w-3.5 h-3.5" /> {saving ? 'Creating...' : 'Create User'}
+            </button>
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ============== BACKUP & RESTORE TAB ==============
+
+function BackupTab({ onStatus }: { onStatus: StatusFn }) {
+  const [restoreData, setRestoreData] = useState('')
+  const [restoring, setRestoring] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const blob = await exportBackup()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `athena-backup-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      onStatus('success', 'Backup exported successfully')
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Export failed')
+    }
+    setExporting(false)
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setRestoreData(reader.result as string)
+    reader.readAsText(file)
+  }
+
+  const handleRestore = async () => {
+    if (!restoreData.trim()) return
+    if (!confirm('This will overwrite current configuration with the backup. Continue?')) return
+    setRestoring(true)
+    try {
+      const result = await importBackup(restoreData)
+      onStatus('success', `Restored: ${result.sections.join(', ')}`)
+      setRestoreData('')
+      if (fileRef.current) fileRef.current.value = ''
+    } catch (e) {
+      onStatus('error', e instanceof Error ? e.message : 'Restore failed')
+    }
+    setRestoring(false)
   }
 
   return (
     <div className="space-y-6">
       <Card className="p-5 space-y-4">
         <div>
-          <h3 className="text-sm font-semibold">Import v1 TOML Configuration</h3>
-          <p className="text-xs text-text-muted mt-1">Paste a full athena-dhcpd TOML config file to import all dynamic configuration (subnets, defaults, hooks, DDNS, DNS, etc.) into the database.</p>
+          <h3 className="text-sm font-semibold">Export Backup</h3>
+          <p className="text-xs text-text-muted mt-1">
+            Download a full backup of all configuration, users, and leases as a JSON file.
+          </p>
         </div>
-        <textarea
-          value={toml}
-          onChange={e => setToml(e.target.value)}
-          placeholder="# Paste your TOML configuration here..."
-          spellCheck={false}
-          className="w-full h-64 p-4 bg-surface text-sm font-mono rounded-lg border border-border focus:outline-none focus:border-accent resize-y"
-        />
-        <div className="flex justify-end">
-          <button onClick={handleImport} disabled={importing || !toml.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors">
-            <Upload className="w-3.5 h-3.5" /> {importing ? 'Importing...' : 'Import'}
-          </button>
+        <button onClick={handleExport} disabled={exporting}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors">
+          <Download className="w-3.5 h-3.5" /> {exporting ? 'Exporting...' : 'Download Backup'}
+        </button>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">Restore from Backup</h3>
+          <p className="text-xs text-text-muted mt-1">
+            Upload a previously exported backup file to restore configuration and users.
+            HA settings are not overwritten by restore.
+          </p>
         </div>
+        <div className="flex items-center gap-3">
+          <input ref={fileRef} type="file" accept=".json" onChange={handleFileSelect}
+            className="text-sm text-text-secondary file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-border file:text-sm file:font-medium file:bg-surface-raised file:text-text-primary hover:file:bg-surface-overlay file:transition-colors file:cursor-pointer" />
+        </div>
+        {restoreData && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-warning/10 border border-warning/20">
+            <span className="text-xs text-warning font-medium">
+              Backup file loaded — ready to restore
+            </span>
+            <button onClick={handleRestore} disabled={restoring}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-warning text-white hover:bg-warning/90 disabled:opacity-50 transition-colors">
+              <Upload className="w-3 h-3" /> {restoring ? 'Restoring...' : 'Restore Now'}
+            </button>
+          </div>
+        )}
       </Card>
     </div>
   )

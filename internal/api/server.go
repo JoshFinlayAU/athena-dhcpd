@@ -225,7 +225,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Auth (no auth required — these handle their own auth)
 	mux.HandleFunc("POST /api/v2/auth/login", s.auth.handleLogin)
 	mux.HandleFunc("POST /api/v2/auth/logout", s.auth.handleLogout)
-	mux.HandleFunc("GET /api/v2/auth/me", s.auth.handleMe)
+	mux.HandleFunc("GET /api/v2/auth/me", s.handleAuthMe)
+
+	// User management
+	mux.HandleFunc("POST /api/v2/auth/users", s.handleCreateUser)
+	mux.HandleFunc("GET /api/v2/auth/users", s.auth.RequireAdmin(s.handleListUsers))
+	mux.HandleFunc("DELETE /api/v2/auth/users/{username}", s.auth.RequireAdmin(s.handleDeleteUser))
 
 	// Leases
 	mux.HandleFunc("GET /api/v2/leases", s.auth.RequireAuth(s.handleListLeases))
@@ -344,11 +349,15 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Stats
 	mux.HandleFunc("GET /api/v2/stats", s.auth.RequireAuth(s.handleGetStats))
 
-	// Setup wizard (no auth — wizard runs before users are configured)
+	// Setup wizard (GET status is always open; POST endpoints locked after setup)
 	mux.HandleFunc("GET /api/v2/setup/status", s.handleSetupStatus)
-	mux.HandleFunc("POST /api/v2/setup/ha", s.handleSetupHA)
-	mux.HandleFunc("POST /api/v2/setup/config", s.handleSetupConfig)
-	mux.HandleFunc("POST /api/v2/setup/complete", s.handleSetupComplete)
+	mux.HandleFunc("POST /api/v2/setup/ha", s.setupGuard(s.handleSetupHA))
+	mux.HandleFunc("POST /api/v2/setup/config", s.setupGuard(s.handleSetupConfig))
+	mux.HandleFunc("POST /api/v2/setup/complete", s.setupGuard(s.handleSetupComplete))
+
+	// Backup & Restore
+	mux.HandleFunc("GET /api/v2/backup", s.auth.RequireAdmin(s.handleBackupExport))
+	mux.HandleFunc("POST /api/v2/backup/restore", s.auth.RequireAdmin(s.handleBackupRestore))
 
 	// SPA fallback — serve index.html for all non-API paths
 	if s.cfg.API.WebUI {
@@ -359,6 +368,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 // UpdateConfig updates the runtime config pointer (called on live config reload).
 func (s *Server) UpdateConfig(cfg *config.Config) {
 	s.cfg = cfg
+	// Refresh auth middleware with updated user list (includes DB users merged by BuildConfig)
+	s.auth.UpdateUsers(cfg.API.Auth.Users)
 }
 
 // UpdatePools replaces the pool list (called on live config reload).
@@ -399,6 +410,17 @@ func (s *Server) primaryWebURL() string {
 		apiPort = "8067"
 	}
 	return fmt.Sprintf("http://%s", net.JoinHostPort(peerHost, apiPort))
+}
+
+// setupGuard wraps a handler to block setup wizard endpoints after setup is complete.
+func (s *Server) setupGuard(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfgStore != nil && s.cfgStore.IsSetupComplete() {
+			JSONError(w, http.StatusForbidden, "setup_complete", "setup wizard is locked — setup already complete")
+			return
+		}
+		next(w, r)
+	}
 }
 
 // standbyGuard wraps a handler to block writes when this node is HA standby.

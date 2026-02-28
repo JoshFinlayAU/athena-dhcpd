@@ -141,7 +141,12 @@ func (a *AuthMiddleware) authenticateAndGetRole(r *http.Request) string {
 
 // checkUserCredentials validates username/password against configured users.
 func (a *AuthMiddleware) checkUserCredentials(username, password string) string {
-	for _, user := range a.users {
+	a.mu.RLock()
+	users := make([]config.UserConfig, len(a.users))
+	copy(users, a.users)
+	a.mu.RUnlock()
+
+	for _, user := range users {
 		if user.Username == username {
 			if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err == nil {
 				return user.Role
@@ -153,7 +158,16 @@ func (a *AuthMiddleware) checkUserCredentials(username, password string) string 
 
 // AuthRequired returns true if auth is configured (users or bearer token set).
 func (a *AuthMiddleware) AuthRequired() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.bearerToken != "" || len(a.users) > 0
+}
+
+// UpdateUsers replaces the user list at runtime (called when DB users change).
+func (a *AuthMiddleware) UpdateUsers(users []config.UserConfig) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.users = users
 }
 
 // --- Session management ---

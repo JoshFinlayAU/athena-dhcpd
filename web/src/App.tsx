@@ -18,6 +18,7 @@ import RogueServers from '@/pages/RogueServers'
 import Topology from '@/pages/Topology'
 import NetworkWeather from '@/pages/NetworkWeather'
 import Login from '@/pages/Login'
+import CreateAdmin from '@/pages/CreateAdmin'
 import SetupWizard from '@/pages/SetupWizard'
 import { getSetupStatus } from '@/lib/api'
 
@@ -46,7 +47,7 @@ function SetupGate({ children }: { children: React.ReactNode }) {
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, loading, refresh } = useAuth()
 
   if (loading) {
     return (
@@ -54,6 +55,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="text-text-muted text-sm">Loading...</div>
       </div>
     )
+  }
+
+  // No users configured — show initial admin account creation
+  if (user?.needs_user_setup) {
+    return <CreateAdmin onCreated={refresh} />
   }
 
   // API unreachable or auth required but not authenticated

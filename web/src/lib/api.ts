@@ -120,6 +120,7 @@ export interface AuthUser {
   username?: string
   role?: string
   auth_required: boolean
+  needs_user_setup?: boolean
 }
 
 export const getMe = () => request<AuthUser>('/auth/me')
@@ -128,8 +129,37 @@ export const login = (username: string, password: string) =>
     method: 'POST',
     body: JSON.stringify({ username, password }),
   })
+export const createUser = (username: string, password: string, role: string = 'admin') =>
+  request<{ username: string; role: string; status: string }>('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role }),
+  })
+export const listUsers = () =>
+  request<{ users: { username: string; role: string }[] }>('/auth/users')
+export const deleteUser = (username: string) =>
+  request<{ status: string }>(`/auth/users/${username}`, { method: 'DELETE' })
+export const changePassword = (username: string, password: string) =>
+  request<{ status: string }>('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role: 'admin' }),
+  })
 export const logout = () =>
   request<{ status: string }>('/auth/logout', { method: 'POST' })
+
+// Backup & Restore
+export const exportBackup = async (): Promise<Blob> => {
+  const res = await fetch(`${BASE}/backup`, { credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(body.error || res.statusText)
+  }
+  return res.blob()
+}
+export const importBackup = (data: string) =>
+  request<{ status: string; sections: string[] }>('/backup/restore', {
+    method: 'POST',
+    body: data,
+  })
 
 // Health
 export const getHealth = () => request<HealthResponse>('/health')

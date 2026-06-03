@@ -15,8 +15,8 @@
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.1",
-    "smol-toml": "^1.6.0",
+    "react-router-dom": "^7.16.0",
+    "smol-toml": "^1.6.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1"
   },
@@ -34,6 +34,6 @@
     "http-proxy": "^1.18.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.5"
   }
 }

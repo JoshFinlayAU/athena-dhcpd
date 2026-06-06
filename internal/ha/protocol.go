@@ -38,6 +38,7 @@ type LeaseUpdatePayload struct {
 	State    string `json:"state"`
 	Start    int64  `json:"start"`
 	Expiry   int64  `json:"expiry"`
+	Updated  int64  `json:"updated"`
 	Seq      uint64 `json:"seq"`
 }
 
@@ -141,7 +142,7 @@ func NewHeartbeat(state string, leaseCount int, seq uint64, uptime time.Duration
 
 // NewLeaseUpdate creates a lease update message.
 func NewLeaseUpdate(ip net.IP, mac net.HardwareAddr, clientID, hostname, subnet, pool, state string,
-	start, expiry time.Time, seq uint64) (*Message, error) {
+	start, expiry, updated time.Time, seq uint64) (*Message, error) {
 	payload, err := json.Marshal(LeaseUpdatePayload{
 		IP:       ip.String(),
 		MAC:      mac.String(),
@@ -152,6 +153,7 @@ func NewLeaseUpdate(ip net.IP, mac net.HardwareAddr, clientID, hostname, subnet,
 		State:    state,
 		Start:    start.Unix(),
 		Expiry:   expiry.Unix(),
+		Updated:  updated.UnixNano(),
 		Seq:      seq,
 	})
 	if err != nil {
@@ -159,6 +161,32 @@ func NewLeaseUpdate(ip net.IP, mac net.HardwareAddr, clientID, hostname, subnet,
 	}
 	return &Message{
 		Type:      dhcpv4.HAMsgLeaseUpdate,
+		Timestamp: time.Now().Unix(),
+		Payload:   payload,
+	}, nil
+}
+
+// newBulkStart creates a bulk-sync start message.
+func newBulkStart(totalLeases int) (*Message, error) {
+	payload, err := json.Marshal(BulkStartPayload{TotalLeases: totalLeases})
+	if err != nil {
+		return nil, err
+	}
+	return &Message{
+		Type:      dhcpv4.HAMsgBulkStart,
+		Timestamp: time.Now().Unix(),
+		Payload:   payload,
+	}, nil
+}
+
+// newBulkEnd creates a bulk-sync end message.
+func newBulkEnd(leasesTransferred int) (*Message, error) {
+	payload, err := json.Marshal(BulkEndPayload{LeasesTransferred: leasesTransferred})
+	if err != nil {
+		return nil, err
+	}
+	return &Message{
+		Type:      dhcpv4.HAMsgBulkEnd,
 		Timestamp: time.Now().Unix(),
 		Payload:   payload,
 	}, nil

@@ -16,11 +16,30 @@ import (
 
 // Manager handles lease allocation, renewal, release, and expiry.
 type Manager struct {
-	store  *Store
-	cfg    *config.Config
-	bus    *events.Bus
-	logger *slog.Logger
-	mu     sync.Mutex
+	store     *Store
+	cfg       *config.Config
+	bus       *events.Bus
+	logger    *slog.Logger
+	mu        sync.Mutex
+	replicate func(*Lease)
+}
+
+// SetReplicator registers a callback invoked after every lease state change so
+// the change can be replicated to an HA peer. The callback receives a clone and
+// must be non-blocking (the lease manager lock may be held). Terminal states
+// (released/expired/declined) signal the peer to delete the lease.
+func (m *Manager) SetReplicator(fn func(*Lease)) {
+	m.mu.Lock()
+	m.replicate = fn
+	m.mu.Unlock()
+}
+
+// notifyReplicate fires the replication callback if one is registered. Caller
+// holds m.mu. The callback must not block.
+func (m *Manager) notifyReplicate(l *Lease) {
+	if m.replicate != nil {
+		m.replicate(l.Clone())
+	}
 }
 
 // NewManager creates a new lease manager.
@@ -109,6 +128,8 @@ func (m *Manager) CreateOffer(ip net.IP, mac net.HardwareAddr, clientID, hostnam
 		Lease:     m.leaseToEventData(l),
 	})
 
+	m.notifyReplicate(l)
+
 	return l, nil
 }
 
@@ -166,6 +187,8 @@ func (m *Manager) ConfirmLease(ip net.IP, mac net.HardwareAddr, clientID, hostna
 		Lease:     m.leaseToEventData(l),
 	})
 
+	m.notifyReplicate(l)
+
 	return l, nil
 }
 
@@ -210,6 +233,11 @@ func (m *Manager) Release(ip net.IP, mac net.HardwareAddr) error {
 		Lease:     eventData,
 	})
 
+	l.State = dhcpv4.LeaseStateReleased
+	l.LastUpdated = time.Now()
+	l.UpdateSeq = m.store.NextSeq()
+	m.notifyReplicate(l)
+
 	return nil
 }
 
@@ -247,6 +275,15 @@ func (m *Manager) Decline(ip net.IP, mac net.HardwareAddr) error {
 		Timestamp: time.Now(),
 		Lease:     eventData,
 	})
+
+	rep := l
+	if rep == nil {
+		rep = &Lease{IP: ip, MAC: mac}
+	}
+	rep.State = dhcpv4.LeaseStateDeclined
+	rep.LastUpdated = time.Now()
+	rep.UpdateSeq = m.store.NextSeq()
+	m.notifyReplicate(rep)
 
 	return nil
 }
@@ -287,6 +324,11 @@ func (m *Manager) ExpireLeases() int {
 			Timestamp: time.Now(),
 			Lease:     eventData,
 		})
+
+		l.State = dhcpv4.LeaseStateExpired
+		l.LastUpdated = time.Now()
+		l.UpdateSeq = m.store.NextSeq()
+		m.notifyReplicate(l)
 	}
 
 	return len(expired)

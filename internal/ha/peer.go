@@ -27,6 +27,8 @@ type Peer struct {
 	listener          net.Listener
 	heartbeatInterval time.Duration
 	mu                sync.Mutex
+	writeMu           sync.Mutex
+	leaseQueue        chan *Message
 	done              chan struct{}
 	wg                sync.WaitGroup
 	onLeaseUpdate     func(LeaseUpdatePayload)
@@ -51,6 +53,7 @@ func NewPeer(cfg *config.HAConfig, fsm *FSM, store *lease.Store, bus *events.Bus
 		bus:               bus,
 		logger:            logger,
 		heartbeatInterval: hbInterval,
+		leaseQueue:        make(chan *Message, 8192),
 		done:              make(chan struct{}),
 	}, nil
 }
@@ -129,6 +132,11 @@ func (p *Peer) Start(ctx context.Context) error {
 		p.logger.Info("primary role — waiting for secondary to connect inbound")
 	}
 
+	// Async lease-update sender — decouples the DHCP hot path from peer
+	// network latency.
+	p.wg.Add(1)
+	go p.senderLoop(ctx)
+
 	// Heartbeat sender
 	p.wg.Add(1)
 	go p.heartbeatLoop(ctx)
@@ -155,17 +163,93 @@ func (p *Peer) Stop() {
 	p.logger.Info("HA peer stopped")
 }
 
-// SendLeaseUpdate sends a lease change to the peer.
-func (p *Peer) SendLeaseUpdate(l *lease.Lease) error {
-	msg, err := NewLeaseUpdate(
+// leaseUpdateMessage builds the wire message for a lease change.
+func leaseUpdateMessage(l *lease.Lease) (*Message, error) {
+	return NewLeaseUpdate(
 		l.IP, l.MAC, l.ClientID, l.Hostname,
 		l.Subnet, l.Pool, string(l.State),
-		l.Start, l.Expiry, l.UpdateSeq,
+		l.Start, l.Expiry, l.LastUpdated, l.UpdateSeq,
 	)
+}
+
+// SendLeaseUpdate sends a lease change to the peer synchronously. Used by bulk
+// sync; the live DHCP path uses QueueLeaseUpdate instead.
+func (p *Peer) SendLeaseUpdate(l *lease.Lease) error {
+	msg, err := leaseUpdateMessage(l)
 	if err != nil {
 		return fmt.Errorf("creating lease update message: %w", err)
 	}
 	return p.sendMessage(msg)
+}
+
+// QueueLeaseUpdate enqueues a lease change for asynchronous replication to the
+// peer. It never blocks: if the queue is full (peer slow or disconnected) the
+// update is dropped and the peer will reconcile via bulk sync on reconnect.
+func (p *Peer) QueueLeaseUpdate(l *lease.Lease) error {
+	msg, err := leaseUpdateMessage(l)
+	if err != nil {
+		return fmt.Errorf("creating lease update message: %w", err)
+	}
+	select {
+	case p.leaseQueue <- msg:
+		return nil
+	default:
+		metrics.HASyncErrors.Inc()
+		return fmt.Errorf("lease replication queue full, update for %s dropped", l.IP)
+	}
+}
+
+// senderLoop drains the lease-update queue and writes to the peer off the DHCP
+// hot path.
+func (p *Peer) senderLoop(ctx context.Context) {
+	defer p.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.done:
+			return
+		case msg := <-p.leaseQueue:
+			if err := p.sendMessage(msg); err != nil {
+				p.logger.Debug("lease update send skipped", "error", err)
+			} else {
+				metrics.HASyncOperations.WithLabelValues("lease_update").Inc()
+			}
+		}
+	}
+}
+
+// SendBulkSync streams the full lease table to the peer, framed by bulk-start
+// and bulk-end markers. The peer applies each lease and exits its RECOVERY
+// state on receipt of the bulk-end marker. Only the active node should call this.
+func (p *Peer) SendBulkSync(leases []*lease.Lease) error {
+	start, err := newBulkStart(len(leases))
+	if err != nil {
+		return err
+	}
+	if err := p.sendMessage(start); err != nil {
+		return fmt.Errorf("sending bulk start: %w", err)
+	}
+
+	sent := 0
+	for _, l := range leases {
+		if err := p.SendLeaseUpdate(l); err != nil {
+			p.logger.Warn("bulk sync lease send failed", "ip", l.IP.String(), "error", err)
+			continue
+		}
+		sent++
+	}
+
+	end, err := newBulkEnd(sent)
+	if err != nil {
+		return err
+	}
+	if err := p.sendMessage(end); err != nil {
+		return fmt.Errorf("sending bulk end: %w", err)
+	}
+
+	p.logger.Info("bulk lease sync sent to peer", "leases", sent)
+	return nil
 }
 
 // SendConflictUpdate sends a conflict table entry to the peer.
@@ -192,6 +276,12 @@ func (p *Peer) sendMessage(msg *Message) error {
 	if err != nil {
 		return err
 	}
+
+	// Serialize writes so concurrent senders (heartbeat, config sync, lease
+	// updates, bulk sync) cannot interleave bytes of different length-prefixed
+	// frames on the shared connection.
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
 
 	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	_, err = conn.Write(data)
@@ -446,7 +536,7 @@ func (p *Peer) heartbeatLoop(ctx context.Context) {
 			msg, err := NewHeartbeat(
 				string(p.fsm.State()),
 				p.leaseStore.Count(),
-				p.leaseStore.NextSeq(),
+				p.leaseStore.CurrentSeq(),
 				time.Since(startTime),
 			)
 			if err != nil {

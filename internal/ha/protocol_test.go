@@ -38,7 +38,7 @@ func TestNewLeaseUpdate(t *testing.T) {
 	mac, _ := net.ParseMAC("00:11:22:33:44:55")
 	now := time.Now()
 
-	msg, err := NewLeaseUpdate(ip, mac, "client1", "host1", "192.168.1.0/24", "pool1", "active", now, now.Add(time.Hour), 42)
+	msg, err := NewLeaseUpdate(ip, mac, "client1", "host1", "192.168.1.0/24", "pool1", "active", now, now.Add(time.Hour), now, 42)
 	if err != nil {
 		t.Fatalf("NewLeaseUpdate error: %v", err)
 	}

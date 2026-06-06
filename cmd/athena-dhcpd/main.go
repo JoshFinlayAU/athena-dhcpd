@@ -312,6 +312,7 @@ func main() {
 		}
 		handler := dhcp.NewHandler(cfg, leaseMgr, pools, nil, earlyBus, logger)
 		handler.SetHA(earlyHAFSM)
+		leaseMgr.SetPoolReleaser(handler.ReleaseToPool)
 
 		// Server group created but NOT started — waits for failover
 		serverGroup := dhcp.NewServerGroup(handler, logger)
@@ -569,6 +570,7 @@ func main() {
 
 	// Create DHCP handler
 	handler := dhcp.NewHandler(cfg, leaseMgr, pools, detector, bus, logger)
+	leaseMgr.SetPoolReleaser(handler.ReleaseToPool)
 
 	// Create and start DHCP server group (one listener per interface)
 	serverGroup := dhcp.NewServerGroup(handler, logger)

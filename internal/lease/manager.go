@@ -16,12 +16,22 @@ import (
 
 // Manager handles lease allocation, renewal, release, and expiry.
 type Manager struct {
-	store     *Store
-	cfg       *config.Config
-	bus       *events.Bus
-	logger    *slog.Logger
-	mu        sync.Mutex
-	replicate func(*Lease)
+	store       *Store
+	cfg         *config.Config
+	bus         *events.Bus
+	logger      *slog.Logger
+	mu          sync.Mutex
+	replicate   func(*Lease)
+	releasePool func(net.IP)
+}
+
+// SetPoolReleaser registers a callback that returns an expired lease's IP to its
+// allocation pool. Without it, expired addresses leak from the pool bitmap and
+// the pool slowly exhausts until restart. The callback must be non-blocking.
+func (m *Manager) SetPoolReleaser(fn func(net.IP)) {
+	m.mu.Lock()
+	m.releasePool = fn
+	m.mu.Unlock()
 }
 
 // SetReplicator registers a callback invoked after every lease state change so
@@ -324,6 +334,10 @@ func (m *Manager) ExpireLeases() int {
 			Timestamp: time.Now(),
 			Lease:     eventData,
 		})
+
+		if m.releasePool != nil {
+			m.releasePool(l.IP)
+		}
 
 		l.State = dhcpv4.LeaseStateExpired
 		l.LastUpdated = time.Now()

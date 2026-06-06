@@ -12,25 +12,25 @@ import (
 
 // BoltDB bucket names.
 var (
-	bucketLeases     = []byte("leases")
-	bucketIndexMAC   = []byte("index_mac")
-	bucketIndexCID   = []byte("index_client_id")
-	bucketIndexHost  = []byte("index_hostname")
-	bucketConflicts  = []byte("conflicts")
-	bucketExcluded   = []byte("excluded_ips")
-	bucketMeta       = []byte("meta")
-	bucketEventLog   = []byte("event_log")
+	bucketLeases    = []byte("leases")
+	bucketIndexMAC  = []byte("index_mac")
+	bucketIndexCID  = []byte("index_client_id")
+	bucketIndexHost = []byte("index_hostname")
+	bucketConflicts = []byte("conflicts")
+	bucketExcluded  = []byte("excluded_ips")
+	bucketMeta      = []byte("meta")
+	bucketEventLog  = []byte("event_log")
 )
 
 // Store provides lease persistence via BoltDB with in-memory indexes for O(1) lookup.
 type Store struct {
-	db       *bolt.DB
-	mu       sync.RWMutex
-	byIP     map[string]*Lease            // IP string → Lease
-	byMAC    map[string]*Lease            // MAC string → Lease
-	byCID    map[string]*Lease            // Client-ID hex → Lease
-	byHost   map[string]*Lease            // Hostname → Lease
-	seq      uint64
+	db     *bolt.DB
+	mu     sync.RWMutex
+	byIP   map[string]*Lease // IP string → Lease
+	byMAC  map[string]*Lease // MAC string → Lease
+	byCID  map[string]*Lease // Client-ID hex → Lease
+	byHost map[string]*Lease // Hostname → Lease
+	seq    uint64
 }
 
 // NewStore opens or creates a BoltDB database and initializes the in-memory indexes.

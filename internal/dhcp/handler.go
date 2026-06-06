@@ -363,6 +363,18 @@ func (h *Handler) handleRequest(ctx context.Context, pkt *Packet) (*Packet, erro
 		return h.buildNAK(pkt, "requested IP not in subnet"), nil
 	}
 
+	// Reject a request for an address actively leased to a different client.
+	// Without this, any client could REQUEST an in-subnet IP and hijack another
+	// client's active lease (RFC 2131 §4.3.2 — server must verify ownership).
+	if cur := h.leases.Store().GetByIP(ip); cur != nil &&
+		cur.State == dhcpv4.LeaseStateActive && !leaseOwnedBy(cur, mac, clientID) {
+		h.logger.Warn("DHCPREQUEST for IP leased to another client — NAK",
+			"mac", mac.String(),
+			"requested_ip", ip.String(),
+			"lease_mac", cur.MAC.String())
+		return h.buildNAK(pkt, "requested IP leased to another client"), nil
+	}
+
 	// Verify the IP is valid for this client
 	existing := h.leases.FindExistingLease(clientID, mac)
 	if existing != nil && !existing.IP.Equal(ip) {
@@ -455,14 +467,30 @@ func (h *Handler) handleDecline(pkt *Packet) {
 	}
 
 	// Release the IP from the pool
+	h.ReleaseToPool(requestedIP)
+}
+
+// ReleaseToPool returns an IP to whichever pool contains it. A no-op if the IP
+// belongs to no pool. Used by RELEASE/DECLINE and by lease expiry (wired via
+// the lease manager's pool releaser) so freed addresses become allocatable again.
+func (h *Handler) ReleaseToPool(ip net.IP) {
 	for _, subnetPools := range h.pools {
 		for _, p := range subnetPools {
-			if p.Contains(requestedIP) {
-				p.Release(requestedIP)
-				break
+			if p.Contains(ip) {
+				p.Release(ip)
+				return
 			}
 		}
 	}
+}
+
+// leaseOwnedBy reports whether the lease belongs to the client identified by
+// the given MAC or client-id (RFC 2131 §4.2 client identification).
+func leaseOwnedBy(l *lease.Lease, mac net.HardwareAddr, clientID string) bool {
+	if l.MAC != nil && l.MAC.String() == mac.String() {
+		return true
+	}
+	return clientID != "" && l.ClientID == clientID
 }
 
 // handleRelease processes DHCPRELEASE — client voluntarily releasing its lease.
@@ -475,6 +503,17 @@ func (h *Handler) handleRelease(pkt *Packet) {
 		"mac", mac.String(),
 		"ip", ip.String())
 
+	// Only the owning client may release a lease. A spoofed RELEASE (victim's
+	// CIAddr, attacker's CHAddr) must not free someone else's lease or pool bit.
+	clientID := fmt.Sprintf("%x", pkt.ClientIdentifier())
+	if cur := h.leases.Store().GetByIP(ip); cur != nil && !leaseOwnedBy(cur, mac, clientID) {
+		h.logger.Warn("ignoring DHCPRELEASE from non-owner",
+			"ip", ip.String(),
+			"lease_mac", cur.MAC.String(),
+			"release_mac", mac.String())
+		return
+	}
+
 	if err := h.leases.Release(ip, mac); err != nil {
 		h.logger.Error("failed to process RELEASE",
 			"ip", ip.String(),
@@ -482,14 +521,7 @@ func (h *Handler) handleRelease(pkt *Packet) {
 	}
 
 	// Release IP back to pool
-	for _, subnetPools := range h.pools {
-		for _, p := range subnetPools {
-			if p.Contains(ip) {
-				p.Release(ip)
-				break
-			}
-		}
-	}
+	h.ReleaseToPool(ip)
 }
 
 // handleInform processes DHCPINFORM — client requesting options only (no IP assignment).

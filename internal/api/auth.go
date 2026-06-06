@@ -2,10 +2,12 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,12 @@ type AuthMiddleware struct {
 	cookieSecure bool
 	sessionTTL   time.Duration
 	logger       *slog.Logger
+	limiter      *loginLimiter
+
+	// setupComplete reports whether first-run setup has finished. When set and
+	// true, an absence of configured credentials fails closed (deny) instead of
+	// the first-boot fail-open behaviour that lets the setup wizard run.
+	setupComplete func() bool
 
 	mu       sync.RWMutex
 	sessions map[string]*session // sessionID -> session
@@ -44,12 +52,15 @@ func NewAuthMiddleware(cfg config.APIConfig, logger *slog.Logger) *AuthMiddlewar
 	}
 
 	a := &AuthMiddleware{
-		bearerToken:  cfg.Auth.AuthToken,
-		users:        cfg.Auth.Users,
-		cookieName:   cfg.Session.CookieName,
-		cookieSecure: cfg.Session.Secure,
+		bearerToken: cfg.Auth.AuthToken,
+		users:       cfg.Auth.Users,
+		cookieName:  cfg.Session.CookieName,
+		// Force the Secure cookie attribute when serving over TLS even if the
+		// operator did not set session.secure explicitly.
+		cookieSecure: cfg.Session.Secure || cfg.TLS.Enabled,
 		sessionTTL:   ttl,
 		logger:       logger,
+		limiter:      newLoginLimiter(5, time.Minute, 5*time.Minute),
 		sessions:     make(map[string]*session),
 	}
 
@@ -96,10 +107,32 @@ func (a *AuthMiddleware) authenticate(r *http.Request) bool {
 	return a.authenticateAndGetRole(r) != ""
 }
 
+// openAccess reports whether the server should grant unauthenticated admin
+// access. This is true only on first boot (no credentials configured AND setup
+// not yet complete) so the setup wizard can run. Once setup completes, an empty
+// credential set fails closed rather than exposing every admin endpoint.
+func (a *AuthMiddleware) openAccess() bool {
+	if a.bearerToken != "" || len(a.users) > 0 {
+		return false
+	}
+	if a.setupComplete != nil && a.setupComplete() {
+		return false
+	}
+	return true
+}
+
+// tokenMatch compares a presented token to the configured bearer token in
+// constant time, avoiding a timing side channel.
+func (a *AuthMiddleware) tokenMatch(token string) bool {
+	if a.bearerToken == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(a.bearerToken)) == 1
+}
+
 // authenticateAndGetRole returns the role if authenticated, empty string otherwise.
 func (a *AuthMiddleware) authenticateAndGetRole(r *http.Request) string {
-	// No auth configured — allow everything as admin
-	if a.bearerToken == "" && len(a.users) == 0 {
+	if a.openAccess() {
 		return "admin"
 	}
 
@@ -115,7 +148,7 @@ func (a *AuthMiddleware) authenticateAndGetRole(r *http.Request) string {
 	if authHeader != "" {
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if a.bearerToken != "" && token == a.bearerToken {
+			if a.tokenMatch(token) {
 				return "admin"
 			}
 		}
@@ -131,7 +164,7 @@ func (a *AuthMiddleware) authenticateAndGetRole(r *http.Request) string {
 
 	// Check query parameter (for SSE/API connections)
 	if token := r.URL.Query().Get("token"); token != "" {
-		if a.bearerToken != "" && token == a.bearerToken {
+		if a.tokenMatch(token) {
 			return "admin"
 		}
 	}
@@ -172,9 +205,12 @@ func (a *AuthMiddleware) UpdateUsers(users []config.UserConfig) {
 
 // --- Session management ---
 
-func (a *AuthMiddleware) createSession(username, role string) string {
+func (a *AuthMiddleware) createSession(username, role string) (string, error) {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// A failed CSPRNG read must abort: a zero/short session ID would be guessable.
+		return "", err
+	}
 	id := hex.EncodeToString(b)
 
 	a.mu.Lock()
@@ -186,7 +222,7 @@ func (a *AuthMiddleware) createSession(username, role string) string {
 	}
 	a.mu.Unlock()
 
-	return id
+	return id, nil
 }
 
 func (a *AuthMiddleware) getSession(id string) *session {
@@ -220,6 +256,15 @@ func (a *AuthMiddleware) cleanExpired() {
 
 // handleLogin authenticates a user and creates a session cookie.
 func (a *AuthMiddleware) handleLogin(w http.ResponseWriter, r *http.Request) {
+	clientKey := clientIP(r)
+	if locked, retryAfter := a.limiter.locked(clientKey, time.Now()); locked {
+		a.logger.Warn("login blocked by rate limiter", "client", clientKey, "retry_after", retryAfter.String())
+		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		JSONError(w, http.StatusTooManyRequests, "too_many_attempts",
+			"too many failed login attempts, try again later")
+		return
+	}
+
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -231,12 +276,20 @@ func (a *AuthMiddleware) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	role := a.checkUserCredentials(body.Username, body.Password)
 	if role == "" {
-		a.logger.Warn("failed login attempt", "username", body.Username)
+		a.limiter.recordFailure(clientKey, time.Now())
+		a.logger.Warn("failed login attempt", "username", body.Username, "client", clientKey)
 		JSONError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 		return
 	}
 
-	sessionID := a.createSession(body.Username, role)
+	a.limiter.reset(clientKey)
+
+	sessionID, err := a.createSession(body.Username, role)
+	if err != nil {
+		a.logger.Error("failed to create session", "error", err)
+		JSONError(w, http.StatusInternalServerError, "internal_error", "could not create session")
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.cookieName,
@@ -274,8 +327,8 @@ func (a *AuthMiddleware) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleMe returns the current authenticated user info.
 func (a *AuthMiddleware) handleMe(w http.ResponseWriter, r *http.Request) {
-	// No auth configured — return anonymous admin
-	if !a.AuthRequired() {
+	// First-boot open access — return anonymous admin so the setup wizard works.
+	if a.openAccess() {
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
 			"authenticated": true,
 			"username":      "admin",

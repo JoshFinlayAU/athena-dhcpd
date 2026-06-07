@@ -286,7 +286,13 @@ func (m *Manager) withRetry(op, name string, fn func() error) {
 	var err error
 	for attempt := 0; attempt <= m.maxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(m.retryBackoff * time.Duration(1<<uint(attempt-1)))
+			// Interruptible backoff so shutdown isn't blocked waiting out the
+			// full retry window for every in-flight operation.
+			select {
+			case <-m.done:
+				return
+			case <-time.After(m.retryBackoff * time.Duration(1<<uint(attempt-1))):
+			}
 		}
 		err = fn()
 		if err == nil {

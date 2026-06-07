@@ -317,8 +317,16 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	// Cache the response
-	s.cache.Set(resp, s.cacheTTL)
+	// Cache the response only if its question matches what we asked. A response
+	// whose question differs is not a valid answer to this query and must not be
+	// allowed to poison the cache.
+	if sameQuestion(r, resp) {
+		s.cache.Set(resp, s.cacheTTL)
+	} else {
+		s.logger.Warn("dropping upstream response with mismatched question",
+			"asked", qname)
+		metrics.DNSUpstreamErrors.Inc()
+	}
 
 	elapsed := time.Since(start).Seconds()
 	answer := ""
@@ -335,6 +343,18 @@ func (s *Server) handleQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 	resp.SetReply(r)
 	w.WriteMsg(resp)
+}
+
+// sameQuestion reports whether the response answers the exact question asked
+// (name case-insensitively, type and class). Used to reject mismatched upstream
+// responses before they reach the cache.
+func sameQuestion(query, resp *dns.Msg) bool {
+	if resp == nil || len(query.Question) == 0 || len(resp.Question) == 0 {
+		return false
+	}
+	q, a := query.Question[0], resp.Question[0]
+	return q.Qtype == a.Qtype && q.Qclass == a.Qclass &&
+		strings.EqualFold(q.Name, a.Name)
 }
 
 // forward sends a query to the appropriate upstream server.
@@ -704,10 +724,12 @@ func (s *Server) UpdateConfig(cfg *config.DNSProxyConfig) {
 	// Update forwarders
 	s.forwarders = cfg.Forwarders
 
-	// Rebuild zone overrides
+	// Rebuild zone overrides. The key must match the form used at construction
+	// and in findZoneOverride (lowercased FQDN with a trailing dot); using the
+	// raw zone here meant every override silently stopped matching after a reload.
 	newOverrides := make(map[string]config.DNSZoneOverride)
 	for _, ov := range cfg.ZoneOverrides {
-		newOverrides[strings.ToLower(ov.Zone)] = ov
+		newOverrides[strings.ToLower(dns.Fqdn(ov.Zone))] = ov
 	}
 	s.zoneOverrides = newOverrides
 }

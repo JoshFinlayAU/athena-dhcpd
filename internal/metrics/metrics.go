@@ -97,6 +97,13 @@ var (
 		Name:      "pool_exhausted_total",
 		Help:      "Total times a pool was exhausted during allocation.",
 	}, []string{"subnet"})
+
+	// DHCPRateLimited counts request packets dropped by the rate limiter.
+	DHCPRateLimited = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "dhcp_rate_limited_total",
+		Help:      "Total DISCOVER/REQUEST packets dropped by the rate limiter.",
+	})
 )
 
 // --- Conflict Detection Metrics ---

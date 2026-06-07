@@ -30,19 +30,19 @@ func WriteCSV(w io.Writer, records []Record) error {
 			r.Event,
 			r.IP,
 			r.MAC,
-			r.ClientID,
-			r.Hostname,
-			r.FQDN,
+			csvSafe(r.ClientID),
+			csvSafe(r.Hostname),
+			csvSafe(r.FQDN),
 			r.Subnet,
-			r.Pool,
+			csvSafe(r.Pool),
 			formatInt64(r.LeaseStart),
 			formatInt64(r.LeaseExpiry),
-			r.CircuitID,
-			r.RemoteID,
+			csvSafe(r.CircuitID),
+			csvSafe(r.RemoteID),
 			r.GIAddr,
 			r.ServerID,
 			r.HARoleAtTime,
-			r.Reason,
+			csvSafe(r.Reason),
 		}
 		if err := cw.Write(row); err != nil {
 			return fmt.Errorf("writing CSV row: %w", err)
@@ -56,4 +56,19 @@ func formatInt64(v int64) string {
 		return ""
 	}
 	return strconv.FormatInt(v, 10)
+}
+
+// csvSafe neutralises spreadsheet formula injection. Fields that originate from
+// DHCP packets (hostname, client-id, circuit-id, etc.) are attacker-controlled;
+// if such a value begins with =, +, -, @, tab or CR, a spreadsheet may execute
+// it as a formula when the export is opened. Prefixing a single quote defuses it.
+func csvSafe(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }

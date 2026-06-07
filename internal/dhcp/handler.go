@@ -33,13 +33,14 @@ type Handler struct {
 	// mu guards the fields below, which are hot-swapped at runtime by config
 	// hot-reload (UpdateConfig/UpdatePools) and HA failover (SetHA/UpdateDetector)
 	// while HandlePacket reads them concurrently from the listener goroutines.
-	mu       sync.RWMutex
-	cfg      *config.Config
-	pools    map[string][]*pool.Pool // subnet network string → pools
-	detector *conflict.Detector
-	serverIP net.IP
-	ha       HAChecker
-	fpStore  *fingerprint.Store
+	mu          sync.RWMutex
+	cfg         *config.Config
+	pools       map[string][]*pool.Pool // subnet network string → pools
+	detector    *conflict.Detector
+	serverIP    net.IP
+	ha          HAChecker
+	fpStore     *fingerprint.Store
+	rateLimiter *RateLimiter
 }
 
 // Accessors for the mutex-guarded, hot-swappable fields. HandlePacket and its
@@ -81,6 +82,12 @@ func (h *Handler) fingerprints() *fingerprint.Store {
 	return h.fpStore
 }
 
+func (h *Handler) limiter() *RateLimiter {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.rateLimiter
+}
+
 // NewHandler creates a new DHCP message handler.
 func NewHandler(
 	cfg *config.Config,
@@ -98,6 +105,11 @@ func NewHandler(
 		bus:      bus,
 		logger:   logger,
 		serverIP: cfg.ServerIP(),
+		rateLimiter: NewRateLimiter(
+			cfg.Server.RateLimit.Enabled,
+			cfg.Server.RateLimit.MaxDiscoversPerSecond,
+			cfg.Server.RateLimit.MaxPerMACPerSecond,
+		),
 	}
 
 	// Auto-discover interface IP for subnet matching fallback
@@ -165,6 +177,18 @@ func (h *Handler) HandlePacket(ctx context.Context, pkt *Packet, src net.Addr) (
 	}
 
 	msgType := pkt.MessageType()
+
+	// Rate limit the request-generating message types to blunt DISCOVER/REQUEST
+	// floods (global and per-MAC token buckets).
+	switch msgType {
+	case dhcpv4.MessageTypeDiscover, dhcpv4.MessageTypeRequest:
+		if rl := h.limiter(); rl != nil && !rl.Allow(pkt.CHAddr) {
+			metrics.DHCPRateLimited.Inc()
+			h.logger.Debug("packet rate limited",
+				"mac", pkt.CHAddr.String(), "msg_type", msgType.String())
+			return nil, nil
+		}
+	}
 
 	h.logger.Debug("received DHCP packet",
 		"msg_type", msgType.String(),
@@ -790,9 +814,15 @@ func (h *Handler) UpdateConfig(cfg *config.Config) {
 	if serverIP == nil && h.ifaceIP != nil {
 		serverIP = h.ifaceIP
 	}
+	limiter := NewRateLimiter(
+		cfg.Server.RateLimit.Enabled,
+		cfg.Server.RateLimit.MaxDiscoversPerSecond,
+		cfg.Server.RateLimit.MaxPerMACPerSecond,
+	)
 	h.mu.Lock()
 	h.cfg = cfg
 	h.serverIP = serverIP
+	h.rateLimiter = limiter
 	h.mu.Unlock()
 }
 

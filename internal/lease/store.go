@@ -5,31 +5,32 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
 
 // BoltDB bucket names.
 var (
-	bucketLeases     = []byte("leases")
-	bucketIndexMAC   = []byte("index_mac")
-	bucketIndexCID   = []byte("index_client_id")
-	bucketIndexHost  = []byte("index_hostname")
-	bucketConflicts  = []byte("conflicts")
-	bucketExcluded   = []byte("excluded_ips")
-	bucketMeta       = []byte("meta")
-	bucketEventLog   = []byte("event_log")
+	bucketLeases    = []byte("leases")
+	bucketIndexMAC  = []byte("index_mac")
+	bucketIndexCID  = []byte("index_client_id")
+	bucketIndexHost = []byte("index_hostname")
+	bucketConflicts = []byte("conflicts")
+	bucketExcluded  = []byte("excluded_ips")
+	bucketMeta      = []byte("meta")
+	bucketEventLog  = []byte("event_log")
 )
 
 // Store provides lease persistence via BoltDB with in-memory indexes for O(1) lookup.
 type Store struct {
-	db       *bolt.DB
-	mu       sync.RWMutex
-	byIP     map[string]*Lease            // IP string → Lease
-	byMAC    map[string]*Lease            // MAC string → Lease
-	byCID    map[string]*Lease            // Client-ID hex → Lease
-	byHost   map[string]*Lease            // Hostname → Lease
-	seq      uint64
+	db     *bolt.DB
+	mu     sync.RWMutex
+	byIP   map[string]*Lease // IP string → Lease
+	byMAC  map[string]*Lease // MAC string → Lease
+	byCID  map[string]*Lease // Client-ID hex → Lease
+	byHost map[string]*Lease // Hostname → Lease
+	seq    uint64
 }
 
 // NewStore opens or creates a BoltDB database and initializes the in-memory indexes.
@@ -91,6 +92,11 @@ func (s *Store) loadAll() error {
 				return fmt.Errorf("unmarshalling lease %s: %w", k, err)
 			}
 			s.indexLease(l)
+			// Restore the sequence high-water mark so NextSeq() does not
+			// reissue numbers that have already been replicated to an HA peer.
+			if l.UpdateSeq > s.seq {
+				s.seq = l.UpdateSeq
+			}
 			return nil
 		})
 	})
@@ -301,6 +307,61 @@ func (s *Store) NextSeq() uint64 {
 	defer s.mu.Unlock()
 	s.seq++
 	return s.seq
+}
+
+// CurrentSeq returns the current sequence counter without incrementing it.
+func (s *Store) CurrentSeq() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.seq
+}
+
+// advanceSeq raises the sequence high-water mark to at least n. Used when
+// applying remote leases so a later NextSeq() cannot collide with a value the
+// peer has already issued.
+func (s *Store) advanceSeq(n uint64) {
+	s.mu.Lock()
+	if n > s.seq {
+		s.seq = n
+	}
+	s.mu.Unlock()
+}
+
+// ApplyRemote applies a lease received from the HA peer, using LastUpdated for
+// last-write-wins conflict resolution. It preserves the remote UpdateSeq and
+// advances the local high-water mark. Returns true if the lease was applied
+// (false if a newer local lease already exists). This path does not allocate a
+// new sequence number and never triggers outbound replication.
+func (s *Store) ApplyRemote(l *Lease) (bool, error) {
+	s.mu.RLock()
+	existing, ok := s.byIP[l.IP.String()]
+	stale := ok && existing.LastUpdated.After(l.LastUpdated)
+	s.mu.RUnlock()
+	if stale {
+		return false, nil
+	}
+	s.advanceSeq(l.UpdateSeq)
+	if err := s.Put(l); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ApplyRemoteDelete removes a lease in response to a terminal-state update from
+// the HA peer (released/expired/declined), honouring last-write-wins so a stale
+// delete cannot remove a locally newer lease. Returns true if a lease was removed.
+func (s *Store) ApplyRemoteDelete(ip net.IP, updated time.Time) (bool, error) {
+	s.mu.RLock()
+	existing, ok := s.byIP[ip.String()]
+	stale := ok && existing.LastUpdated.After(updated)
+	s.mu.RUnlock()
+	if !ok || stale {
+		return false, nil
+	}
+	if err := s.Delete(ip); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // DB returns the underlying BoltDB instance (for conflict table, etc.).

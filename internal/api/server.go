@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -54,6 +55,7 @@ type Server struct {
 	vipGroup        *vip.Group
 	logger          *slog.Logger
 	httpServer      *http.Server
+	tlsEnabled      bool
 	auth            *AuthMiddleware
 	sseHub          *SSEHub
 	cfgStore        *dbconfig.Store
@@ -91,6 +93,11 @@ func NewServer(
 	}
 
 	s.auth = NewAuthMiddleware(cfg.API, logger)
+	// Once first-run setup is complete, an empty credential set must fail closed
+	// rather than granting unauthenticated admin.
+	s.auth.setupComplete = func() bool {
+		return s.cfgStore != nil && s.cfgStore.IsSetupComplete()
+	}
 	s.sseHub = NewSSEHub(bus, logger)
 
 	return s
@@ -197,6 +204,20 @@ func (s *Server) Listen() (net.Listener, error) {
 		// No WriteTimeout — SSE streams need to stay open
 	}
 
+	// Load the TLS certificate up front so a bad cert/key fails fast at bind
+	// time rather than on the first connection.
+	if s.cfg.API.TLS.Enabled {
+		cert, err := tls.LoadX509KeyPair(s.cfg.API.TLS.CertFile, s.cfg.API.TLS.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading API TLS certificate: %w", err)
+		}
+		s.httpServer.TLSConfig = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		}
+		s.tlsEnabled = true
+	}
+
 	ln, err := net.Listen("tcp", s.cfg.API.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("binding API server to %s: %w", s.cfg.API.Listen, err)
@@ -204,13 +225,20 @@ func (s *Server) Listen() (net.Listener, error) {
 
 	go s.sseHub.Run()
 
-	s.logger.Info("API server listening", "address", ln.Addr().String())
+	s.logger.Info("API server listening", "address", ln.Addr().String(), "tls", s.tlsEnabled)
 	return ln, nil
 }
 
 // Serve accepts connections on the listener. Blocks until shutdown.
 func (s *Server) Serve(ln net.Listener) error {
-	if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+	var err error
+	if s.tlsEnabled {
+		// Certificate is already in TLSConfig, so the file args are empty.
+		err = s.httpServer.ServeTLS(ln, "", "")
+	} else {
+		err = s.httpServer.Serve(ln)
+	}
+	if err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("API server: %w", err)
 	}
 	return nil

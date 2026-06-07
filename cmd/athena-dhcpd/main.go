@@ -226,7 +226,14 @@ func main() {
 			if err := peer.SendFullConfigSync(sections); err != nil {
 				logger.Error("failed to push config to peer", "error", err)
 			}
+			if err := peer.SendBulkSync(store.All()); err != nil {
+				logger.Error("failed to push lease bulk sync to peer", "error", err)
+			}
 		})
+
+		// Apply inbound lease updates from the primary into our store. Registered
+		// before Start so the primary's initial bulk sync is captured.
+		haRegisterApplier(peer, store, logger)
 
 		if err := peer.Start(ctx); err != nil {
 			logger.Error("failed to start HA peer", "error", err)
@@ -294,6 +301,9 @@ func main() {
 		leaseMgr := lease.NewManager(store, cfg, earlyBus, logger)
 		leaseMgr.StartGC(ctx, 60*time.Second)
 
+		// Replicate our lease changes to the primary once we become active.
+		haRegisterReplicator(earlyHAPeer, leaseMgr, logger)
+
 		// Pools + handler ready but NOT serving yet
 		pools, err := initPools(cfg, store)
 		if err != nil {
@@ -302,6 +312,7 @@ func main() {
 		}
 		handler := dhcp.NewHandler(cfg, leaseMgr, pools, nil, earlyBus, logger)
 		handler.SetHA(earlyHAFSM)
+		leaseMgr.SetPoolReleaser(handler.ReleaseToPool)
 
 		// Server group created but NOT started — waits for failover
 		serverGroup := dhcp.NewServerGroup(handler, logger)
@@ -559,6 +570,7 @@ func main() {
 
 	// Create DHCP handler
 	handler := dhcp.NewHandler(cfg, leaseMgr, pools, detector, bus, logger)
+	leaseMgr.SetPoolReleaser(handler.ReleaseToPool)
 
 	// Create and start DHCP server group (one listener per interface)
 	serverGroup := dhcp.NewServerGroup(handler, logger)
@@ -679,7 +691,15 @@ func main() {
 				} else {
 					logger.Info("full config sync to peer complete", "sections", len(sections))
 				}
+				// Stream the full lease table so the backup starts from our state.
+				if err := peer.SendBulkSync(store.All()); err != nil {
+					logger.Error("failed to push lease bulk sync to peer on adjacency", "error", err)
+				}
 			})
+
+			// Replicate local lease changes to the peer, and apply the peer's.
+			haRegisterApplier(peer, store, logger)
+			haRegisterReplicator(peer, leaseMgr, logger)
 
 			// Wire HA state into DHCP handler so standby node drops packets
 			handler.SetHA(haFSM)
@@ -1102,6 +1122,30 @@ func initConflictDetection(cfg *config.Config, store *lease.Store, bus *events.B
 }
 
 // initPools creates pool objects from the config and reconciles with existing leases.
+// haRegisterApplier wires incoming peer lease updates into the local store.
+// It only needs the store, so it can be registered before the lease manager
+// exists — ensuring the initial bulk sync from the primary is not lost.
+func haRegisterApplier(peer *ha.Peer, store *lease.Store, logger *slog.Logger) {
+	peer.OnLeaseUpdate(func(lu ha.LeaseUpdatePayload) {
+		if err := ha.ApplyLeaseUpdate(store, lu); err != nil {
+			logger.Warn("failed to apply peer lease update", "ip", lu.IP, "error", err)
+		}
+	})
+}
+
+// haRegisterReplicator wires local lease changes out to the peer. Only the
+// active node replicates, so a standby's GC never deletes leases on the active.
+func haRegisterReplicator(peer *ha.Peer, leaseMgr *lease.Manager, logger *slog.Logger) {
+	leaseMgr.SetReplicator(func(l *lease.Lease) {
+		if !peer.FSM().IsActive() {
+			return
+		}
+		if err := peer.QueueLeaseUpdate(l); err != nil {
+			logger.Debug("ha lease replicate skipped", "ip", l.IP.String(), "error", err)
+		}
+	})
+}
+
 func initPools(cfg *config.Config, store *lease.Store) (map[string][]*pool.Pool, error) {
 	pools := make(map[string][]*pool.Pool)
 

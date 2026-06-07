@@ -2,6 +2,7 @@ package pool
 
 import (
 	"net"
+	"sync"
 	"testing"
 )
 
@@ -232,5 +233,58 @@ func TestPoolString(t *testing.T) {
 	s := p.String()
 	if s == "" {
 		t.Error("String() returned empty")
+	}
+}
+
+func TestPoolReserveNMarksAllocated(t *testing.T) {
+	p := newTestPool(t)
+
+	ips := p.ReserveN(3)
+	if len(ips) != 3 {
+		t.Fatalf("ReserveN(3) returned %d IPs, want 3", len(ips))
+	}
+	// Reserved IPs must be marked allocated (unlike AllocateN).
+	for _, ip := range ips {
+		if !p.IsAllocated(ip) {
+			t.Errorf("ReserveN IP %s not marked allocated", ip)
+		}
+	}
+	if p.Allocated() != 3 {
+		t.Errorf("Allocated() = %d, want 3", p.Allocated())
+	}
+}
+
+func TestPoolReserveNConcurrentDisjoint(t *testing.T) {
+	// 11-IP pool; many goroutines each reserve one IP. No address may be handed
+	// out twice — this is the anti-double-allocation guarantee for DISCOVER.
+	p := newTestPool(t)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	got := make(map[string]int)
+
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, ip := range p.ReserveN(1) {
+				mu.Lock()
+				got[ip.String()]++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if int(p.Allocated()) != len(got) {
+		t.Errorf("allocated=%d but %d distinct IPs handed out", p.Allocated(), len(got))
+	}
+	for ip, n := range got {
+		if n != 1 {
+			t.Errorf("IP %s reserved %d times, want 1", ip, n)
+		}
+	}
+	if len(got) != 11 {
+		t.Errorf("handed out %d IPs, want 11 (pool size)", len(got))
 	}
 }

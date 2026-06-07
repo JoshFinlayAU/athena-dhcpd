@@ -182,7 +182,7 @@ func TestPacketNewReply(t *testing.T) {
 		GIAddr: net.IPv4(10, 0, 0, 1),
 		CHAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
 		Options: Options{
-			dhcpv4.OptionDHCPMessageType: {byte(dhcpv4.MessageTypeDiscover)},
+			dhcpv4.OptionDHCPMessageType:  {byte(dhcpv4.MessageTypeDiscover)},
 			dhcpv4.OptionClientIdentifier: {0x01, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
 		},
 	}

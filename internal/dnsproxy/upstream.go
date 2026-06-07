@@ -40,15 +40,15 @@ type UpstreamTracker struct {
 }
 
 type upstreamState struct {
-	address    string
-	avgLatency float64 // EWMA in ms
-	minLatency float64
-	maxLatency float64
+	address     string
+	avgLatency  float64 // EWMA in ms
+	minLatency  float64
+	maxLatency  float64
 	lastLatency float64
-	successes  int64
-	failures   int64
-	lastCheck  time.Time
-	healthy    bool
+	successes   int64
+	failures    int64
+	lastCheck   time.Time
+	healthy     bool
 	// consecutive failures for health marking
 	consecutiveFail int
 }

@@ -10,7 +10,7 @@ import (
 )
 
 func TestEncodeDecodeMessage(t *testing.T) {
-	msg, err := NewHeartbeat("ACTIVE", 42, 100, 5*time.Minute)
+	msg, err := NewHeartbeat("ACTIVE", 42, 100, 1, 5*time.Minute)
 	if err != nil {
 		t.Fatalf("NewHeartbeat error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewLeaseUpdate(t *testing.T) {
 	mac, _ := net.ParseMAC("00:11:22:33:44:55")
 	now := time.Now()
 
-	msg, err := NewLeaseUpdate(ip, mac, "client1", "host1", "192.168.1.0/24", "pool1", "active", now, now.Add(time.Hour), 42)
+	msg, err := NewLeaseUpdate(ip, mac, "client1", "host1", "192.168.1.0/24", "pool1", "active", now, now.Add(time.Hour), now, 42)
 	if err != nil {
 		t.Fatalf("NewLeaseUpdate error: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestMultipleMessagesOnStream(t *testing.T) {
 
 	// Write 3 messages to the same stream
 	for i := 0; i < 3; i++ {
-		msg, _ := NewHeartbeat("ACTIVE", i, uint64(i), time.Duration(i)*time.Second)
+		msg, _ := NewHeartbeat("ACTIVE", i, uint64(i), uint64(i), time.Duration(i)*time.Second)
 		data, _ := EncodeMessage(msg)
 		buf.Write(data)
 	}

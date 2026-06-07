@@ -358,10 +358,3 @@ func ipStr(ip net.IP) string {
 	}
 	return ip.String()
 }
-
-func macStr(mac net.HardwareAddr) string {
-	if mac == nil {
-		return ""
-	}
-	return mac.String()
-}

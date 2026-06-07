@@ -15,12 +15,14 @@ import (
 type FSM struct {
 	state           dhcpv4.HAState
 	role            string // "primary" or "secondary"
+	epoch           uint64 // promotion generation; bumped each time this node becomes active
 	lastHeartbeat   time.Time
 	failoverTimeout time.Duration
 	bus             *events.Bus
 	logger          *slog.Logger
 	mu              sync.RWMutex
 	onStateChange   func(old, new dhcpv4.HAState)
+	onActive        func(epoch uint64)
 }
 
 // NewFSM creates a new failover state machine.
@@ -81,6 +83,21 @@ func (f *FSM) OnStateChange(fn func(old, new dhcpv4.HAState)) {
 	f.onStateChange = fn
 }
 
+// OnActive sets a callback fired with the new epoch whenever this node enters a
+// serving state. The peer uses it to announce a failover claim.
+func (f *FSM) OnActive(fn func(epoch uint64)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onActive = fn
+}
+
+// Epoch returns the current promotion generation.
+func (f *FSM) Epoch() uint64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.epoch
+}
+
 // transition changes state with logging and event emission.
 func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 	f.mu.Lock()
@@ -90,11 +107,19 @@ func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 		return
 	}
 	f.state = newState
-	cb := f.onStateChange
-	f.mu.Unlock()
-
 	isNowActive := newState == dhcpv4.HAStateActive || newState == dhcpv4.HAStatePartnerDown
 	wasActive := oldState == dhcpv4.HAStateActive || oldState == dhcpv4.HAStatePartnerDown
+	// A fresh promotion (non-serving → serving) bumps the epoch so the most
+	// recently promoted node wins a dual-active resolution.
+	var activeCB func(uint64)
+	var epoch uint64
+	if isNowActive && !wasActive {
+		f.epoch++
+		epoch = f.epoch
+		activeCB = f.onActive
+	}
+	cb := f.onStateChange
+	f.mu.Unlock()
 
 	f.logger.Warn("HA state transition",
 		"old_state", string(oldState),
@@ -111,6 +136,9 @@ func (f *FSM) transition(newState dhcpv4.HAState, reason string) {
 
 	if cb != nil {
 		cb(oldState, newState)
+	}
+	if activeCB != nil {
+		activeCB(epoch)
 	}
 
 	f.bus.Publish(events.Event{
@@ -233,6 +261,42 @@ func (f *FSM) ClaimActive(reason string) {
 		"current_state", string(f.State()),
 		"reason", reason)
 	f.transition(dhcpv4.HAStateActive, fmt.Sprintf("manual claim: %s", reason))
+}
+
+// ResolveDualActive is called when the peer reports that it is also active
+// (via heartbeat or an explicit failover claim). If both nodes are serving, the
+// one that should yield steps down to STANDBY so the cluster converges on a
+// single active. The winner is the higher epoch (most recent promotion); ties
+// are broken in favour of the primary. Returns true if this node yielded.
+//
+// Note: this resolves dual-active once the peers can communicate again. It does
+// not prevent both nodes serving while genuinely partitioned — that requires a
+// quorum witness, which is not implemented; divergent leases reconcile via
+// last-write-wins once the link is restored.
+func (f *FSM) ResolveDualActive(peerEpoch uint64, peerActive bool) bool {
+	if !peerActive {
+		return false
+	}
+
+	f.mu.RLock()
+	weActive := f.state == dhcpv4.HAStateActive || f.state == dhcpv4.HAStatePartnerDown
+	myEpoch := f.epoch
+	isPrimary := f.role == "primary"
+	f.mu.RUnlock()
+
+	if !weActive {
+		return false
+	}
+
+	yield := peerEpoch > myEpoch || (peerEpoch == myEpoch && !isPrimary)
+	if !yield {
+		return false
+	}
+
+	f.logger.Warn("dual-active detected — yielding to peer",
+		"my_epoch", myEpoch, "peer_epoch", peerEpoch, "role", f.role)
+	f.transition(dhcpv4.HAStateStandby, fmt.Sprintf("yielded to peer (epoch %d >= %d)", peerEpoch, myEpoch))
+	return true
 }
 
 // CheckHeartbeatTimeout checks if the peer heartbeat has timed out.

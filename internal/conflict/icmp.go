@@ -63,15 +63,31 @@ func (p *ICMPProber) Close() error {
 
 // Probe sends an ICMP Echo Request to the target IP and waits for a reply.
 // Returns true if a reply is received (conflict detected), false on timeout.
+//
+// Each probe uses its own socket. The prober is shared across concurrent probes
+// (see probeParallel); a single shared socket would mean concurrent calls
+// overwrite each other's deadline and one goroutine reads another's echo reply,
+// causing a probe to miss its reply and falsely report the address as clear.
 func (p *ICMPProber) Probe(ctx context.Context, targetIP net.IP) (bool, error) {
 	if !p.available {
 		return false, nil // Degraded mode — assume clear
 	}
 
+	// Unique echo sequence so we only match our own reply on this socket.
 	p.mu.Lock()
 	p.seq++
 	seq := p.seq
 	p.mu.Unlock()
+
+	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		// Lost the ability to open a raw socket mid-run — treat as clear rather
+		// than blocking allocation, matching the degraded-mode contract.
+		p.logger.Warn("ICMP probe could not open socket, treating as clear",
+			"target_ip", targetIP.String(), "error", err)
+		return false, nil
+	}
+	defer conn.Close()
 
 	start := time.Now()
 
@@ -94,15 +110,14 @@ func (p *ICMPProber) Probe(ctx context.Context, targetIP net.IP) (bool, error) {
 	dst := &net.IPAddr{IP: targetIP}
 
 	// Set deadline from context
-	deadline, ok := ctx.Deadline()
-	if ok {
-		if err := p.conn.SetDeadline(deadline); err != nil {
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
 			return false, fmt.Errorf("setting ICMP deadline: %w", err)
 		}
 	}
 
 	// Send ICMP Echo Request
-	if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
+	if _, err := conn.WriteTo(msgBytes, dst); err != nil {
 		return false, fmt.Errorf("sending ICMP echo to %s: %w", targetIP, err)
 	}
 
@@ -118,7 +133,7 @@ func (p *ICMPProber) Probe(ctx context.Context, targetIP net.IP) (bool, error) {
 		default:
 		}
 
-		n, peer, err := p.conn.ReadFrom(buf)
+		n, peer, err := conn.ReadFrom(buf)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				p.logger.Debug("ICMP probe timeout (clear)",

@@ -202,3 +202,61 @@ func TestFSMString(t *testing.T) {
 		t.Error("String() should not be empty")
 	}
 }
+
+func TestResolveDualActiveHigherEpochWins(t *testing.T) {
+	// Secondary that was promoted (epoch 1) must yield to a peer claiming a
+	// higher epoch.
+	fsm, _ := newTestFSM("secondary")
+	fsm.ClaimActive("manual") // STANDBY -> ACTIVE, epoch becomes 1
+	if !fsm.IsActive() {
+		t.Fatal("expected active after ClaimActive")
+	}
+	if got := fsm.Epoch(); got != 1 {
+		t.Fatalf("epoch = %d, want 1", got)
+	}
+
+	yielded := fsm.ResolveDualActive(2, true) // peer has a newer promotion
+	if !yielded {
+		t.Fatal("expected to yield to higher-epoch peer")
+	}
+	if fsm.IsActive() {
+		t.Fatal("should have stepped down to standby")
+	}
+}
+
+func TestResolveDualActiveKeepsHigherEpoch(t *testing.T) {
+	fsm, _ := newTestFSM("secondary")
+	fsm.ClaimActive("manual") // epoch 1
+	if fsm.ResolveDualActive(1, true) == false {
+		// equal epoch, peer is... unknown role; tie-break favours primary, and
+		// we are secondary, so we DO yield on a tie.
+	}
+	// Re-promote to get epoch 2, then a peer with epoch 1 must not unseat us.
+	fsm.ClaimActive("manual again")
+	if fsm.Epoch() != 2 {
+		t.Fatalf("epoch = %d, want 2", fsm.Epoch())
+	}
+	if fsm.ResolveDualActive(1, true) {
+		t.Fatal("should not yield to a lower-epoch peer")
+	}
+	if !fsm.IsActive() {
+		t.Fatal("should still be active")
+	}
+}
+
+func TestResolveDualActivePrimaryWinsTie(t *testing.T) {
+	primary, _ := newTestFSM("primary") // starts ACTIVE at epoch 0
+	if primary.ResolveDualActive(0, true) {
+		t.Fatal("primary should win an epoch tie and stay active")
+	}
+	if !primary.IsActive() {
+		t.Fatal("primary should remain active")
+	}
+}
+
+func TestResolveDualActiveNoYieldWhenPeerNotActive(t *testing.T) {
+	primary, _ := newTestFSM("primary")
+	if primary.ResolveDualActive(99, false) {
+		t.Fatal("must not yield when the peer is not serving")
+	}
+}

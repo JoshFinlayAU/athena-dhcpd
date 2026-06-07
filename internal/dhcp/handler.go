@@ -281,15 +281,18 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		return nil, nil
 	}
 
-	// Try requested IP first if valid
-	if requestedIP != nil && selectedPool.Contains(requestedIP) && !selectedPool.IsAllocated(requestedIP) {
+	// Try requested IP first if valid. AllocateSpecific atomically claims it, so
+	// two concurrent DISCOVERs cannot both pass an "is it free?" check and offer
+	// the same address. If it was just taken, fall through to normal allocation.
+	if requestedIP != nil && selectedPool.Contains(requestedIP) && selectedPool.AllocateSpecific(requestedIP) {
 		return h.buildOffer(ctx, pkt, requestedIP, mac, clientID, hostname, subnetIdx, subnetCfg, selectedPool.RangeString(), false)
 	}
 
-	// Allocate from pool — get candidates for conflict probing
+	// Allocate from pool — reserve candidates for conflict probing.
 	detector := h.activeDetector()
 	if detector != nil && h.config().ConflictDetection.Enabled {
-		candidates := selectedPool.AllocateN(h.config().ConflictDetection.MaxProbesPerDiscover)
+		// Reserve the candidates so concurrent DISCOVERs probe disjoint sets.
+		candidates := selectedPool.ReserveN(h.config().ConflictDetection.MaxProbesPerDiscover)
 		if len(candidates) == 0 {
 			metrics.PoolExhausted.WithLabelValues(subnetCfg.Network).Inc()
 			h.logger.Warn("pool exhausted",
@@ -301,14 +304,22 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		// Probe candidates — RFC 2131 §4.4.1
 		clearIP, err := detector.ProbeAndSelect(ctx, candidates, subnetCfg.Network)
 		if err != nil {
+			// Release every reserved candidate back to the pool.
+			for _, c := range candidates {
+				selectedPool.Release(c)
+			}
 			h.logger.Warn("all candidate IPs conflicted",
 				"subnet", subnetCfg.Network,
 				"error", err)
 			return nil, nil
 		}
 
-		// Mark the selected IP as allocated
-		selectedPool.AllocateSpecific(clearIP)
+		// Keep clearIP reserved; release the candidates we did not select.
+		for _, c := range candidates {
+			if !c.Equal(clearIP) {
+				selectedPool.Release(c)
+			}
+		}
 		return h.buildOffer(ctx, pkt, clearIP, mac, clientID, hostname, subnetIdx, subnetCfg, selectedPool.RangeString(), false)
 	}
 

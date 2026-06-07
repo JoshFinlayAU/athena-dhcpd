@@ -247,6 +247,41 @@ func (p *Pool) AllocateN(n int) []net.IP {
 	return ips
 }
 
+// ReserveN atomically marks up to n free IPs as allocated and returns them.
+// Unlike AllocateN, the addresses are claimed under the lock so two concurrent
+// callers cannot receive the same candidates. Callers MUST Release any reserved
+// IP they do not end up using (e.g. probe candidates that were not selected).
+func (p *Pool) ReserveN(n int) []net.IP {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.allocated >= p.size {
+		return nil
+	}
+
+	var ips []net.IP
+	for w := uint32(0); w < uint32(len(p.bitmap)) && len(ips) < n; w++ {
+		if p.bitmap[w] == ^uint64(0) {
+			continue
+		}
+		word := p.bitmap[w]
+		for bit := uint32(0); bit < 64 && len(ips) < n; bit++ {
+			if word&(1<<bit) == 0 {
+				offset := w*64 + bit
+				if offset >= p.size {
+					p.updateMetrics()
+					return ips
+				}
+				p.set(offset)
+				ips = append(ips, p.offsetToIP(offset))
+			}
+		}
+	}
+
+	p.updateMetrics()
+	return ips
+}
+
 // String returns a human-readable pool description.
 func (p *Pool) String() string {
 	return fmt.Sprintf("%s (%s-%s, %d/%d used)", p.Name, p.Start, p.End, p.allocated, p.size)

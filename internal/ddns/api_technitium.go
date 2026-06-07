@@ -34,12 +34,12 @@ func NewTechnitiumClient(baseURL, apiKey string, timeout time.Duration, logger *
 // AddA adds or updates an A record.
 func (c *TechnitiumClient) AddA(zone, fqdn string, ip net.IP, ttl uint32) error {
 	params := url.Values{
-		"token":    {c.apiKey},
-		"domain":   {fqdn},
-		"zone":     {zone},
-		"type":     {"A"},
+		"token":     {c.apiKey},
+		"domain":    {fqdn},
+		"zone":      {zone},
+		"type":      {"A"},
 		"ipAddress": {ip.String()},
-		"ttl":      {fmt.Sprintf("%d", ttl)},
+		"ttl":       {fmt.Sprintf("%d", ttl)},
 		"overwrite": {"true"},
 	}
 	return c.doRequest("/api/zones/records/add", params, "AddA", fqdn)
@@ -92,7 +92,7 @@ func (c *TechnitiumClient) doRequest(path string, params url.Values, op, name st
 	if err != nil {
 		c.logger.Error("Technitium API request failed",
 			"op", op, "name", name, "error", err, "duration", duration.String())
-		return fmt.Errorf("Technitium %s for %s: %w", op, name, err)
+		return fmt.Errorf("technitium %s for %s: %w", op, name, err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
@@ -101,7 +101,7 @@ func (c *TechnitiumClient) doRequest(path string, params url.Values, op, name st
 		c.logger.Error("Technitium API error",
 			"op", op, "name", name, "status", resp.StatusCode,
 			"body", string(respBody), "duration", duration.String())
-		return fmt.Errorf("Technitium %s for %s: HTTP %d: %s", op, name, resp.StatusCode, string(respBody))
+		return fmt.Errorf("technitium %s for %s: HTTP %d: %s", op, name, resp.StatusCode, string(respBody))
 	}
 
 	c.logger.Debug("Technitium API success",

@@ -9,14 +9,14 @@ import (
 // RateLimiter provides token-bucket rate limiting for DHCP requests.
 // Limits both global discovers/sec and per-MAC discovers/sec.
 type RateLimiter struct {
-	enabled           bool
-	globalLimit       int
-	perMACLimit       int
-	globalTokens      int
-	perMAC            map[string]*macBucket
-	mu                sync.Mutex
-	lastRefill        time.Time
-	refillInterval    time.Duration
+	enabled        bool
+	globalLimit    int
+	perMACLimit    int
+	globalTokens   int
+	perMAC         map[string]*macBucket
+	mu             sync.Mutex
+	lastRefill     time.Time
+	refillInterval time.Duration
 }
 
 type macBucket struct {

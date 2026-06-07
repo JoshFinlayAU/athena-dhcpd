@@ -19,12 +19,12 @@ var bucketTopology = []byte("topology")
 
 // SwitchNode represents a relay agent / switch in the topology.
 type SwitchNode struct {
-	ID        string              `json:"id"`
-	RemoteID  string              `json:"remote_id"`
-	GIAddr    string              `json:"giaddr"`
-	Label     string              `json:"label,omitempty"`
-	FirstSeen time.Time           `json:"first_seen"`
-	LastSeen  time.Time           `json:"last_seen"`
+	ID        string               `json:"id"`
+	RemoteID  string               `json:"remote_id"`
+	GIAddr    string               `json:"giaddr"`
+	Label     string               `json:"label,omitempty"`
+	FirstSeen time.Time            `json:"first_seen"`
+	LastSeen  time.Time            `json:"last_seen"`
 	Ports     map[string]*PortNode `json:"ports"`
 }
 
@@ -60,9 +60,9 @@ type LeaseEvent struct {
 
 // Map holds the full network topology learned from Option 82 data.
 type Map struct {
-	db      *bolt.DB
-	logger  *slog.Logger
-	mu      sync.RWMutex
+	db       *bolt.DB
+	logger   *slog.Logger
+	mu       sync.RWMutex
 	switches map[string]*SwitchNode // keyed by remote-id or giaddr
 }
 

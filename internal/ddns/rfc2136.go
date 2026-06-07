@@ -12,12 +12,12 @@ import (
 
 // RFC2136Client performs DNS updates using RFC 2136 (DNS UPDATE) with optional TSIG.
 type RFC2136Client struct {
-	server    string
-	tsigName  string
-	tsigAlgo  string
-	tsigKey   string
-	timeout   time.Duration
-	logger    *slog.Logger
+	server   string
+	tsigName string
+	tsigAlgo string
+	tsigKey  string
+	timeout  time.Duration
+	logger   *slog.Logger
 }
 
 // NewRFC2136Client creates a new RFC 2136 DNS update client.

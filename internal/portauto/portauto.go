@@ -18,7 +18,7 @@ import (
 
 // Action defines what to do when a rule matches.
 type Action struct {
-	Type    string            `json:"type"`    // "webhook", "log", "tag"
+	Type    string            `json:"type"` // "webhook", "log", "tag"
 	URL     string            `json:"url,omitempty"`
 	Method  string            `json:"method,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`

@@ -10,10 +10,10 @@ import (
 // It subscribes to the event bus and dispatches matching events to the
 // appropriate hook runners. Hook failures NEVER propagate to DHCP processing.
 type Dispatcher struct {
-	bus      *Bus
-	scripts  *ScriptRunner
-	webhooks *WebhookSender
-	logger   *slog.Logger
+	bus         *Bus
+	scripts     *ScriptRunner
+	webhooks    *WebhookSender
+	logger      *slog.Logger
 	scriptCfgs  []ScriptConfig
 	webhookCfgs []WebhookConfig
 	ch          chan Event

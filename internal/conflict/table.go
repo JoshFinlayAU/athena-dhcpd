@@ -29,10 +29,10 @@ type Record struct {
 
 // Table manages the conflict table with BoltDB persistence and in-memory cache.
 type Table struct {
-	db              *bolt.DB
-	records         map[string]*Record // IP string → Record
-	mu              sync.RWMutex
-	holdTime        time.Duration
+	db               *bolt.DB
+	records          map[string]*Record // IP string → Record
+	mu               sync.RWMutex
+	holdTime         time.Duration
 	maxConflictCount int
 }
 
@@ -47,9 +47,9 @@ func NewTable(db *bolt.DB, holdTime time.Duration, maxConflictCount int) (*Table
 	}
 
 	t := &Table{
-		db:              db,
-		records:         make(map[string]*Record),
-		holdTime:        holdTime,
+		db:               db,
+		records:          make(map[string]*Record),
+		holdTime:         holdTime,
 		maxConflictCount: maxConflictCount,
 	}
 

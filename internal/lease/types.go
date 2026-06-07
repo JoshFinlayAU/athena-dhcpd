@@ -11,20 +11,20 @@ import (
 
 // Lease represents a DHCP lease.
 type Lease struct {
-	IP          net.IP              `json:"ip"`
-	MAC         net.HardwareAddr    `json:"mac"`
-	ClientID    string              `json:"client_id,omitempty"`
-	Hostname    string              `json:"hostname,omitempty"`
-	FQDN        string              `json:"fqdn,omitempty"`
-	Subnet      string              `json:"subnet"`
-	Pool        string              `json:"pool,omitempty"`
-	State       dhcpv4.LeaseState   `json:"state"`
-	Start       time.Time           `json:"start"`
-	Expiry      time.Time           `json:"expiry"`
-	LastUpdated time.Time           `json:"last_updated"`
-	UpdateSeq   uint64              `json:"update_seq"`
-	Options     map[string]string   `json:"options,omitempty"`
-	RelayInfo   *RelayInfo          `json:"relay_info,omitempty"`
+	IP          net.IP            `json:"ip"`
+	MAC         net.HardwareAddr  `json:"mac"`
+	ClientID    string            `json:"client_id,omitempty"`
+	Hostname    string            `json:"hostname,omitempty"`
+	FQDN        string            `json:"fqdn,omitempty"`
+	Subnet      string            `json:"subnet"`
+	Pool        string            `json:"pool,omitempty"`
+	State       dhcpv4.LeaseState `json:"state"`
+	Start       time.Time         `json:"start"`
+	Expiry      time.Time         `json:"expiry"`
+	LastUpdated time.Time         `json:"last_updated"`
+	UpdateSeq   uint64            `json:"update_seq"`
+	Options     map[string]string `json:"options,omitempty"`
+	RelayInfo   *RelayInfo        `json:"relay_info,omitempty"`
 }
 
 // RelayInfo stores relay agent information associated with a lease.

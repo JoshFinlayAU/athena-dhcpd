@@ -67,7 +67,7 @@ func TestCacheTTLFromAnswer(t *testing.T) {
 	c := NewCache(100)
 
 	msg := makeTestMsg("host.example.com", dns.TypeA, 10) // TTL=10s
-	c.Set(msg, 5*time.Minute)                              // default 5min
+	c.Set(msg, 5*time.Minute)                             // default 5min
 
 	if c.Size() != 1 {
 		t.Fatalf("Size() = %d, want 1", c.Size())

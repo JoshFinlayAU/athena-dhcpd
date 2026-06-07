@@ -34,15 +34,18 @@ type Packet struct {
 }
 
 // packetPool reuses packet buffers to reduce allocations in the hot path.
+// It stores *[]byte rather than []byte so returning a buffer doesn't allocate a
+// new interface box on every Put.
 var packetPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, dhcpv4.MaxPacketSize)
+		b := make([]byte, dhcpv4.MaxPacketSize)
+		return &b
 	},
 }
 
 // GetBuffer returns a buffer from the pool.
 func GetBuffer() []byte {
-	return packetPool.Get().([]byte)
+	return *packetPool.Get().(*[]byte)
 }
 
 // PutBuffer returns a buffer to the pool.
@@ -51,7 +54,7 @@ func PutBuffer(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
-	packetPool.Put(b)
+	packetPool.Put(&b)
 }
 
 // DecodePacket parses a raw DHCPv4 packet from bytes.

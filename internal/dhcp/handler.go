@@ -208,7 +208,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 
 	// Extract and record device fingerprint
 	if fp := h.fingerprints(); fp != nil {
-		rawParamList, _ := pkt.Options[dhcpv4.OptionParameterRequestList]
+		rawParamList := pkt.Options[dhcpv4.OptionParameterRequestList]
 		fp.Record(&fingerprint.RawFingerprint{
 			MAC:         mac,
 			VendorClass: pkt.VendorClassID(),

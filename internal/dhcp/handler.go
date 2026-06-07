@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/athena-dhcpd/athena-dhcpd/internal/config"
@@ -24,16 +25,60 @@ type HAChecker interface {
 
 // Handler processes DHCP messages implementing the DORA cycle (RFC 2131).
 type Handler struct {
+	leases  *lease.Manager
+	bus     *events.Bus
+	logger  *slog.Logger
+	ifaceIP net.IP // auto-discovered from listening interface; immutable after construction
+
+	// mu guards the fields below, which are hot-swapped at runtime by config
+	// hot-reload (UpdateConfig/UpdatePools) and HA failover (SetHA/UpdateDetector)
+	// while HandlePacket reads them concurrently from the listener goroutines.
+	mu       sync.RWMutex
 	cfg      *config.Config
-	leases   *lease.Manager
 	pools    map[string][]*pool.Pool // subnet network string → pools
 	detector *conflict.Detector
-	bus      *events.Bus
-	logger   *slog.Logger
 	serverIP net.IP
-	ifaceIP  net.IP // auto-discovered from listening interface
 	ha       HAChecker
 	fpStore  *fingerprint.Store
+}
+
+// Accessors for the mutex-guarded, hot-swappable fields. HandlePacket and its
+// sub-handlers must read through these rather than touching the fields directly.
+
+func (h *Handler) config() *config.Config {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.cfg
+}
+
+func (h *Handler) poolMap() map[string][]*pool.Pool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.pools
+}
+
+func (h *Handler) activeDetector() *conflict.Detector {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.detector
+}
+
+func (h *Handler) serverIdentity() net.IP {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.serverIP
+}
+
+func (h *Handler) haChecker() HAChecker {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.ha
+}
+
+func (h *Handler) fingerprints() *fingerprint.Store {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.fpStore
 }
 
 // NewHandler creates a new DHCP message handler.
@@ -93,23 +138,29 @@ func NewHandler(
 
 // SetHA sets the HA state checker (call after FSM is created).
 func (h *Handler) SetHA(ha HAChecker) {
+	h.mu.Lock()
 	h.ha = ha
+	h.mu.Unlock()
 }
 
 // SetFingerprintStore sets the fingerprint store for device classification.
 func (h *Handler) SetFingerprintStore(fp *fingerprint.Store) {
+	h.mu.Lock()
 	h.fpStore = fp
+	h.mu.Unlock()
 }
 
 // UpdateDetector sets or replaces the conflict detector (used by secondary on failover).
 func (h *Handler) UpdateDetector(d *conflict.Detector) {
+	h.mu.Lock()
 	h.detector = d
+	h.mu.Unlock()
 }
 
 // HandlePacket dispatches a DHCP packet to the appropriate handler based on message type.
 func (h *Handler) HandlePacket(ctx context.Context, pkt *Packet, src net.Addr) (*Packet, error) {
 	// HA guard: if we have an FSM and we are NOT the active node, silently drop.
-	if h.ha != nil && !h.ha.IsActive() {
+	if ha := h.haChecker(); ha != nil && !ha.IsActive() {
 		return nil, nil
 	}
 
@@ -156,9 +207,9 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		"requested_ip", pkt.RequestedIP())
 
 	// Extract and record device fingerprint
-	if h.fpStore != nil {
+	if fp := h.fingerprints(); fp != nil {
 		rawParamList, _ := pkt.Options[dhcpv4.OptionParameterRequestList]
-		h.fpStore.Record(&fingerprint.RawFingerprint{
+		fp.Record(&fingerprint.RawFingerprint{
 			MAC:         mac,
 			VendorClass: pkt.VendorClassID(),
 			ParamList:   rawParamList,
@@ -221,7 +272,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		criteria.RemoteID = relayInfo.RemoteID
 	}
 
-	subnetPools := h.pools[subnetCfg.Network]
+	subnetPools := h.poolMap()[subnetCfg.Network]
 	selectedPool := pool.SelectPool(subnetPools, criteria)
 	if selectedPool == nil {
 		h.logger.Warn("no matching pool for DISCOVER",
@@ -236,8 +287,9 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 	}
 
 	// Allocate from pool — get candidates for conflict probing
-	if h.detector != nil && h.cfg.ConflictDetection.Enabled {
-		candidates := selectedPool.AllocateN(h.cfg.ConflictDetection.MaxProbesPerDiscover)
+	detector := h.activeDetector()
+	if detector != nil && h.config().ConflictDetection.Enabled {
+		candidates := selectedPool.AllocateN(h.config().ConflictDetection.MaxProbesPerDiscover)
 		if len(candidates) == 0 {
 			metrics.PoolExhausted.WithLabelValues(subnetCfg.Network).Inc()
 			h.logger.Warn("pool exhausted",
@@ -247,7 +299,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 		}
 
 		// Probe candidates — RFC 2131 §4.4.1
-		clearIP, err := h.detector.ProbeAndSelect(ctx, candidates, subnetCfg.Network)
+		clearIP, err := detector.ProbeAndSelect(ctx, candidates, subnetCfg.Network)
 		if err != nil {
 			h.logger.Warn("all candidate IPs conflicted",
 				"subnet", subnetCfg.Network,
@@ -277,7 +329,7 @@ func (h *Handler) handleDiscover(ctx context.Context, pkt *Packet) (*Packet, err
 func (h *Handler) buildOffer(ctx context.Context, pkt *Packet, ip net.IP, mac net.HardwareAddr,
 	clientID, hostname string, subnetIdx int, subnetCfg *config.SubnetConfig, poolRange string, isReservation bool) (*Packet, error) {
 
-	leaseTime := h.cfg.GetLeaseTime(subnetIdx)
+	leaseTime := h.config().GetLeaseTime(subnetIdx)
 
 	// Create the offer in the lease manager
 	var relayInfo *lease.RelayInfo
@@ -298,7 +350,7 @@ func (h *Handler) buildOffer(ctx context.Context, pkt *Packet, ip net.IP, mac ne
 	}
 
 	// Build DHCPOFFER packet
-	reply := pkt.NewReply(dhcpv4.MessageTypeOffer, h.serverIP)
+	reply := pkt.NewReply(dhcpv4.MessageTypeOffer, h.serverIdentity())
 	reply.YIAddr = ip
 
 	// Set options from config
@@ -328,7 +380,7 @@ func (h *Handler) handleRequest(ctx context.Context, pkt *Packet) (*Packet, erro
 		"ciaddr", pkt.CIAddr.String())
 
 	// If request has server-id and it's not us, ignore (RFC 2131 §4.3.2)
-	if serverID != nil && !serverID.Equal(h.serverIP) {
+	if serverID != nil && !serverID.Equal(h.serverIdentity()) {
 		h.logger.Debug("DHCPREQUEST not for us, ignoring",
 			"mac", mac.String(),
 			"server_id", serverID.String())
@@ -385,7 +437,7 @@ func (h *Handler) handleRequest(ctx context.Context, pkt *Packet) (*Packet, erro
 			"offered", existing.IP.String())
 	}
 
-	leaseTime := h.cfg.GetLeaseTime(subnetIdx)
+	leaseTime := h.config().GetLeaseTime(subnetIdx)
 
 	var relayInfo *lease.RelayInfo
 	if pkt.IsRelayed() {
@@ -410,12 +462,12 @@ func (h *Handler) handleRequest(ctx context.Context, pkt *Packet) (*Packet, erro
 	}
 
 	// Send gratuitous ARP after successful ACK (local subnets only)
-	if h.detector != nil && h.cfg.ConflictDetection.SendGratuitousARP {
-		h.detector.SendGratuitousARPForLease(mac, ip)
+	if d := h.activeDetector(); d != nil && h.config().ConflictDetection.SendGratuitousARP {
+		d.SendGratuitousARPForLease(mac, ip)
 	}
 
 	// Build DHCPACK
-	reply := pkt.NewReply(dhcpv4.MessageTypeAck, h.serverIP)
+	reply := pkt.NewReply(dhcpv4.MessageTypeAck, h.serverIdentity())
 	reply.YIAddr = ip
 
 	// For renewal, set CIAddr
@@ -457,13 +509,13 @@ func (h *Handler) handleDecline(pkt *Packet) {
 	}
 
 	// Let the conflict detector handle it
-	if h.detector != nil {
+	if d := h.activeDetector(); d != nil {
 		subnetIdx, subnetCfg := h.findSubnetForIP(requestedIP)
 		subnet := ""
 		if subnetIdx >= 0 {
 			subnet = subnetCfg.Network
 		}
-		h.detector.HandleDecline(requestedIP, mac, subnet)
+		d.HandleDecline(requestedIP, mac, subnet)
 	}
 
 	// Release the IP from the pool
@@ -474,7 +526,7 @@ func (h *Handler) handleDecline(pkt *Packet) {
 // belongs to no pool. Used by RELEASE/DECLINE and by lease expiry (wired via
 // the lease manager's pool releaser) so freed addresses become allocatable again.
 func (h *Handler) ReleaseToPool(ip net.IP) {
-	for _, subnetPools := range h.pools {
+	for _, subnetPools := range h.poolMap() {
 		for _, p := range subnetPools {
 			if p.Contains(ip) {
 				p.Release(ip)
@@ -538,7 +590,7 @@ func (h *Handler) handleInform(pkt *Packet) (*Packet, error) {
 		return nil, nil
 	}
 
-	reply := pkt.NewReply(dhcpv4.MessageTypeAck, h.serverIP)
+	reply := pkt.NewReply(dhcpv4.MessageTypeAck, h.serverIdentity())
 	reply.CIAddr = pkt.CIAddr
 	// YIAddr MUST be 0 for INFORM responses (RFC 2131 §4.3.5)
 	reply.YIAddr = net.IPv4zero
@@ -567,7 +619,7 @@ func (h *Handler) buildNAK(pkt *Packet, reason string) *Packet {
 		Reason: reason,
 	})
 
-	reply := pkt.NewReply(dhcpv4.MessageTypeNak, h.serverIP)
+	reply := pkt.NewReply(dhcpv4.MessageTypeNak, h.serverIdentity())
 	if reason != "" {
 		reply.Options.SetString(dhcpv4.OptionMessage, reason)
 	}
@@ -609,8 +661,8 @@ func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 	}
 
 	// Fallback: use server IP if configured
-	if h.serverIP != nil {
-		return h.findSubnetForIP(h.serverIP)
+	if sid := h.serverIdentity(); sid != nil {
+		return h.findSubnetForIP(sid)
 	}
 
 	// Fallback: discover IP from the default interface
@@ -623,9 +675,10 @@ func (h *Handler) findSubnet(pkt *Packet) (int, *config.SubnetConfig) {
 
 // findSubnetForInterface finds the subnet assigned to a specific network interface.
 func (h *Handler) findSubnetForInterface(iface string) (int, *config.SubnetConfig) {
-	for i, sub := range h.cfg.Subnets {
+	cfg := h.config()
+	for i, sub := range cfg.Subnets {
 		if sub.Interface == iface {
-			return i, &h.cfg.Subnets[i]
+			return i, &cfg.Subnets[i]
 		}
 	}
 	return -1, nil
@@ -633,13 +686,14 @@ func (h *Handler) findSubnetForInterface(iface string) (int, *config.SubnetConfi
 
 // findSubnetForIP finds the subnet config that contains the given IP.
 func (h *Handler) findSubnetForIP(ip net.IP) (int, *config.SubnetConfig) {
-	for i, sub := range h.cfg.Subnets {
+	cfg := h.config()
+	for i, sub := range cfg.Subnets {
 		_, network, err := net.ParseCIDR(sub.Network)
 		if err != nil {
 			continue
 		}
 		if network.Contains(ip) {
-			return i, &h.cfg.Subnets[i]
+			return i, &cfg.Subnets[i]
 		}
 	}
 	return -1, nil
@@ -647,6 +701,7 @@ func (h *Handler) findSubnetForIP(ip net.IP) (int, *config.SubnetConfig) {
 
 // setSubnetOptions populates response options from subnet configuration.
 func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *config.SubnetConfig, leaseTime time.Duration) {
+	cfg := h.config()
 	_, network, _ := net.ParseCIDR(subnetCfg.Network)
 
 	// Subnet mask
@@ -668,7 +723,7 @@ func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *conf
 	// DNS servers (subnet → defaults)
 	dnsServers := subnetCfg.DNSServers
 	if len(dnsServers) == 0 {
-		dnsServers = h.cfg.Defaults.DNSServers
+		dnsServers = cfg.Defaults.DNSServers
 	}
 	if len(dnsServers) > 0 {
 		var ips []net.IP
@@ -685,7 +740,7 @@ func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *conf
 	// Domain name
 	domainName := subnetCfg.DomainName
 	if domainName == "" {
-		domainName = h.cfg.Defaults.DomainName
+		domainName = cfg.Defaults.DomainName
 	}
 	if domainName != "" {
 		reply.Options.SetString(dhcpv4.OptionDomainName, domainName)
@@ -711,8 +766,8 @@ func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *conf
 	// Lease timing
 	if leaseTime > 0 {
 		reply.Options.SetUint32(dhcpv4.OptionIPLeaseTime, uint32(leaseTime.Seconds()))
-		renewalTime := h.cfg.GetRenewalTime(subnetIdx)
-		rebindTime := h.cfg.GetRebindTime(subnetIdx)
+		renewalTime := cfg.GetRenewalTime(subnetIdx)
+		rebindTime := cfg.GetRebindTime(subnetIdx)
 		reply.Options.SetUint32(dhcpv4.OptionRenewalTime, uint32(renewalTime.Seconds()))
 		reply.Options.SetUint32(dhcpv4.OptionRebindingTime, uint32(rebindTime.Seconds()))
 	}
@@ -720,14 +775,19 @@ func (h *Handler) setSubnetOptions(reply *Packet, subnetIdx int, subnetCfg *conf
 
 // UpdateConfig updates the handler's configuration (for hot-reload).
 func (h *Handler) UpdateConfig(cfg *config.Config) {
-	h.cfg = cfg
-	h.serverIP = cfg.ServerIP()
-	if h.serverIP == nil && h.ifaceIP != nil {
-		h.serverIP = h.ifaceIP
+	serverIP := cfg.ServerIP()
+	if serverIP == nil && h.ifaceIP != nil {
+		serverIP = h.ifaceIP
 	}
+	h.mu.Lock()
+	h.cfg = cfg
+	h.serverIP = serverIP
+	h.mu.Unlock()
 }
 
 // UpdatePools updates the handler's pool map (for hot-reload).
 func (h *Handler) UpdatePools(pools map[string][]*pool.Pool) {
+	h.mu.Lock()
 	h.pools = pools
+	h.mu.Unlock()
 }

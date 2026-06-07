@@ -46,7 +46,7 @@ func NewPeer(cfg *config.HAConfig, fsm *FSM, store *lease.Store, bus *events.Bus
 		hbInterval = time.Second
 	}
 
-	return &Peer{
+	p := &Peer{
 		cfg:               cfg,
 		fsm:               fsm,
 		leaseStore:        store,
@@ -55,7 +55,17 @@ func NewPeer(cfg *config.HAConfig, fsm *FSM, store *lease.Store, bus *events.Bus
 		heartbeatInterval: hbInterval,
 		leaseQueue:        make(chan *Message, 8192),
 		done:              make(chan struct{}),
-	}, nil
+	}
+
+	// Announce a failover claim whenever this node becomes active so the peer
+	// can resolve a dual-active situation against our epoch.
+	fsm.OnActive(func(epoch uint64) {
+		if err := p.SendFailoverClaim("became active", epoch); err != nil {
+			logger.Debug("failover claim send skipped", "error", err)
+		}
+	})
+
+	return p, nil
 }
 
 // OnLeaseUpdate sets a callback for incoming lease updates from the peer.
@@ -250,6 +260,21 @@ func (p *Peer) SendBulkSync(leases []*lease.Lease) error {
 
 	p.logger.Info("bulk lease sync sent to peer", "leases", sent)
 	return nil
+}
+
+// SendFailoverClaim announces to the peer that this node has become active.
+func (p *Peer) SendFailoverClaim(reason string, epoch uint64) error {
+	msg, err := NewFailoverClaim(reason, epoch)
+	if err != nil {
+		return fmt.Errorf("creating failover claim: %w", err)
+	}
+	return p.sendMessage(msg)
+}
+
+// isServingState reports whether an HA state string is one in which the node
+// serves DHCP (ACTIVE or PARTNER_DOWN).
+func isServingState(state string) bool {
+	return state == string(dhcpv4.HAStateActive) || state == string(dhcpv4.HAStatePartnerDown)
 }
 
 // SendConflictUpdate sends a conflict table entry to the peer.
@@ -454,10 +479,14 @@ func (p *Peer) handleMessage(msg *Message) {
 		}
 		metrics.HAHeartbeatsReceived.Inc()
 		p.fsm.PeerUp()
+		// If the peer reports it is also serving, resolve the dual-active so the
+		// cluster converges on a single active node.
+		p.fsm.ResolveDualActive(hb.Epoch, isServingState(hb.State))
 		p.logger.Debug("heartbeat received",
 			"peer_state", hb.State,
 			"peer_leases", hb.LeaseCount,
-			"peer_seq", hb.Seq)
+			"peer_seq", hb.Seq,
+			"peer_epoch", hb.Epoch)
 
 	case dhcpv4.HAMsgLeaseUpdate:
 		var lu LeaseUpdatePayload
@@ -509,9 +538,10 @@ func (p *Peer) handleMessage(msg *Message) {
 			p.logger.Error("failed to unmarshal failover claim", "error", err)
 			return
 		}
-		p.logger.Warn("peer claimed active role", "reason", fc.Reason)
-		// If peer claims active, we become standby
-		p.fsm.transition(dhcpv4.HAStateStandby, "peer claimed active: "+fc.Reason)
+		p.logger.Warn("peer claimed active role", "reason", fc.Reason, "peer_epoch", fc.Epoch)
+		// Resolve deterministically rather than demoting unconditionally — a
+		// blind demote can leave the cluster with no active node, or flapping.
+		p.fsm.ResolveDualActive(fc.Epoch, true)
 
 	default:
 		p.logger.Warn("unknown HA message type", "type", msg.Type)
@@ -537,6 +567,7 @@ func (p *Peer) heartbeatLoop(ctx context.Context) {
 				string(p.fsm.State()),
 				p.leaseStore.Count(),
 				p.leaseStore.CurrentSeq(),
+				p.fsm.Epoch(),
 				time.Since(startTime),
 			)
 			if err != nil {

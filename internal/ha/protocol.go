@@ -24,6 +24,7 @@ type HeartbeatPayload struct {
 	State      string `json:"state"`
 	LeaseCount int    `json:"lease_count"`
 	Seq        uint64 `json:"seq"`
+	Epoch      uint64 `json:"epoch"`
 	Uptime     int64  `json:"uptime_seconds"`
 }
 
@@ -65,9 +66,11 @@ type ConflictUpdatePayload struct {
 	Permanent       bool   `json:"permanent"`
 }
 
-// FailoverClaimPayload is sent when a node claims active role.
+// FailoverClaimPayload is sent when a node claims active role. Epoch is the
+// claimant's promotion generation, used to resolve dual-active deterministically.
 type FailoverClaimPayload struct {
 	Reason    string `json:"reason"`
+	Epoch     uint64 `json:"epoch"`
 	ClaimedAt int64  `json:"claimed_at"`
 }
 
@@ -123,11 +126,12 @@ func DecodeMessage(r io.Reader) (*Message, error) {
 }
 
 // NewHeartbeat creates a heartbeat message.
-func NewHeartbeat(state string, leaseCount int, seq uint64, uptime time.Duration) (*Message, error) {
+func NewHeartbeat(state string, leaseCount int, seq, epoch uint64, uptime time.Duration) (*Message, error) {
 	payload, err := json.Marshal(HeartbeatPayload{
 		State:      state,
 		LeaseCount: leaseCount,
 		Seq:        seq,
+		Epoch:      epoch,
 		Uptime:     int64(uptime.Seconds()),
 	})
 	if err != nil {
@@ -161,6 +165,23 @@ func NewLeaseUpdate(ip net.IP, mac net.HardwareAddr, clientID, hostname, subnet,
 	}
 	return &Message{
 		Type:      dhcpv4.HAMsgLeaseUpdate,
+		Timestamp: time.Now().Unix(),
+		Payload:   payload,
+	}, nil
+}
+
+// NewFailoverClaim creates a message announcing that this node has become active.
+func NewFailoverClaim(reason string, epoch uint64) (*Message, error) {
+	payload, err := json.Marshal(FailoverClaimPayload{
+		Reason:    reason,
+		Epoch:     epoch,
+		ClaimedAt: time.Now().Unix(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Message{
+		Type:      dhcpv4.HAMsgFailoverClaim,
 		Timestamp: time.Now().Unix(),
 		Payload:   payload,
 	}, nil
